@@ -212,9 +212,16 @@ def _bar_html(traits: dict, interview: dict | None) -> str:
             subject = "«Собеседование»"
         else:
             subject = ", ".join(ROW_TITLES[k] for k in keys)
-        notes.append(f"{subject} — относительно {ref}.")
+        n = _pool_size(ref)
+        if n is not None:
+            # «пула обработанных русских роликов (N=5)» -> «среди обработанных русских роликов (сейчас их 5)»
+            m = re.search(r"обработанных\s+(.+?)\s*\(N=", ref)
+            where = f"среди обработанных {m.group(1) if m else 'роликов'} (сейчас их {n})"
+        else:
+            where = f"относительно {ref}"
+        notes.append(f"{subject} — {where}.")
     if small_pool is not None:
-        videos = f"В пуле пока {small_pool} {plural_ru(small_pool, 'ролик', 'ролика', 'роликов')}"
+        videos = f"Роликов в сравнении пока {small_pool}"
         notes.append(videos + (": этого мало для процентов, поэтому положение описано словами и риска не ставится."
                                if not no_pct else ": этого мало, положение появится, когда роликов станет больше."))
     if any_tick:
