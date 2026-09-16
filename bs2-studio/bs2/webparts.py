@@ -173,9 +173,8 @@ def _words_text(expl: dict, rep: dict, lang: str, expl_path: Path | None = None)
                 expl_path.write_text(json.dumps(expl, ensure_ascii=False, indent=2), encoding="utf-8")
             except Exception:  # noqa: BLE001
                 pass
-    from .narrative import words_sentences
-    lines = words_sentences(rw_all, TRAIT_TITLES, lang)
-    return ("\n".join(lines).strip() + "\n\n" + WORDS_NOTE) if lines else ""
+    from .narrative import words_summary
+    return "\n\n".join(words_summary(rw_all, expl, TRAIT_TITLES, lang))
 
 
 def _timeline_html(rep: dict) -> str:

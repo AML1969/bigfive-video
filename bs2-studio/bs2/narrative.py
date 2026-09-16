@@ -143,3 +143,80 @@ def words_sentences(rw_all: Dict[str, dict], titles: Dict[str, str], lang: str) 
             out.append(s + ".")
         out.append("")
     return out
+
+
+def words_summary(rw_all: Dict[str, dict], expl: dict | None, titles: Dict[str, str], lang: str) -> List[str]:
+    """Human paragraphs about the attributed words. When the text nodes barely matter (the usual case for the
+    FIV2-trained model) one paragraph per source says so and names the few words the model reacted to; per-trait
+    lists are shown only when traits really react to different words."""
+    shares: Dict[str, float] = {}
+    ixg = ((expl or {}).get("modalities") or {}).get("input_x_gradient") or {}
+    if ixg:
+        mods = next(iter(ixg.values())).keys()
+        for m in mods:
+            shares[m] = float(np.mean([row[m]["share"] for row in ixg.values()]))
+
+    def lab(i):
+        return (i.get("source") or i.get("ru") or i["en"]) if lang != "en" else i["en"]
+
+    def q(ws):
+        return ", ".join(f"«{w}»" for w in ws)
+
+    out: List[str] = []
+    weak_all = True
+    for key, head, node in (("transcript_words", "Речь", "text"), ("behavior_words", "Описание поведения", "behavior")):
+        rw = rw_all.get(key)
+        if not rw:
+            continue
+        share = shares.get(node)
+        ups, downs, per_trait = {}, {}, {}
+        for trait, d in rw.items():
+            u = [lab(i) for i in d["up"]]; dn = [lab(i) for i in d["down"]]
+            per_trait[trait] = (u[:3], dn[:3])
+            for i in d["up"]:
+                ups[lab(i)] = max(ups.get(lab(i), 0.0), abs(i["signed"]))
+            for i in d["down"]:
+                downs[lab(i)] = max(downs.get(lab(i), 0.0), abs(i["signed"]))
+        ambiguous = set(ups) & set(downs)
+        top_up = [w for w, _ in sorted(ups.items(), key=lambda kv: -kv[1]) if w not in ambiguous][:4]
+        top_down = [w for w, _ in sorted(downs.items(), key=lambda kv: -kv[1]) if w not in ambiguous][:4]
+        agree = [1.0 if (set(u) <= set(top_up) and set(dn) <= set(top_down)) else 0.0 for u, dn in per_trait.values()]
+        uniform = (sum(agree) / max(1, len(agree))) >= 0.7
+        weak = share is not None and share < 0.02
+        weak_all = weak_all and weak
+        if share is None:
+            s = f"{head}."
+        elif weak:
+            s = (f"{head}. " + ("Содержание речи почти не повлияло" if node == "text" else "Текст описания почти не повлиял")
+                 + f" на оценки: вклад меньше {'1' if share < 0.01 else '2'}%.")
+        else:
+            s = f"{head}. Вклад в оценки около {share * 100:.0f}%."
+        if uniform or weak:
+            if len(top_up) == 1 and not top_down:
+                s += f" Единственное слово, на которое модель заметно отреагировала, — {q(top_up)}: оно немного подняло все оценки."
+            else:
+                if top_up:
+                    s += f" Немного поднимали все оценки слова {q(top_up)}"
+                    s += f", немного снижали — {q(top_down)}." if top_down else "."
+                elif top_down:
+                    s += f" Немного снижали все оценки слова {q(top_down)}."
+            if top_up and top_down:
+                s += " Направление одинаково для всех черт: модель откликается на общий тон текста, а не на отдельные черты."
+        else:
+            lines = []
+            for trait, (u, dn) in per_trait.items():
+                if not u and not dn:
+                    continue
+                part = f"{titles.get(trait, trait)}: "
+                if u:
+                    part += f"поднимали {q(u)}"
+                if dn:
+                    part += (", снижали " if u else "снижали ") + q(dn)
+                lines.append(part + ".")
+            s += " Разные черты реагируют на разные слова. " + " ".join(lines)
+        out.append(s)
+    if out:
+        out.append("Что это значит: своя модель судит в основном по лицу и голосу, а слова показывают, на какие формулировки она "
+                   "откликается; итоговые оценки от слов почти не зависят." if weak_all else
+                   "«Поднимали» — слово сдвигало оценку черты вверх, «снижали» — вниз; это реакция своей модели, а не смысл слов сам по себе.")
+    return out

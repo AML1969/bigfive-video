@@ -373,20 +373,17 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
             rows = [[MEMBERS.get(x, x).replace("\n", " ")] + [f"{v.get(k, 0):+.2f}" for k in keys_l] for x, v in loo.items()]
             pdf.table(header, rows, [42] + [138 / len(keys_l)] * len(keys_l), size=7)
             pdf.para("Положительное число — без этой модальности оценка была бы выше, отрицательное — ниже.", 7)
-        from .narrative import words_sentences
+        from .narrative import words_summary
         from .words import WORDS_NOTE
         rw_all = explanation.get("readable_words") or {}
         lang = (report.get("model") or {}).get("lang", "en")
         shown = False
         if rw_all:
             pdf.ln(1)
-            pdf.set_font("ui", "B", 9); pdf.cell(0, 6, "Слова, повлиявшие на каждую черту", new_x="LMARGIN", new_y="NEXT")
-            for line in words_sentences(rw_all, TITLES, lang):
-                if line.endswith(":"):
-                    pdf.set_font("ui", "B", 8); pdf.cell(0, 5, line, new_x="LMARGIN", new_y="NEXT")
-                elif line:
-                    pdf.para(line, 8)
-            shown = True
+            pdf.set_font("ui", "B", 9); pdf.cell(0, 6, "Слова, на которые откликнулась модель", new_x="LMARGIN", new_y="NEXT")
+            for para in words_summary(rw_all, explanation, TITLES, lang):
+                pdf.para(para, 8)
+            shown = False           # the summary explains itself; no extra note needed
         for key, title in (("transcript_words", "Слова речи, повлиявшие на оценку"),
                            ("behavior_words", "Слова описания поведения, повлиявшие на оценку")):
             if key in rw_all:

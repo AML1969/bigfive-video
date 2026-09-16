@@ -237,7 +237,7 @@ def build_app(studio: Studio, work_dir: Path):
                     with gr.Column(scale=1, min_width=360):
                         contrib = gr.HTML(label="Вклад модальностей")
                     with gr.Column(scale=1, min_width=360):
-                        words_detail = gr.Textbox(label="Слова, повлиявшие на каждую черту", lines=8, max_lines=12)
+                        words_detail = gr.Textbox(label="Слова, на которые откликнулась модель", lines=8, max_lines=12)
                 desc = gr.Textbox(label="Описание поведения по сегментам", lines=8, max_lines=12)
             with gr.Tab("Данные"):
                 members = gr.Textbox(label="Участники ансамбля и время обработки", lines=4, max_lines=8)
