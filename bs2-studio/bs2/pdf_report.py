@@ -373,7 +373,6 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
             rows = [[MEMBERS.get(x, x).replace("\n", " ")] + [f"{v.get(k, 0):+.2f}" for k in keys_l] for x, v in loo.items()]
             pdf.table(header, rows, [42] + [138 / len(keys_l)] * len(keys_l), size=7)
             pdf.para("Положительное число — без этой модальности оценка была бы выше, отрицательное — ниже.", 7)
-        from .narrative import words_summary
         from .words import WORDS_NOTE
         rw_all = explanation.get("readable_words") or {}
         lang = (report.get("model") or {}).get("lang", "en")
@@ -381,9 +380,13 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
         if rw_all:
             pdf.ln(1)
             pdf.set_font("ui", "B", 9); pdf.cell(0, 6, "Слова, на которые откликнулась модель", new_x="LMARGIN", new_y="NEXT")
-            for para in words_summary(rw_all, explanation, TITLES, lang):
+            try:
+                from .narrative import words_summary
+                paras = words_summary(rw_all, explanation, TITLES, lang)
+            except Exception as e:  # noqa: BLE001  (never let the words block break the whole PDF)
+                paras = [f"Список слов недоступен: {str(e)[:120]}"]
+            for para in paras:
                 pdf.para(para, 8)
-            shown = False           # the summary explains itself; no extra note needed
         for key, title in (("transcript_words", "Слова речи, повлиявшие на оценку"),
                            ("behavior_words", "Слова описания поведения, повлиявшие на оценку")):
             if key in rw_all:
