@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 from .charts import (EMO_RU, VOICE_RU, fig_emotion_bars, fig_emotions_timeline, fig_face_expr, fig_radar,
-                     fig_speech_timeline, fig_traits_timeline, fig_voice_timeline)
+                     fig_speech_timeline, fig_traits_timeline, fig_voice_timeline, plot_html as _plot_html)
 from .narrative2 import analyses_sentences, key_facts
 from .norms import TRAIT_KEYS
 from .pipeline import Studio, run_analysis
@@ -101,8 +101,52 @@ def _face_html(rep: dict) -> str:
             "(вкладка «Таймлайн»), а не на абсолютные доли.</p>")
 
 
+def _frames_html(rep: dict, max_side: int = 640) -> str:
+    """Key frames embedded as data-URI JPEGs. gr.Gallery depends on Gradio serving files from the job folder, which
+    proved unreliable in this setup (images arrive broken); inline images always render. Click enlarges a frame."""
+    import base64
+    import io
+    from PIL import Image
+
+    paths = [p for p in rep.get("key_frames") or [] if Path(p).exists()]
+    if not paths:
+        return "<p style='opacity:.75'>Ключевые кадры не построены (объяснения отключены или лицо не найдено).</p>"
+    seg = None
+    if rep.get("timeline") and rep.get("representative_segment"):
+        seg = next((t for t in rep["timeline"] if t.get("segment") == rep["representative_segment"]), None)
+    fps = float((rep.get("media") or {}).get("fps") or 0) or None
+    cells = []
+    for p in paths:
+        try:
+            im = Image.open(p).convert("RGB")
+            im.thumbnail((max_side, max_side))
+            buf = io.BytesIO()
+            im.save(buf, format="JPEG", quality=82)
+            b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        except Exception:  # noqa: BLE001
+            continue
+        m = re.search(r"_frame(\d+)", Path(p).stem)
+        caption = "кадр"
+        if m and seg and fps:
+            t = seg["start"] + int(m.group(1)) / fps
+            caption = f"{int(t) // 60}:{int(t) % 60:02d}"
+        elif m:
+            caption = f"кадр {m.group(1)}"
+        cells.append(
+            f"<figure style='margin:0'><img src='data:image/jpeg;base64,{b64}' alt='{caption}' title='Щёлкните, чтобы увеличить' "
+            "onclick=\"this.classList.toggle('bs-big')\" style='width:100%;height:220px;object-fit:contain;cursor:zoom-in;"
+            "border-radius:8px;background:rgba(128,128,128,.12)'>"
+            f"<figcaption style='text-align:center;font-size:13px;margin-top:4px'>{caption}</figcaption></figure>")
+    where = f" (отрезок {seg_label(seg['start'], seg['end'])})" if seg else ""
+    return ("<style>.bs-big{position:fixed!important;inset:4vh 4vw;width:92vw!important;height:92vh!important;"
+            "z-index:9999;background:rgba(0,0,0,.9)!important;cursor:zoom-out!important;object-fit:contain}</style>"
+            f"<div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px'>{''.join(cells)}</div>"
+            f"<p style='font-size:13px;opacity:.75;margin-top:8px'>Кадры, сильнее всего повлиявшие на оценку своей модели{where}; "
+            "рамкой отмечено найденное лицо, подпись — момент ролика. Щелчок по кадру увеличивает его, повторный щелчок закрывает.</p>")
+
+
 def export_pdf(job_dir: str | Path) -> str:
-    from .charts import save_pdf_charts
+    from .pdf_charts import save_pdf_charts
     from .media import probe_media
     from .pdf_report import build_pdf
     job = Path(job_dir)
@@ -119,17 +163,6 @@ def export_pdf(job_dir: str | Path) -> str:
     return build_pdf(rep, job / f"BS2_report_{stem}.pdf", explanation=expl, media=media, key_frames=frames)
 
 
-def _plot_html(fig, extra_height: int = 24) -> str:
-    """Plotly figure as a full-width responsive chart. gr.Plot renders plotly at a fixed 700 px, so the figure is
-    embedded in an iframe (srcdoc) with plotly.js from the CDN and config.responsive=True; the iframe is
-    transparent, the block label of the Gradio component serves as the title."""
-    fig.update_layout(title=None, autosize=True, margin=dict(t=30))
-    height = int((fig.layout.height or 360) + extra_height)
-    html = fig.to_html(include_plotlyjs="cdn", full_html=True, config={"responsive": True, "displaylogo": False})
-    html = html.replace("<body>", "<body style='margin:0;background:transparent'>", 1)
-    srcdoc = html.replace("&", "&amp;").replace('"', "&quot;")
-    return (f"<iframe style='width:100%;height:{height}px;border:0;display:block' scrolling='no' "
-            f"srcdoc=\"{srcdoc}\"></iframe>")
 
 
 def _status_html(frac: float, desc: str, done: bool = False, label: str | None = None) -> str:
@@ -142,7 +175,8 @@ def _status_html(frac: float, desc: str, done: bool = False, label: str | None =
             f"<div style='width:{pct}%;background:{color};height:10px;border-radius:6px;transition:width .5s'></div></div></div>")
 
 
-def build_app(studio: Studio, work_dir: Path):
+def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
+    """preview_job: a finished job folder rendered on page load (UI testing without re-running the analysis)."""
     import gradio as gr
     from .longvideo import AnalysisCancelled
 
@@ -154,17 +188,16 @@ def build_app(studio: Studio, work_dir: Path):
         expl = json.loads(expl_path.read_text(encoding="utf-8")) if expl_path.exists() else None
         lang = (rep.get("model") or {}).get("lang", "ru")
         narrative = (rep.get("narrative") or "") + " " + analyses_sentences(rep)
-        frames = [(p, f"кадр {Path(p).stem.split('_frame')[-1]}") for p in rep.get("key_frames", [])]
         members = rep.get("variant_scores") or {}
         primary = (rep.get("model") or {}).get("primary")
         member_txt = "\n".join(f"{MEMBER_TITLES.get(m, m)}{' — основная оценка' if m == primary else ''}: "
                                + ", ".join(f"{TRAIT_TITLES[k][:12]} {v[k]:.2f}" for k in TRAIT_KEYS) for m, v in members.items())
         member_txt += f"\nВремя обработки: {fmt_secs(rep['timings_sec'].get('total_wall', 0))}; модели: {rep.get('model', {}).get('corpus')}"
-        return (_plot_html(fig_radar(rep)), _bar_html(rep["traits"], rep.get("interview")) + _members_html(rep), _facts_html(rep),
-                narrative.strip(), _plot_html(fig_traits_timeline(rep)), _plot_html(fig_emotions_timeline(rep)),
-                _plot_html(fig_voice_timeline(rep)), _plot_html(fig_speech_timeline(rep)), _plot_html(fig_emotion_bars(rep)),
+        return (_plot_html(fig_radar, rep), _bar_html(rep["traits"], rep.get("interview")) + _members_html(rep), _facts_html(rep),
+                narrative.strip(), _plot_html(fig_traits_timeline, rep), _plot_html(fig_emotions_timeline, rep),
+                _plot_html(fig_voice_timeline, rep), _plot_html(fig_speech_timeline, rep), _plot_html(fig_emotion_bars, rep),
                 _segments_table(rep), _speech_html(rep),
-                rep.get("transcript", ""), _face_html(rep), _plot_html(fig_face_expr(rep)), frames, _contrib_html(expl),
+                rep.get("transcript", ""), _face_html(rep), _plot_html(fig_face_expr, rep), _frames_html(rep), _contrib_html(expl),
                 _words_text(expl, rep, lang, expl_path) if expl else "",
                 rep.get("behavior_description_ru") or rep.get("behavior_description", ""), member_txt,
                 json.dumps(rep, ensure_ascii=False, indent=2), str(job / "result.json"), str(job), gr.update(interactive=True))
@@ -257,8 +290,7 @@ def build_app(studio: Studio, work_dir: Path):
             with gr.Tab("Мимика и кадры"):
                 face_html = gr.HTML(label="Лицо в кадре")
                 face_plot = gr.HTML(label="Выражение лица за ролик")
-                gallery = gr.Gallery(label="Ключевые кадры (по сегменту объяснений)", columns=5, height=300,
-                                     object_fit="contain", show_download_button=False)
+                gallery = gr.HTML(label="Ключевые кадры")
             with gr.Tab("Объяснения"):
                 with gr.Row():
                     with gr.Column(scale=1, min_width=360):
@@ -278,6 +310,12 @@ def build_app(studio: Studio, work_dir: Path):
         run_ev = btn.click(analyze, inputs=[video, lang, explain], outputs=outputs, show_progress="hidden", api_name=False)
         stop_btn.click(stop, inputs=None, outputs=[status], cancels=[run_ev], show_progress="hidden", api_name=False)
         pdf_btn.click(make_pdf, inputs=[job_state], outputs=[pdf_btn], api_name=False)
+        if preview_job:
+            def _preview():
+                rep = json.loads((Path(preview_job) / "result.json").read_text(encoding="utf-8"))
+                rep["job_dir"] = str(preview_job)
+                return (_status_html(1.0, "предпросмотр готового результата", done=True),) + render(rep)
+            demo.load(_preview, inputs=None, outputs=outputs, show_progress="hidden", api_name=False)
     return demo
 
 
