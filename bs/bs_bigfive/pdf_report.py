@@ -36,7 +36,7 @@ CORPUS_TITLES = {"fi": "веса First Impressions V2", "mupta": "веса MuPTA
 TAG_TITLES = {"creation_time": "Дата съёмки", "encoder": "Кодировщик", "title": "Название",
               "com.apple.quicktime.make": "Производитель камеры", "com.apple.quicktime.model": "Модель камеры"}
 # first line of a segment error (longvideo.py) -> reason in Russian; unknown errors get no stated reason
-SKIP_REASONS = {"no frames decoded": "не удалось прочитать кадры", "empty audio": "в сегменте нет звука",
+SKIP_REASONS = {"no frames decoded": "не удалось прочитать кадры", "empty audio": "в отрезке нет звука",
                 "all ensemble members failed": "ни одна из моделей не дала оценки"}
 
 # greys and colours for white paper (contrast on #ffffff in comments)
@@ -276,7 +276,7 @@ class Report(FPDF):
     def _score_legend(self, traits: dict, interview: dict | None, std: dict, model: dict) -> list[str]:
         """Legend lines built from the data: which rows, which model, which reference group."""
         lines = ["Полоска — оценка от 0 до 1, риска — середина шкалы (0.5)"
-                 + ("; ± — разброс оценки между сегментами ролика." if std else ".")]
+                 + ("; ± — разброс оценки между отрезками ролика." if std else ".")]
         tref = traits[TRAIT_KEYS[0]].get("percentile_ref", "")
         if "пула" in tref:
             n = _pool_n(tref)
@@ -487,7 +487,7 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
              ", ".join(MODALITY_TITLES.get(x, x) for x in used)),
             ("Версия", m.get("version"))]
     if report.get("segments"):
-        rows.append(("Сегменты", f"{report['segments']} по ~20 с; итог — среднее с весом по длительности"))
+        rows.append(("Отрезки", f"{report['segments']} по ~20 с; итог — среднее с весом по длительности"))
     t = report.get("timings_sec", {})
     if t:
         rows.append(("Время обработки", fmt_secs(t.get("total_wall", t.get("total")))))
@@ -530,7 +530,7 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
     if tl:
         pdf.h2(section("Оценки по ходу ролика"), need=25)
         keys = TRAIT_KEYS + (["interview"] if any(s.get("scores") and "interview" in s["scores"] for s in tl) else [])
-        header = ["Сегмент"] + [TITLES_2L.get(k, TITLES.get(k, k)) for k in keys]
+        header = ["Отрезок"] + [TITLES_2L.get(k, TITLES.get(k, k)) for k in keys]
         # segments whose mean over the five traits is > 2 SD from the rest (as in the narrative text)
         scored = [s for s in tl if s.get("scores") and all(k in s["scores"] for k in TRAIT_KEYS)]
         odd = set()
@@ -555,7 +555,7 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
                 skipped = True
                 err = str(s.get("error") or "")
                 reason = next((ru for en, ru in SKIP_REASONS.items() if err.startswith(en)), "не удалось оценить")
-                rows.append({"cells": [label], "span": f"сегмент пропущен — {reason}"})
+                rows.append({"cells": [label], "span": f"отрезок пропущен — {reason}"})
         pdf.table(header, rows, [40] + [150 / len(keys)] * len(keys), size=8)
         notes = [f"Черты — {score_source(m)}"
                  + ("; «Собеседование» — своя модель, шкала First Impressions V2" if "interview" in keys else "")
@@ -563,18 +563,18 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
         if rep_seg is not None:
             built = [x for x, ok in (("ключевые кадры", any(os.path.exists(p) for p in key_frames or [])),
                                      ("разбор вклада модальностей", bool(explanation))) if ok]
-            notes.append(f"{pdf.star} (жирная строка) — сегмент, ближайший к среднему профилю ролика"
+            notes.append(f"{pdf.star} (жирная строка) — отрезок, ближайший к среднему профилю ролика"
                          + (f": по нему {'построены' if 'ключевые кадры' in built else 'построен'} {' и '.join(built)}."
                             if built else "."))
         if other_scale:
-            notes.append(f"* — сегмент оценён без {SYSTEM_TITLES.get(primary, primary)} (основная система не дала оценки), "
+            notes.append(f"* — отрезок оценён без {SYSTEM_TITLES.get(primary, primary)} (основная система не дала оценки), "
                          "поэтому его значения даны по другой шкале и не сравнимы с остальными строками.")
         if len(odd) == 1:
-            notes.append("Серым фоном выделен сегмент, оценки которого заметно отличаются от остального ролика.")
+            notes.append("Серым фоном выделен отрезок, оценки которого заметно отличаются от остального ролика.")
         elif odd:
-            notes.append("Серым фоном выделены сегменты, оценки которых заметно отличаются от остального ролика.")
+            notes.append("Серым фоном выделены отрезки, оценки которых заметно отличаются от остального ролика.")
         if skipped:
-            notes.append("Пропущенные сегменты не входят в итоговые оценки.")
+            notes.append("Пропущенные отрезки не входят в итоговые оценки.")
         for line in notes:
             pdf.para(line, 8, after=0)
         pdf.ln(1.5)
@@ -611,17 +611,17 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
         for q, s in zip(frames, secs):
             if s is None:
                 mt = re.search(r"_frame(\d+)", Path(q).stem)
-                captions[q] = (f"кадр №{mt.group(1)}" + (" сегмента" if rep_seg is not None else "")) if mt else "кадр"
+                captions[q] = (f"кадр №{mt.group(1)}" + (" отрезка" if rep_seg is not None else "")) if mt else "кадр"
             else:
                 captions[q] = _mmss(s) + (f",{int(s * 10) % 10}" if tenths else "")
 
         first_h = max(fitted(q)[1] for q in frames[:per_row])
         timed = start is not None and fps is not None
-        where = f"сегмента {seg_label(rep_seg['start'], rep_seg['end'])}" if rep_seg is not None else "ролика"
+        where = f"отрезка {seg_label(rep_seg['start'], rep_seg['end'])}" if rep_seg is not None else "ролика"
         note = (f"Кадры {where}, сильнее всего повлиявшие на оценку своей модели. Жёлтая рамка — найденное лицо; "
                 + (("подпись — момент ролика (минуты:секунды, после запятой — десятые доли секунды)." if tenths
                     else "подпись — момент ролика (минуты:секунды).") if timed
-                   else f"подпись — номер кадра в {'сегменте' if rep_seg is not None else 'ролике'}."))
+                   else f"подпись — номер кадра в {'отрезке' if rep_seg is not None else 'ролике'}."))
         # heading + note + the first row of frames with captions stay on one page
         pdf.set_x(pdf.l_margin); pdf.set_font("ui", "", 8)
         note_h = pdf.multi_cell(0, 4, _keep_dash(note), dry_run=True, output="HEIGHT") + 1.5
@@ -651,7 +651,7 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
         mods = list(next(iter(ixg.values())).keys())
         pdf.h2(section("Вклад модальностей в оценку своей модели"), need=40)
         if rep_seg is not None:
-            pdf.note(f"Этот раздел построен по одному сегменту — {seg_label(rep_seg['start'], rep_seg['end'])} "
+            pdf.note(f"Этот раздел построен по одному отрезку — {seg_label(rep_seg['start'], rep_seg['end'])} "
                      f"({pdf.star} в таблице выше), а не по всему ролику.")
         header = ["Черта"] + [MEMBERS.get(x, x) for x in mods]
 
@@ -672,7 +672,7 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
             header = ["Без модальности"] + [TITLES_2L.get(k, TITLES.get(k, k)) for k in keys_l]
             rows = [[MEMBERS.get(x, x).replace("\n", " ")] + [signed(v.get(k, 0)) for k in keys_l] for x, v in loo.items()]
             pdf.table(header, rows, [36] + [154 / len(keys_l)] * len(keys_l), size=8)
-            pdf.note(f"Своя модель заново оценивает {'сегмент' if rep_seg is not None else 'ролик'} без этой модальности "
+            pdf.note(f"Своя модель заново оценивает {'отрезок' if rep_seg is not None else 'ролик'} без этой модальности "
                      "(метод leave-one-out). Плюс — без неё оценка была бы выше, минус — ниже; 0.00 — оценка не меняется.")
         from .narrative import words_sentences
         rw_all = explanation.get("readable_words") or {}
@@ -704,7 +704,7 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
 
     # ---- texts
     if report.get("behavior_description"):
-        vlm_note = f"Описание строит видеоязыковая модель по кадрам {'каждого сегмента' if tl else 'ролика'}."
+        vlm_note = f"Описание строит видеоязыковая модель по кадрам {'каждого отрезка' if tl else 'ролика'}."
         if report.get("behavior_description_ru"):
             pdf.h2(section("Описание поведения"))
             pdf.note(vlm_note)
