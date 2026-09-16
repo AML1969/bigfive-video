@@ -20,7 +20,7 @@ from .norms import RU_NAMES, TRAIT_KEYS, percentile
 from .charts import frames_html as _charts_frames_html, traits_timeline_html as _charts_traits_html
 from .palette import (BUTTON_PRIMARY, BUTTON_PRIMARY_HOVER, BUTTON_STOP, BUTTON_STOP_HOVER, MUTED_OPACITY, OUTLINE,
                       SECOND_OPINION, SKIP_TEXT, STATUS, SUBDUED_TEXT_LIGHT, TABLE_RULE, TRAIT_COLORS)
-from .report import DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU, build_report, clean_word, fmt_secs, seg_label
+from .report import DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU, build_report, clean_word, fmt_secs, mmss_labels, seg_label
 
 log = logging.getLogger("bs.web")
 
@@ -32,7 +32,9 @@ TRAIT_TITLES = {
     "emotional_stability": "Эмоциональная стабильность",
     "interview": "Впечатление «пригласить на собеседование»",
 }
-MEMBER_TITLES = {"oceanai": "OCEAN-AI", "mm": "Своя модель (MM-PSYCHE)", "scene": "SSL-MEPR сцена",
+# which OCEAN-AI weights were used, for the «Готово» line
+CORPUS_RU = {"mupta": "веса OCEAN-AI для русской речи (MuPTA)", "fi": "веса OCEAN-AI для английской речи (First Impressions V2)"}
+MEMBER_TITLES = {"oceanai":"OCEAN-AI", "mm": "Своя модель (MM-PSYCHE)", "scene": "SSL-MEPR сцена",
                  "face": "лицо", "audio": "голос (CLAP)", "audio_whisper": "голос (Whisper)", "audio_xlsr": "голос (XLS-R)",
                  "audio_w2v_emo": "голос (wav2vec2)", "text": "речь", "behavior": "описание поведения"}
 # two-line column headers for narrow tables (long Russian words do not wrap by themselves)
@@ -391,7 +393,8 @@ def run_analysis(engine: Engine, work_dir: Path, video_path: str, lang: str = "e
     return {
         "bars_html": (_bar_html(rep["traits"], rep.get("interview"), with_chart=_has_chart(rep))
                       + _members_html(rep) + _timeline_html(rep)),
-        "description": rep.get("behavior_description_ru") or rep.get("behavior_description", "") or "(описание не получено)",
+        "description": mmss_labels(rep.get("behavior_description_ru") or rep.get("behavior_description", ""))
+                       or "(описание не получено)",
         "transcript": transcript_txt,
         "frames": frames,
         "traits_plot": _charts_traits_html(rep),      # full-width Big Five timeline chart (as in BS 2.0)
@@ -401,7 +404,8 @@ def run_analysis(engine: Engine, work_dir: Path, video_path: str, lang: str = "e
         "words_detail": words_detail.strip(),
         "members": member_txt,
         "timing": f"{fmt_secs(rep['timings_sec']['total_wall'])} (ролик {fmt_secs(rep.get('duration_sec') or 0)}, "
-                  f"{n_seg} {_plural(n_seg, 'отрезок', 'отрезка', 'отрезков')}; модели: {be.cfg.corpus})",
+                  f"{n_seg} {_plural(n_seg, 'отрезок', 'отрезка', 'отрезков')}; "
+                  f"{CORPUS_RU['mupta' if lang == 'ru' else 'fi']})",
         "json": json.dumps(rep, ensure_ascii=False, indent=2),
         "path": str(job / "result.json"),
         "report": rep,
@@ -517,7 +521,7 @@ def build_app(engine: Engine, work_dir: Path):
             raise e
         r = result["r"]
         job_dir = str(Path(r["path"]).parent)
-        # the run time («6 мин 05 с (ролик 6 мин 10 с, 19 отрезков; модели: …)») is shown on the «Готово» line and kept
+        # the run time («6 мин 05 с (ролик 6 мин 10 с, 19 отрезков; веса …)») is shown on the «Готово» line and kept
         # in the members textbox inside the accordion
         members_txt = (r["members"] + "\n\n" if r["members"] else "") + f"Время обработки: {r['timing']}"
         yield (_status_html(1.0, f"обработано за {r['timing']}", kind="done"),
@@ -551,10 +555,10 @@ def build_app(engine: Engine, work_dir: Path):
         with gr.Row():
             with gr.Column(scale=1, min_width=320):
                 video = gr.Video(label="Видео", sources=["upload"], height=320)
-                lang = gr.Radio(choices=["en", "ru"], value="en", label="Язык речи",
-                                info="en: среднее OCEAN-AI (веса FIV2) и своей модели, положение относительно людей FIV2; "
-                                     "ru: основная оценка OCEAN-AI (веса MuPTA), положение относительно пула обработанных "
-                                     "русских роликов, своя модель — второе мнение и объяснения")
+                lang = gr.Radio(choices=[("русский", "ru"), ("английский", "en")], value="ru", label="Язык речи",
+                                info="Русский: основную оценку даёт OCEAN-AI (веса MuPTA), положение — среди обработанных "
+                                     "русских роликов, своя модель — второе мнение и объяснения. Английский: среднее OCEAN-AI "
+                                     "и своей модели, положение — среди людей First Impressions V2.")
                 explain = gr.Checkbox(value=True, label="Объяснения (ключевые кадры, вклад модальностей, слова)")
                 with gr.Row():
                     btn = gr.Button("Анализировать", variant="primary")
