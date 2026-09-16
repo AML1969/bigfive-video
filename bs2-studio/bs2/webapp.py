@@ -108,6 +108,19 @@ def export_pdf(job_dir: str | Path) -> str:
     return build_pdf(rep, job / f"BS2_report_{stem}.pdf", explanation=expl, media=media, key_frames=frames)
 
 
+def _plot_html(fig, extra_height: int = 24) -> str:
+    """Plotly figure as a full-width responsive chart. gr.Plot renders plotly at a fixed 700 px, so the figure is
+    embedded in an iframe (srcdoc) with plotly.js from the CDN and config.responsive=True; the iframe is
+    transparent, the block label of the Gradio component serves as the title."""
+    fig.update_layout(title=None, autosize=True, margin=dict(t=30))
+    height = int((fig.layout.height or 360) + extra_height)
+    html = fig.to_html(include_plotlyjs="cdn", full_html=True, config={"responsive": True, "displaylogo": False})
+    html = html.replace("<body>", "<body style='margin:0;background:transparent'>", 1)
+    srcdoc = html.replace("&", "&amp;").replace('"', "&quot;")
+    return (f"<iframe style='width:100%;height:{height}px;border:0;display:block' scrolling='no' "
+            f"srcdoc=\"{srcdoc}\"></iframe>")
+
+
 def _status_html(frac: float, desc: str, done: bool = False, label: str | None = None) -> str:
     pct = max(2, min(100, int(frac * 100)))
     color = "#2e8b57" if done else "#e8731a"
@@ -136,9 +149,10 @@ def build_app(studio: Studio, work_dir: Path):
         member_txt = "\n".join(f"{MEMBER_TITLES.get(m, m)}{' — основная оценка' if m == primary else ''}: "
                                + ", ".join(f"{TRAIT_TITLES[k][:12]} {v[k]:.2f}" for k in TRAIT_KEYS) for m, v in members.items())
         member_txt += f"\nВремя обработки: {fmt_secs(rep['timings_sec'].get('total_wall', 0))}; модели: {rep.get('model', {}).get('corpus')}"
-        return (fig_radar(rep), _bar_html(rep["traits"], rep.get("interview")) + _members_html(rep), _facts_html(rep),
-                narrative.strip(), fig_traits_timeline(rep), fig_emotions_timeline(rep), fig_voice_timeline(rep),
-                fig_speech_timeline(rep), fig_emotion_bars(rep), _segments_table(rep), _speech_html(rep),
+        return (_plot_html(fig_radar(rep)), _bar_html(rep["traits"], rep.get("interview")) + _members_html(rep), _facts_html(rep),
+                narrative.strip(), _plot_html(fig_traits_timeline(rep)), _plot_html(fig_emotions_timeline(rep)),
+                _plot_html(fig_voice_timeline(rep)), _plot_html(fig_speech_timeline(rep)), _plot_html(fig_emotion_bars(rep)),
+                _segments_table(rep), _speech_html(rep),
                 rep.get("transcript", ""), _face_html(rep), frames, _contrib_html(expl),
                 _words_text(expl, rep, lang, expl_path) if expl else "",
                 rep.get("behavior_description_ru") or rep.get("behavior_description", ""), member_txt,
@@ -212,19 +226,19 @@ def build_app(studio: Studio, work_dir: Path):
             with gr.Tab("Обзор"):
                 with gr.Row():
                     with gr.Column(scale=1, min_width=360):
-                        radar = gr.Plot(label="Профиль Big Five")
+                        radar = gr.HTML(label="Профиль Big Five")
                     with gr.Column(scale=1, min_width=360):
                         bars = gr.HTML(label="Оценки")
             with gr.Tab("Таймлайн"):
-                traits_plot = gr.Plot(label="Big Five по ходу ролика")
-                emo_plot = gr.Plot(label="Эмоции по ходу ролика")
+                traits_plot = gr.HTML(label="Big Five по ходу ролика")
+                emo_plot = gr.HTML(label="Эмоции по ходу ролика (доли, сумма = 100%)")
                 with gr.Row():
                     with gr.Column(scale=1, min_width=360):
-                        voice_plot = gr.Plot(label="Голос")
+                        voice_plot = gr.HTML(label="Голос по ходу ролика (0…1)")
                     with gr.Column(scale=1, min_width=360):
-                        speech_plot = gr.Plot(label="Речь")
+                        speech_plot = gr.HTML(label="Речь: темп и паузы по ходу ролика")
             with gr.Tab("Эмоции и голос"):
-                emo_bars = gr.Plot(label="Средний профиль эмоций")
+                emo_bars = gr.HTML(label="Средний профиль эмоций за ролик")
                 seg_table = gr.HTML(label="По отрезкам")
             with gr.Tab("Речь"):
                 speech_html = gr.HTML(label="Речевая аналитика")
