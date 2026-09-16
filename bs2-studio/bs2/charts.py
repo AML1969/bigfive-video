@@ -241,3 +241,23 @@ def save_pdf_charts(rep: dict, out_dir: str | Path) -> Dict[str, str]:
                 axes[1].grid(alpha=0.3); axes[1].legend(fontsize=7, loc="upper left"); ax2.legend(fontsize=7, loc="upper right")
             fig.tight_layout(); p = out_dir / "chart_voice_speech.png"; fig.savefig(p); plt.close(fig); files["voice_speech"] = str(p)
     return files
+
+
+def fig_face_expr(rep: dict):
+    """Horizontal bars of the facial-expression distribution over the whole video."""
+    import plotly.graph_objects as go
+    m = ((rep.get("analyses") or {}).get("face") or {}).get("mean") or {}
+    fig = go.Figure()
+    if not m:
+        return _layout(fig, "Выражение лица", height=300, y_range=None)
+    items = sorted(m.items(), key=lambda kv: kv[1])
+    fig.add_trace(go.Bar(x=[v for _, v in items], y=[EMO_RU.get(k, k) for k, _ in items], orientation="h",
+                         marker_color=[EMO_COLORS.get(k, "#888") for k, _ in items],
+                         text=[f"{v:.0%}" for _, v in items], textposition="outside", cliponaxis=False,
+                         hovertemplate="%{y}: %{x:.0%}<extra></extra>"))
+    fig.update_layout(height=320, autosize=True, margin=dict(l=110, r=40, t=30, b=40), showlegend=False,
+                      plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", font=dict(size=12, color=FONT_COLOR))
+    fig.update_xaxes(range=[0, min(1.0, max(m.values()) * 1.25)], tickformat=".0%", gridcolor="rgba(128,128,128,0.2)",
+                     title_text="доля проанализированных кадров")
+    fig.update_yaxes(showgrid=False)
+    return fig

@@ -112,7 +112,7 @@ def _bar_html(traits: dict, interview: dict | None) -> str:
             f"<div style='width:{width:.0f}%;background:{color};height:14px;border-radius:6px'></div></div></div>")
     note = ("Полоска — оценка от 0 до 1. Рядом — положение относительно опорной группы: " + "; ".join(refs) + ".")
     return ("<div style='max-width:640px'>" + "".join(rows) +
-            f"<div style='font-size:12px;color:#666;margin-top:8px'>{note}</div></div>")
+            f"<div style='font-size:12px;opacity:.75;margin-top:8px'>{note}</div></div>")
 
 
 def _members_html(rep: dict) -> str:
@@ -148,7 +148,7 @@ def _members_html(rep: dict) -> str:
         note = "Обе системы на шкале FIV2; итоговая оценка — их среднее."
     return (f"<div style='max-width:640px;margin-top:14px;padding:10px 12px;border:1px solid #ddd;border-radius:8px'>"
             f"<div style='font-weight:600;font-size:14px;margin-bottom:6px'>{title}</div>{rows}"
-            f"<div style='font-size:12px;color:#666;margin-top:6px'>{note}</div></div>")
+            f"<div style='font-size:12px;opacity:.75;margin-top:6px'>{note}</div></div>")
 
 
 def _words_text(expl: dict, rep: dict, lang: str, expl_path: Path | None = None) -> str:
@@ -195,10 +195,10 @@ def _timeline_html(rep: dict) -> str:
         mark = " ★" if seg["segment"] == rep_i else ""
         rows += f"<tr><td style='padding:3px 6px;white-space:nowrap'>{label}{mark}</td>{cells}</tr>"
     std = rep.get("scores_std_across_segments") or {}
-    std_cells = "".join(f"<td style='text-align:center;padding:3px 6px;color:#666'>±{std.get(k, 0):.2f}</td>" for k in keys)
-    rows += f"<tr><td style='padding:3px 6px;color:#666'>разброс</td>{std_cells}</tr>"
+    std_cells = "".join(f"<td style='text-align:center;padding:3px 6px;opacity:.75'>±{std.get(k, 0):.2f}</td>" for k in keys)
+    rows += f"<tr><td style='padding:3px 6px;opacity:.75'>разброс</td>{std_cells}</tr>"
     return (f"<table style='border-collapse:collapse;font-size:13px'><tr><th></th>{head}</tr>{rows}</table>"
-            f"<div style='font-size:12px;color:#666'>Ролик {fmt_secs(rep.get('duration_sec', 0))} разбит на {len(tl)} сегментов; "
+            f"<div style='font-size:12px;opacity:.75'>Ролик {fmt_secs(rep.get('duration_sec', 0))} разбит на {len(tl)} сегментов; "
             "итоговые оценки — среднее по сегментам с весом по длительности. ★ — сегмент, по которому построены объяснения.</div>")
 
 
@@ -213,7 +213,7 @@ def _contrib_html(expl: dict | None) -> str:
         cells = "".join(f"<td style='text-align:center;padding:4px 8px'>{_pct(row[m]['share'])}</td>" for m in mods)
         body += f"<tr><td style='padding:4px 8px'>{TRAIT_TITLES.get(k, k)}</td>{cells}</tr>"
     return (f"<table style='border-collapse:collapse;font-size:13px'><tr><th></th>{head}</tr>{body}</table>"
-            "<div style='font-size:12px;color:#666'>Доля вклада модальности в оценку своей модели (Input×Gradient). "
+            "<div style='font-size:12px;opacity:.75'>Доля вклада модальности в оценку своей модели (Input×Gradient). "
             "«&lt;1%» — модальность почти не влияет на оценку этого ролика: модель, обученная на FIV2, опирается в основном "
             "на лицо и голос; речь и описание поведения слабо меняют результат.</div>")
 

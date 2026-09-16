@@ -12,8 +12,8 @@ import threading
 import time
 from pathlib import Path
 
-from .charts import (EMO_RU, VOICE_RU, fig_emotion_bars, fig_emotions_timeline, fig_radar, fig_speech_timeline,
-                     fig_traits_timeline, fig_voice_timeline)
+from .charts import (EMO_RU, VOICE_RU, fig_emotion_bars, fig_emotions_timeline, fig_face_expr, fig_radar,
+                     fig_speech_timeline, fig_traits_timeline, fig_voice_timeline)
 from .narrative2 import analyses_sentences, key_facts
 from .norms import TRAIT_KEYS
 from .pipeline import Studio, run_analysis
@@ -26,9 +26,9 @@ CARD = ("display:inline-block;min-width:150px;margin:4px;padding:10px 14px;borde
 
 
 def _facts_html(rep: dict) -> str:
-    cards = "".join(f"<div style='{CARD}'><div style='font-size:12px;color:#888'>{lab}</div>"
+    cards = "".join(f"<div style='{CARD}'><div style='font-size:12px;opacity:.75'>{lab}</div>"
                     f"<div style='font-size:20px;font-weight:600;margin:2px 0'>{val}</div>"
-                    f"<div style='font-size:12px;color:#888'>{note}</div></div>" for lab, val, note in key_facts(rep))
+                    f"<div style='font-size:12px;opacity:.75'>{note}</div></div>" for lab, val, note in key_facts(rep))
     return f"<div>{cards}</div>" if cards else ""
 
 
@@ -53,7 +53,7 @@ def _segments_table(rep: dict) -> str:
                  f"{sp.get('words_per_min_speech') or 0:.0f}" if sp else "—", f"{sp.get('pause_share', 0):.0%}" if sp else "—"]
         rows += "<tr>" + "".join(f"<td style='padding:3px 8px;text-align:center;white-space:nowrap'>{c}</td>" for c in cells) + "</tr>"
     return (f"<div style='overflow-x:auto'><table style='border-collapse:collapse;font-size:13px'><tr>{head}</tr>{rows}</table></div>"
-            "<div style='font-size:12px;color:#666;margin-top:6px'>Доминирующая эмоция по речи и по лицу, три измерения голоса "
+            "<div style='font-size:12px;opacity:.75;margin-top:6px'>Доминирующая эмоция по речи и по лицу, три измерения голоса "
             "(0…1), темп и доля пауз — по каждому отрезку.</div>")
 
 
@@ -66,28 +66,39 @@ def _speech_html(rep: dict) -> str:
              ("Доля пауз", f"{sp.get('pause_share', 0):.0%}"), ("Длинных пауз (>2 с)", sp.get("long_pauses")),
              ("Слов-заполнителей", f"{sp.get('fillers', 0)} ({sp.get('fillers_per_100', 0):.1f} на 100 слов)"),
              ("Средняя фраза, слов", sp.get("mean_sentence")), ("Разнообразие словаря", sp.get("ttr"))]
-    cards = "".join(f"<div style='{CARD}'><div style='font-size:12px;color:#888'>{k}</div>"
+    cards = "".join(f"<div style='{CARD}'><div style='font-size:12px;opacity:.75'>{k}</div>"
                     f"<div style='font-size:18px;font-weight:600'>{v if v is not None else '—'}</div></div>" for k, v in items)
     vocab = ", ".join(f"{w} ({n})" for w, n in sp.get("vocabulary", [])[:15])
     return (f"<div>{cards}</div><p style='font-size:14px'>{sp.get('description', '')}</p>"
-            f"<p style='font-size:13px;color:#666'>Частые слова: {vocab}</p>")
+            f"<p style='font-size:13px;opacity:.75'>Частые слова: {vocab}</p>")
 
 
 def _face_html(rep: dict) -> str:
+    """Cards with the face metrics; the distribution itself is drawn as a chart next to them."""
     fa = (rep.get("analyses") or {}).get("face") or {}
     if not fa:
         return ""
     m = fa.get("mean") or {}
-    rows = "".join(f"<tr><td style='padding:2px 8px'>{EMO_RU.get(k, k)}</td><td style='padding:2px 8px;text-align:right'>{v:.0%}</td></tr>"
-                   for k, v in sorted(m.items(), key=lambda kv: -kv[1]))
-    extra = []
-    if fa.get("head_motion") is not None:
-        extra.append(f"движение головы {fa['head_motion']:.2f} (в долях ширины лица между кадрами)")
+    per = (rep.get("analyses") or {}).get("per_segment") or []
+    frames = sum((r.get("face") or {}).get("frames", 0) for r in per)
+    cards = []
+    if m:
+        k, v = max(m.items(), key=lambda kv: kv[1])
+        cards.append(("Чаще всего", EMO_RU.get(k, k), f"{v:.0%} кадров"))
+    hm = fa.get("head_motion")
+    if hm is not None:
+        cards.append(("Движение головы", "слабое" if hm < 0.05 else ("умеренное" if hm < 0.15 else "активное"),
+                      f"{hm:.2f} ширины лица между кадрами"))
     if fa.get("face_share") is not None:
-        extra.append(f"лицо найдено в {fa['face_share']:.0%} проанализированных кадров")
-    return (f"<table style='border-collapse:collapse;font-size:13px'>{rows}</table>"
-            f"<p style='font-size:13px;color:#666'>{'; '.join(extra)}. Модель выражений обучена на фотографиях FER-2013 и "
-            "склонна видеть «грусть» и «страх» в спокойном лице; смотрите на изменения по ходу ролика, а не на абсолютные доли.</p>")
+        cards.append(("Лицо в кадре", f"{fa['face_share']:.0%}", "доля проанализированных кадров"))
+    if frames:
+        cards.append(("Кадров разобрано", f"{frames}", f"по {len(per)} отрезкам"))
+    html = "".join(f"<div style='{CARD}'><div style='font-size:12px;opacity:.75'>{lab}</div>"
+                   f"<div style='font-size:20px;font-weight:600;margin:2px 0'>{val}</div>"
+                   f"<div style='font-size:12px;opacity:.75'>{note}</div></div>" for lab, val, note in cards)
+    return (f"<div>{html}</div><p style='font-size:13px;opacity:.75;margin-top:8px'>Модель выражений обучена на фотографиях "
+            "FER-2013 и склонна видеть «грусть» и «страх» в спокойном лице: смотрите на изменения по ходу ролика "
+            "(вкладка «Таймлайн»), а не на абсолютные доли.</p>")
 
 
 def export_pdf(job_dir: str | Path) -> str:
@@ -135,7 +146,7 @@ def build_app(studio: Studio, work_dir: Path):
     import gradio as gr
     from .longvideo import AnalysisCancelled
 
-    N_REST = 22
+    N_REST = 23
 
     def render(rep: dict) -> tuple:
         job = Path(rep["job_dir"])
@@ -153,7 +164,7 @@ def build_app(studio: Studio, work_dir: Path):
                 narrative.strip(), _plot_html(fig_traits_timeline(rep)), _plot_html(fig_emotions_timeline(rep)),
                 _plot_html(fig_voice_timeline(rep)), _plot_html(fig_speech_timeline(rep)), _plot_html(fig_emotion_bars(rep)),
                 _segments_table(rep), _speech_html(rep),
-                rep.get("transcript", ""), _face_html(rep), frames, _contrib_html(expl),
+                rep.get("transcript", ""), _face_html(rep), _plot_html(fig_face_expr(rep)), frames, _contrib_html(expl),
                 _words_text(expl, rep, lang, expl_path) if expl else "",
                 rep.get("behavior_description_ru") or rep.get("behavior_description", ""), member_txt,
                 json.dumps(rep, ensure_ascii=False, indent=2), str(job / "result.json"), str(job), gr.update(interactive=True))
@@ -244,8 +255,10 @@ def build_app(studio: Studio, work_dir: Path):
                 speech_html = gr.HTML(label="Речевая аналитика")
                 transcript = gr.Textbox(label="Транскрипт речи", lines=10, max_lines=14)
             with gr.Tab("Мимика и кадры"):
-                face_html = gr.HTML(label="Выражение лица")
-                gallery = gr.Gallery(label="Ключевые кадры (по сегменту объяснений)", columns=5, height=200)
+                face_html = gr.HTML(label="Лицо в кадре")
+                face_plot = gr.HTML(label="Выражение лица за ролик")
+                gallery = gr.Gallery(label="Ключевые кадры (по сегменту объяснений)", columns=5, height=300,
+                                     object_fit="contain", show_download_button=False)
             with gr.Tab("Объяснения"):
                 with gr.Row():
                     with gr.Column(scale=1, min_width=360):
@@ -260,7 +273,7 @@ def build_app(studio: Studio, work_dir: Path):
         gr.Markdown(f"<small>{DISCLAIMER_RU}<br>{INTERVIEW_DISCLAIMER_RU}<br>Эмоции, голос и мимика — сигналы моделей, обученных "
                     "на англоязычных корпусах и фотографиях; это наблюдения о поведении на видео, а не диагноз.</small>")
         outputs = [status, radar, bars, facts, narrative, traits_plot, emo_plot, voice_plot, speech_plot, emo_bars, seg_table,
-                   speech_html, transcript, face_html, gallery, contrib, words_detail, desc, members, raw, path, job_state, pdf_btn]
+                   speech_html, transcript, face_html, face_plot, gallery, contrib, words_detail, desc, members, raw, path, job_state, pdf_btn]
         assert len(outputs) == N_REST + 1
         run_ev = btn.click(analyze, inputs=[video, lang, explain], outputs=outputs, show_progress="hidden", api_name=False)
         stop_btn.click(stop, inputs=None, outputs=[status], cancels=[run_ev], show_progress="hidden", api_name=False)
@@ -279,5 +292,6 @@ def main(port: int = 7870, members: str = "oceanai,mm", work_dir: str | None = N
     studio = Studio(members=tuple(m.strip() for m in members.split(",") if m.strip()), asr_model=asr_model,
                     ollama_model=ollama_model, mm_ckpt=mm_ckpt)
     demo = build_app(studio, wd)
+    # allowed_paths: key-frame JPEGs live in the job folder, Gradio 5 refuses to serve files outside it
     demo.queue(default_concurrency_limit=1).launch(server_name=host, server_port=port, share=share, show_api=False,
-                                                    show_error=True, quiet=False)
+                                                    show_error=True, quiet=False, allowed_paths=[str(wd)])
