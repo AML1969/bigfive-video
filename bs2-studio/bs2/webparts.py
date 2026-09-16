@@ -36,7 +36,7 @@ TRAIT_TITLES_2L = {"openness": "Открытость<br>опыту", "conscienti
                    "emotional_stability": "Эмоц.<br>стабильность", "interview": "Собесе-<br>дование"}
 # short row names for tables (the interview title is too long for a first column)
 ROW_TITLES = {**TRAIT_TITLES, "interview": "«Собеседование»"}
-# names inside the second-opinion title: «Второе мнение: своя модель MM-PSYCHE · шкала и положение — FIV2»
+# names inside the second-opinion title: «Второе мнение: своя модель MM-PSYCHE (шкала First Impressions V2, …)»
 SECOND_TITLES = {"mm": "своя модель MM-PSYCHE", "oceanai": "OCEAN-AI", "scene": "сцена SSL-MEPR"}
 # modality columns of the contribution table: (column title, second line)
 MODALITY_HEADS = {"face": ("Лицо", "кадры"), "audio": ("Голос", "CLAP"), "audio_whisper": ("Голос", "Whisper"),
@@ -235,7 +235,7 @@ def _members_html(rep: dict) -> str:
         if not others:
             return ""
         title = ("Второе мнение: " + ", ".join(SECOND_TITLES.get(m, MEMBER_TITLES.get(m, m)) for m in others)
-                 + " · шкала и положение — FIV2")
+                 + " (шкала First Impressions V2, сравнение с людьми из этого датасета)")
         rows = ""
         any_tick = False
         for m in others:

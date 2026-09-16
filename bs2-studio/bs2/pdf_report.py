@@ -11,7 +11,7 @@ from pathlib import Path
 from fpdf import FPDF
 
 from .norms import RU_SHORT, TRAIT_KEYS
-from .palette import SCORE_BAR_PDF, emo_pdf
+from .palette import SCORE_BAR_PDF, TRAIT_BAR_PDF, emo_pdf
 from .report import DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU, clean_word, fmt_secs, mmss_labels, seg_label
 
 TITLES = {
@@ -46,12 +46,49 @@ def _when(v) -> str:
     return f"{m.group(1)} {m.group(2)}" + (" UTC" if tz == "Z" else (f" (UTC{tz})" if tz else ""))
 
 
+SMALL_POOL = 20      # below this many processed videos a percentage only looks precise (same rule as the web page)
+
+
+def _small_pool_phrase(pct: float, ref: str, group: str):
+    """«выше, чем у большинства из 10 русских роликов» for a small pool, otherwise None."""
+    import re as _re
+    m = _re.search(r"N\s*=\s*(\d+)", ref or "")
+    if "пула" not in (ref or "") or not m or int(m.group(1)) >= SMALL_POOL:
+        return None
+    n = int(m.group(1))
+    if pct > 60:
+        return f"выше, чем у большинства из {n} {group}"
+    if pct < 40:
+        return f"ниже, чем у большинства из {n} {group}"
+    return f"примерно посередине среди {n} {group}"
+
+
+def _small_pool_n(ref: str):
+    """Size of the pool when it is below SMALL_POOL (the position is then given in words), otherwise None."""
+    m = re.search(r"N\s*=\s*(\d+)", ref or "")
+    return int(m.group(1)) if "пула" in (ref or "") and m and int(m.group(1)) < SMALL_POOL else None
+
+
+def _trained_on(m: dict, members: list) -> str:
+    """model.trained_on names one corpus for the whole ensemble; say which member learned from what."""
+    oc = {"ru": "MuPTA (русская речь)", "en": "First Impressions V2"}.get(m.get("lang"))
+    if m.get("backend") == "ensemble" and members:
+        parts = [f"OCEAN-AI — {oc}" if x == "oceanai" and oc else "своя модель — First Impressions V2" if x == "mm"
+                 else None for x in members]
+        if all(parts):
+            return "; ".join(parts)
+    return str(m.get("trained_on") or "—")
+
+
 def pct_phrase(pct, ref: str = "") -> str:
     """'выше, чем у 83% русских роликов' / 'ниже, чем у 95% людей FIV2' / 'посередине среди …' / 'пул пока мал'."""
     if pct is None:
-        return "положение: пул пока мал"
+        return "мало роликов для сравнения"
     group = "русских роликов" if "пула" in (ref or "") else "людей в FIV2"
     pct = max(0.0, min(100.0, float(pct)))
+    small = _small_pool_phrase(pct, ref, group)
+    if small:
+        return small
     if round(pct) == 50:          # «выше, чем у 50%» reads as "above average" although it is exactly the middle
         return f"посередине среди {group}"
     return f"выше, чем у {pct:.0f}% {group}" if pct > 50 else f"ниже, чем у {100 - pct:.0f}% {group}"
@@ -120,7 +157,8 @@ class Report(FPDF):
         self.set_font("ui", "", size)
         # break words longer than the line (hashes, URLs) so fpdf can wrap them
         text = " ".join(w if len(w) < 60 else " ".join(w[i:i + 60] for i in range(0, len(w), 60)) for w in str(text).split(" "))
-        self.multi_cell(0, max(3.6, size * 0.5), text)     # leading follows the font size: small notes stay close
+        # leading follows the font size (small notes stay close); left-aligned: justified Russian lines get wide gaps
+        self.multi_cell(0, max(3.6, size * 0.5), text, align="L")
         self.ln(1)
 
     def kv_table(self, rows, w1=55):
@@ -132,7 +170,7 @@ class Report(FPDF):
             v = str(v)
             if len(v) > 48 and " " not in v:            # e.g. sha256: split so it wraps
                 v = " ".join(v[i:i + 32] for i in range(0, len(v), 32))
-            self.multi_cell(0, 5.5, v, new_x="LMARGIN", new_y="NEXT")
+            self.multi_cell(0, 5.5, v, new_x="LMARGIN", new_y="NEXT", align="L")
 
     def score_bars(self, traits: dict, interview: dict | None):
         """One row per trait: the bar is the score itself (0…1, what a reader expects to see filled), the text
@@ -152,7 +190,9 @@ class Report(FPDF):
             # track: light fill with a grey outline, so the full 0…1 length is visible (outline 3.84:1 on white)
             self.set_fill_color(c["track"]); self.set_draw_color(c["outline"]); self.set_line_width(0.2)
             self.rect(x, y, bar_w, bar_h, style="DF")
-            self.set_fill_color(*(c["interview"] if k == "interview" else c["fill"]))
+            # each bar in the colour of its line on the charts (the interview bar stays brown)
+            hexc = TRAIT_BAR_PDF.get(k)
+            self.set_fill_color(*((int(hexc[1:3], 16), int(hexc[3:5], 16), int(hexc[5:7], 16)) if hexc else c["fill"]))
             self.rect(x, y, bar_w * max(0.01, min(1.0, score)), bar_h, style="F")
             # 0.5 reference: grey stubs outside the bar; inside it a white segment where the fill covers the middle,
             # otherwise a grey one on the light track (#555555 on #f2f2f2, 6.7:1), so the mark crosses every bar
@@ -176,11 +216,16 @@ class Report(FPDF):
             where = "относительно " + next(iter(groups))
         else:
             where = "; ".join(f"{_group_name(keys)} — относительно {ref}" for ref, keys in groups.items())
-        note = f"Полоска — оценка от 0 до 1, чёрточка — середина шкалы (0.5). Рядом — положение: {where}."
+        note = (f"Полоска — оценка от 0 до 1, цвет — как у линии этой черты на графиках, чёрточка — середина шкалы (0.5). "
+                f"Рядом — положение: {where}.")
+        pool_ref = traits[TRAIT_KEYS[0]].get("percentile_ref", "")
+        n = _small_pool_n(pool_ref)
+        if n is not None:
+            note += f" Роликов в сравнении пока {n}, поэтому положение черт описано словами, а не в процентах."
         if interview:
             note += " Коричневая полоска — впечатление «собеседование» (своя модель, шкала FIV2)."
         self.set_font("ui", "", 8); self.set_text_color(85)                 # #555555, 7.46:1
-        self.multi_cell(0, 4.2, note, new_x="LMARGIN", new_y="NEXT")
+        self.multi_cell(0, 4.2, note, new_x="LMARGIN", new_y="NEXT", align="L")
         self.set_text_color(0)
 
     def _table_header(self, header, widths, size, chips=None):
@@ -376,12 +421,15 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
         if m.get("primary"):
             system += f"; основная оценка — {SYSTEM_TITLES.get(m['primary'], m['primary'])}"
             if m.get("scale"):
-                system += f" (шкала {m['scale']})"
+                sc = str(m["scale"])
+                sc = "MuPTA для русской речи" if sc.startswith("MuPTA") else (
+                    "First Impressions V2" if sc.startswith("FIV2") else sc)
+                system += f", шкала {sc}"
     else:
         system = f"{SYSTEM_TITLES.get(m.get('backend'), m.get('backend'))} ({m.get('corpus')})"
     rows = [("Система", system), ("Язык речи", {"ru": "русский", "en": "английский"}.get(m.get("lang"), m.get("lang"))),
             ("Распознавание речи", m.get("asr_model") or "готовый транскрипт"),
-            ("Обучающие данные", m.get("trained_on")), ("Модальности", ", ".join(MODALITY_TITLES.get(x, x) for x in report.get("modalities_used", []))),
+            ("Обучающие данные", _trained_on(m, members)), ("Модальности", ", ".join(MODALITY_TITLES.get(x, x) for x in report.get("modalities_used", []))),
             ("Версия", m.get("version"))]
     if report.get("segments"):
         rows.append(("Отрезки", f"{report['segments']} по ~20 с; итог — среднее с весом по длительности"))
@@ -454,13 +502,23 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
 
         timed = []                      # captions that carry the moment of the video (the note below names it only then)
 
-        def caption(n: int, path: str) -> str:
+        def moment(path: str):
             m = re.search(r"_frame(\d+)", Path(path).stem)
-            if not (m and fps > 0 and (seg or not tl_all)):
+            return seg_start + int(m.group(1)) / fps if (m and fps > 0 and (seg or not tl_all)) else None
+
+        # frames a fraction of a second apart would share «0:37»: then every caption shows tenths («0:37,2»)
+        secs = [int(t) for t in map(moment, frames) if t is not None]
+        tenths = len(set(secs)) < len(secs)
+
+        def caption(n: int, path: str) -> str:
+            t = moment(path)
+            if t is None:
                 return f"кадр {n}"
-            t = int(seg_start + int(m.group(1)) / fps)
             timed.append(n)
-            return f"кадр {n} · {t // 60}:{t % 60:02d}"
+            if tenths:
+                d = int(t * 10)
+                return f"кадр {n} · {d // 600}:{d // 10 % 60:02d},{d % 10}"
+            return f"кадр {n} · {int(t) // 60}:{int(t) % 60:02d}"
 
         max_h, gap, per_row = 62.0, 4.0, 3
         cell_w = (pdf.w - pdf.l_margin - pdf.r_margin - gap * (per_row - 1)) / per_row
@@ -496,7 +554,8 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
             row = []
         where = f" (отрезок {seg_label(seg['start'], seg['end'])}, ★ в таблице раздела 4)" if seg else ""
         pdf.para(f"Кадры, сильнее всего повлиявшие на оценку своей модели{where}. Рамкой отмечено найденное лицо; "
-                 + ("под кадром — его номер и момент ролика (мин:с)." if timed else "под кадром — его номер."), 8)
+                 + (("под кадром — его номер и момент ролика (мин:с, после запятой — десятые доли секунды)." if tenths
+                     else "под кадром — его номер и момент ролика (мин:с).") if timed else "под кадром — его номер."), 8)
 
     # ---- explanations
     if explanation:

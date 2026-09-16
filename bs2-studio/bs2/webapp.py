@@ -28,7 +28,7 @@ from .webparts import (MEMBER_TITLES, NOTE, TRAIT_TITLES, _bar_html, _contrib_ht
 
 log = logging.getLogger("bs2.web")
 # which OCEAN-AI weights were used, for the «Участники ансамбля» box
-CORPUS_RU = {"mupta": "веса OCEAN-AI для русской речи (MuPTA)", "fi": "веса OCEAN-AI для английской речи (First Impressions V2)"}
+CORPUS_RU = {"mupta": "веса OCEAN-AI MuPTA для русской речи", "fi": "веса OCEAN-AI First Impressions V2 для английской речи"}
 # metric cards: 1 px outline 3:1 on every background, light tint so label, value and note read as one card
 CARDS = "display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px"
 CARD = (f"padding:10px 14px;border:1px solid {PAL['card_border']};background:rgba(128,128,128,.08);border-radius:10px;"
@@ -198,7 +198,7 @@ def _frames_html(rep: dict, max_side: int = 640) -> str:
     def _moment(t):
         if not tenths:
             return f"{int(t) // 60}:{int(t) % 60:02d}"
-        d = int(round(t * 10))
+        d = int(t * 10)
         return f"{d // 600}:{d // 10 % 60:02d},{d % 10}"
 
     cells = [(b64, _moment(t) if t is not None else fallback) for b64, t, fallback in cells]
@@ -239,6 +239,14 @@ def export_pdf(job_dir: str | Path) -> str:
 
 
 STATUS_LABELS = {"running": "Идёт обработка", "done": "Готово", "stopped": "Остановлено"}
+
+
+def _live_desc(state: dict) -> str:
+    """«[1 мин 05 с] Отрезок 3/29 (0:40–1:00)»: the time since the start, counted anew on every refresh, so it keeps
+    running during a long stage such as model loading (stage messages carry the time at which the stage began)."""
+    e = time.time() - state["t0"]
+    when = f"{int(e)} с" if e < 60 else fmt_secs(e)
+    return f"[{when}] " + re.sub(r"^\[[^\]]*\]\s*", "", str(state["desc"]))
 
 
 def _status_html(frac: float, desc: str, state: str = "running", label: str | None = None) -> str:
@@ -326,7 +334,7 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
         th.start()
         while th.is_alive():
             th.join(1.0)
-            yield (_status_html(state["frac"], state["desc"]),) + (gr.update(),) * N_REST
+            yield (_status_html(state["frac"], _live_desc(state)),) + (gr.update(),) * N_REST
         if "e" in result:
             e = result["e"]
             if isinstance(e, AnalysisCancelled):

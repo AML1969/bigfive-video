@@ -84,6 +84,9 @@ EMO_PDF = {"joy": "#a16207", "surprise": "#db2777", "neutral": "#64748b", "sadne
            "anger": "#b91c1c", "disgust": "#15803d"}
 SPEECH_PDF = dict(bars="#64748b", pauses="#111827")
 SCORE_BAR_PDF = dict(track=242, outline=130, fill=(29, 78, 216), interview=(138, 109, 59), mid_tick=85)
+# score bars in the PDF: the chart colour of each trait; extraversion one step darker (#d97706 gives 2.9:1 on the
+# #f2f2f2 track, #b45309 gives 4.5:1), every other fill already has >= 4:1
+TRAIT_BAR_PDF = {**TRAIT_PDF, "extraversion": "#b45309"}
 
 
 def emo(theme: str, key: str) -> str:
