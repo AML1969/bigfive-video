@@ -20,7 +20,7 @@ THEME = {
     "dark": dict(text="#e5e7eb", muted="#d1d5db", grid="#374151", axis="#6b7280", hover_bg="#111827",
                  hover_border="#6b7280", hover_text="#f3f4f6", sep="#111827", band="rgba(229,231,235,0.10)",
                  band_border="#9ca3af", nodata="rgba(248,113,113,0.14)", nodata_border="#f87171"),
-    "light": dict(text="#1f2937", muted="#374151", grid="#e5e7eb", axis="#6b7280", hover_bg="#ffffff",
+    "light": dict(text="#1f2937", muted="#374151", grid="#cbd5e1", axis="#6b7280", hover_bg="#ffffff",
                   hover_border="#6b7280", hover_text="#111827", sep="#ffffff", band="rgba(31,41,55,0.08)",
                   band_border="#4b5563", nodata="rgba(185,28,28,0.10)", nodata_border="#b91c1c"),
 }
@@ -74,13 +74,13 @@ HTML = dict(
 )
 
 # ---------------------------------------------------------------- PDF (white paper)
-TRAIT_PDF = {"openness": "#1d4ed8", "conscientiousness": "#0f766e", "extraversion": "#c2410c",
+TRAIT_PDF = {"openness": "#1d4ed8", "conscientiousness": "#0f766e", "extraversion": "#d97706",
              "agreeableness": "#7e22ce", "emotional_stability": "#b91c1c", "interview": "#8a6d3b"}
 TRAIT_MARKER_PDF = {"openness": "o", "conscientiousness": "s", "extraversion": "^", "agreeableness": "D",
                     "emotional_stability": "v", "interview": "o"}
 VOICE_PDF = {"arousal": "#be185d", "dominance": "#0e7490", "valence": "#4d7c0f"}
 VOICE_MARKER_PDF = {"arousal": "o", "dominance": "s", "valence": "^"}
-EMO_PDF = {"joy": "#a16207", "surprise": "#c2410c", "neutral": "#64748b", "sadness": "#1f5a99", "fear": "#6d28d9",
+EMO_PDF = {"joy": "#a16207", "surprise": "#db2777", "neutral": "#64748b", "sadness": "#1f5a99", "fear": "#6d28d9",
            "anger": "#b91c1c", "disgust": "#15803d"}
 SPEECH_PDF = dict(bars="#64748b", pauses="#111827")
 SCORE_BAR_PDF = dict(track=242, outline=130, fill=(29, 78, 216), interview=(138, 109, 59), mid_tick=85)

@@ -42,10 +42,10 @@ def clean_word(w: str) -> str:
 
 
 def seg_label(start, end) -> str:
-    """Position of a segment: '0–20 с' inside the first minute, '6:00–6:20' afterwards."""
-    if end < 60:
-        return f"{start:.0f}–{end:.0f} с"
-    return f"{int(start) // 60}:{int(start) % 60:02d}–{int(end) // 60}:{int(end) % 60:02d}"
+    """Position of a segment in the video, always m:ss ('0:00–0:20', '6:00–6:20'), so a timeline column never mixes
+    two formats."""
+    s, e = int(round(float(start))), int(round(float(end)))
+    return f"{s // 60}:{s % 60:02d}–{e // 60}:{e % 60:02d}"
 
 
 def build_report(video: str | Path, result: dict, *, backend: str, corpus: str, lang: str,

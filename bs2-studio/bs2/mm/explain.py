@@ -131,8 +131,13 @@ def save_key_frames(video_path: str, frame_ids: List[int], n_frames: int, out_di
             break
         if t in wanted:
             rgb = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+            # the frame is shown downscaled (≈640 px on the web, ≈57 mm in the PDF): the line thickness follows the
+            # image size so the box survives the downscaling, and a dark outer line under a bright yellow one keeps it
+            # visible on light walls and on dark clothes alike
+            th = max(2, round(min(im.shape[:2]) / 180))
             for (x1, y1, x2, y2, _) in detect_faces(rgb):
-                cv2.rectangle(im, (x1, y1), (x2, y2), (0, 200, 255), 2)
+                cv2.rectangle(im, (x1, y1), (x2, y2), (0, 0, 0), th + 2 * max(1, th // 2), cv2.LINE_AA)
+                cv2.rectangle(im, (x1, y1), (x2, y2), (0, 255, 255), th, cv2.LINE_AA)
             p = out_dir / f"{prefix}_{wanted[t]:02d}_frame{t}.jpg"
             cv2.imwrite(str(p), im)
             paths.append(str(p))

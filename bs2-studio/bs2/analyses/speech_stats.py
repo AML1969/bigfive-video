@@ -37,7 +37,14 @@ def _count_fillers(text: str, lang: str) -> int:
 def stats_for(chunks: List[Tuple[float, float, str]], start: float, end: float, lang: str = "ru",
               pause_min: float = 0.5) -> Dict:
     """chunks: (start, end, text) from Whisper; the span [start, end) selects a segment (or the whole video)."""
-    sel = [(max(s, start), min(e, end), t) for s, e, t in chunks if e > start and s < end and t.strip()]
+    sel, rate_words = [], 0.0
+    for s, e, t in chunks:
+        if e > start and s < end and t.strip():
+            a, b = max(s, start), min(e, end)
+            sel.append((a, b, t))
+            # a Whisper chunk that only partly overlaps the segment contributes the same share of its words to the
+            # tempo; counting all its words over the overlapped seconds gave 300-500 words/min on short overlaps
+            rate_words += len(_words(t)) * (max(0.0, b - a) / max(1e-6, e - s))
     text = " ".join(t for _, _, t in sel)
     words = _words(text)
     speech = sum(max(0.0, e - s) for s, e, _ in sel)
@@ -53,8 +60,9 @@ def stats_for(chunks: List[Tuple[float, float, str]], start: float, end: float, 
     return {
         "words": n,
         "speech_sec": round(speech, 1),
-        "words_per_min_speech": round(60.0 * n / speech, 1) if speech > 1 else None,
-        "words_per_min_wall": round(60.0 * n / wall, 1),
+        # tempo needs at least 3 s of speech, otherwise a couple of words give a meaningless rate
+        "words_per_min_speech": round(60.0 * rate_words / speech, 1) if speech >= 3 else None,
+        "words_per_min_wall": round(60.0 * rate_words / wall, 1),
         "pause_share": round(min(1.0, pause_time / wall), 3),
         "long_pauses": sum(1 for p in pauses if p >= 2.0),
         "fillers": fill,
@@ -76,7 +84,7 @@ def describe(st: Dict, lang: str = "ru") -> str:
         parts.append(f"темп речи {tempo} ({wpm:.0f} слов в минуту)")
     if st.get("pause_share") is not None:
         p = st["pause_share"] * 100
-        parts.append("пауз мало" if p < 10 else (f"пауз умеренно ({p:.0f}% времени)" if p < 25 else f"много пауз ({p:.0f}% времени)"))
+        parts.append("пауз мало" if p < 10 else (f"паузы умеренные ({p:.0f}% времени)" if p < 25 else f"много пауз ({p:.0f}% времени)"))
     f = st.get("fillers_per_100", 0)
     parts.append("слов-заполнителей почти нет" if f < 2 else (f"слова-заполнители встречаются ({f:.0f} на 100 слов)" if f < 6
                                                               else f"много слов-заполнителей ({f:.0f} на 100 слов)"))

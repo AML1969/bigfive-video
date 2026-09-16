@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import datetime as _dt
 import os
+import re
 from pathlib import Path
 
 from fpdf import FPDF
 
 from .norms import RU_SHORT, TRAIT_KEYS
+from .palette import SCORE_BAR_PDF, emo_pdf
 from .report import DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU, clean_word, fmt_secs, seg_label
 
 TITLES = {
@@ -26,15 +28,47 @@ TITLES_2L = {"openness": "Открытость\nопыту", "conscientiousness"
              "interview": "Собесе-\nдование"}
 SYSTEM_TITLES = {"oceanai": "OCEAN-AI", "mm": "своя модель (MM-PSYCHE)", "scene": "SSL-MEPR (сцена)",
                  "ensemble": "ансамбль", "sslmepr": "SSL-MEPR"}
+# container tags from media.probe_media (ffprobe names) -> row titles of the «Файл» table
+MEDIA_TAGS = {"creation_time": "Записан (метка в файле)", "encoder": "Программа записи",
+              "com.apple.quicktime.make": "Производитель камеры", "com.apple.quicktime.model": "Модель камеры",
+              "title": "Название"}
+
+
+def _when(v) -> str:
+    """'2026-08-13T15:37:12.000000Z' -> '2026-08-13 15:37:12 UTC'; anything that is not an ISO time stays as it is."""
+    s = str(v or "")
+    m = re.match(r"^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(?:\.\d+)?(Z|[+-]\d{2}:?\d{2})?$", s)
+    if not m:
+        return s
+    tz = m.group(3)
+    return f"{m.group(1)} {m.group(2)}" + (" UTC" if tz == "Z" else (f" (UTC{tz})" if tz else ""))
 
 
 def pct_phrase(pct, ref: str = "") -> str:
-    """'выше, чем у 83% русских роликов' / 'ниже, чем у 95% людей FIV2' / 'пул пока мал'."""
+    """'выше, чем у 83% русских роликов' / 'ниже, чем у 95% людей FIV2' / 'посередине среди …' / 'пул пока мал'."""
     if pct is None:
         return "положение: пул пока мал"
     group = "русских роликов" if "пула" in (ref or "") else "людей в FIV2"
-    pct = float(pct)
-    return f"выше, чем у {pct:.0f}% {group}" if pct >= 50 else f"ниже, чем у {100 - pct:.0f}% {group}"
+    pct = max(0.0, min(100.0, float(pct)))
+    if round(pct) == 50:          # «выше, чем у 50%» reads as "above average" although it is exactly the middle
+        return f"посередине среди {group}"
+    return f"выше, чем у {pct:.0f}% {group}" if pct > 50 else f"ниже, чем у {100 - pct:.0f}% {group}"
+
+
+def _ref_ru(ref: str) -> str:
+    """percentile_ref from result.json (genitive, reads after «относительно») without technical English words."""
+    r = re.sub(r",\s*своя модель\s*$", "", ref or "")
+    return r.replace("train First Impressions V2", "обучающей выборки First Impressions V2").replace(
+        "train FIV2", "обучающей выборки FIV2")
+
+
+def _group_name(keys: list[str]) -> str:
+    """Which score rows a reference group applies to, for the note under the score bars."""
+    if set(keys) == set(TRAIT_KEYS):
+        return "пять черт"
+    return ", ".join("«собеседование»" if k == "interview" else TITLES[k].lower() for k in keys)
+
+
 FONT_CANDIDATES = [
     ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
     ("/mnt/c/Windows/Fonts/arial.ttf", "/mnt/c/Windows/Fonts/arialbd.ttf"),
@@ -57,8 +91,8 @@ class Report(FPDF):
 
     def footer(self):
         self.set_y(-10)
-        self.set_font("ui", "", 7)
-        self.set_text_color(120)
+        self.set_font("ui", "", 8)
+        self.set_text_color(85)                 # #555555, 7.46:1 on white
         self.cell(0, 5, f"BS 2.0 · стр. {self.page_no()}", align="R")
         self.set_text_color(0)
 
@@ -66,7 +100,17 @@ class Report(FPDF):
         self.set_font("ui", "B", 16); self.cell(0, 10, text, new_x="LMARGIN", new_y="NEXT"); self.ln(1)
 
     def h2(self, text):
+        if self.get_y() > self.h - self.b_margin - 25:      # never leave a heading alone at the bottom of a page
+            self.add_page()
         self.ln(2); self.set_font("ui", "B", 12); self.cell(0, 8, text, new_x="LMARGIN", new_y="NEXT")
+        self.set_font("ui", "", 10)
+
+    def h3(self, text, keep_mm: float = 20):
+        """Bold sub-heading kept on the same page as at least `keep_mm` of what follows it."""
+        if self.get_y() + 6 + keep_mm > self.h - self.b_margin:
+            self.add_page()
+        self.set_x(self.l_margin)
+        self.set_font("ui", "B", 9); self.cell(0, 6, text, new_x="LMARGIN", new_y="NEXT")
         self.set_font("ui", "", 10)
 
     def para(self, text, size=10):
@@ -74,7 +118,7 @@ class Report(FPDF):
         self.set_font("ui", "", size)
         # break words longer than the line (hashes, URLs) so fpdf can wrap them
         text = " ".join(w if len(w) < 60 else " ".join(w[i:i + 60] for i in range(0, len(w), 60)) for w in str(text).split(" "))
-        self.multi_cell(0, 5, text)
+        self.multi_cell(0, max(3.6, size * 0.5), text)     # leading follows the font size: small notes stay close
         self.ln(1)
 
     def kv_table(self, rows, w1=55):
@@ -92,58 +136,110 @@ class Report(FPDF):
         """One row per trait: the bar is the score itself (0…1, what a reader expects to see filled), the text
         gives the score and the position relative to the reference population in words."""
         items = [(k, traits[k]) for k in TRAIT_KEYS] + ([("interview", interview)] if interview else [])
-        label_w, bar_w = 58, 52
-        refs = []
+        label_w, bar_w, bar_h = 58, 52, 3.6
+        c = SCORE_BAR_PDF
+        groups: dict[str, list[str]] = {}          # reference group (Russian, genitive) -> item keys
+        x = self.l_margin + label_w
         for k, t in items:
             pct = t.get("percentile", t.get("percentile_vs_fiv2")); score = float(t["score"])
             ref = t.get("percentile_ref", "train First Impressions V2 (6000 клипов)")
-            if ref not in refs:
-                refs.append(ref)
+            groups.setdefault(_ref_ru(ref), []).append(k)
             self.set_font("ui", "", 8.5)
             self.cell(label_w, 6, TITLES[k])
             x, y = self.get_x(), self.get_y() + 1.2
-            self.set_fill_color(230); self.rect(x, y, bar_w, 3.6, style="F")
-            self.set_fill_color(76, 139, 245) if k != "interview" else self.set_fill_color(138, 109, 59)
-            self.rect(x, y, bar_w * max(0.01, min(1.0, score)), 3.6, style="F")
+            # track: light fill with a grey outline, so the full 0…1 length is visible (outline 3.84:1 on white)
+            self.set_fill_color(c["track"]); self.set_draw_color(c["outline"]); self.set_line_width(0.2)
+            self.rect(x, y, bar_w, bar_h, style="DF")
+            self.set_fill_color(*(c["interview"] if k == "interview" else c["fill"]))
+            self.rect(x, y, bar_w * max(0.01, min(1.0, score)), bar_h, style="F")
+            # 0.5 reference: grey stubs outside the bar; inside it a white segment where the fill covers the middle,
+            # otherwise a grey one on the light track (#555555 on #f2f2f2, 6.7:1), so the mark crosses every bar
+            xm = x + bar_w / 2
+            self.set_draw_color(c["mid_tick"])
+            self.line(xm, y - 1.0, xm, y); self.line(xm, y + bar_h, xm, y + bar_h + 1.0)
+            if score > 0.5:
+                self.set_draw_color(255)
+            self.line(xm, y, xm, y + bar_h)
+            self.set_draw_color(0)
             self.set_x(x + bar_w + 2)
             self.set_font("ui", "", 8)
             self.cell(0, 6, f"{score:.2f}   {pct_phrase(pct, ref)}", new_x="LMARGIN", new_y="NEXT")
-        self.set_font("ui", "", 7); self.set_text_color(110)
-        self.multi_cell(0, 4, "Полоска — оценка от 0 до 1. Рядом — положение относительно опорной группы: "
-                             + "; ".join(refs) + ".")
+        # scale under the bars: 0, 0.5, 1, each label centred on its point of the bar
+        self.set_font("ui", "", 7.5); self.set_text_color(85)
+        y = self.get_y()
+        for val, pos in (("0", x), ("0.5", x + bar_w / 2), ("1", x + bar_w)):
+            self.set_xy(pos - 5, y); self.cell(10, 3.6, val, align="C")
+        self.set_xy(self.l_margin, y + 4.2)
+        if len(groups) == 1:
+            where = "относительно " + next(iter(groups))
+        else:
+            where = "; ".join(f"{_group_name(keys)} — относительно {ref}" for ref, keys in groups.items())
+        note = f"Полоска — оценка от 0 до 1, чёрточка — середина шкалы (0.5). Рядом — положение: {where}."
+        if interview:
+            note += " Коричневая полоска — впечатление «собеседование» (своя модель, шкала FIV2)."
+        self.set_font("ui", "", 8); self.set_text_color(85)                 # #555555, 7.46:1
+        self.multi_cell(0, 4.2, note, new_x="LMARGIN", new_y="NEXT")
         self.set_text_color(0)
 
-    def _table_header(self, header, widths, size):
-        """Header cells may contain '\\n' (two-line titles); all cells get the same height."""
+    def _table_header(self, header, widths, size, chips=None):
+        """Header cells may contain '\\n' (multi-line titles); all cells get the same height.
+        chips: optional colour per column ('#rrggbb' or None), drawn as a small outlined strip above the title, so a
+        table column is linked to the matching chart colour."""
         self.set_font("ui", "B", size)
         lines = max(str(h).count("\n") + 1 for h in header)
         lh = size * 0.5                      # line height in mm for this font size
-        hh = lines * lh + 1.5
+        chip_h = 2.2 if chips and any(chips) else 0.0
+        top = chip_h + 1.0 if chip_h else 0.0
+        hh = lines * lh + 1.5 + top
         x0, y0 = self.l_margin, self.get_y()
         x = x0
-        for h, w in zip(header, widths):
+        for i, (h, w) in enumerate(zip(header, widths)):
             self.rect(x, y0, w, hh)
+            chip = chips[i] if chip_h and i < len(chips) else None
+            if chip:
+                r, g, b = (int(chip.lstrip("#")[j:j + 2], 16) for j in (0, 2, 4))
+                self.set_fill_color(r, g, b); self.set_draw_color(51)       # outline #333333
+                self.rect(x + w * 0.18, y0 + 1.0, w * 0.64, chip_h, style="DF")
+                self.set_draw_color(0)
             n = str(h).count("\n") + 1
-            self.set_xy(x, y0 + (hh - n * lh) / 2)
+            self.set_xy(x, y0 + top + (hh - top - n * lh) / 2)
             self.multi_cell(w, lh, str(h), border=0, align="C")
             x += w
         self.set_xy(x0, y0 + hh)
         self.set_font("ui", "", size)
 
-    def table(self, header, rows, widths, size=8):
+    def table(self, header, rows, widths, size=8, chips=None, zebra=True, first_left=False):
+        """zebra: every second row on a very light grey (#f5f5f5, decorative) so long rows are easy to follow.
+        first_left: left-align the first column (row names) even when it is narrow."""
         if sum(widths) > self.w - self.l_margin - self.r_margin + 0.1:      # never run past the right margin
             k = (self.w - self.l_margin - self.r_margin) / sum(widths)
             widths = [w * k for w in widths]
         if self.get_y() > 255:                # header + at least two rows must fit on this page
             self.add_page()
-        self._table_header(header, widths, size)
-        for r in rows:
+        self._table_header(header, widths, size, chips)
+        for i, r in enumerate(rows):
             if self.get_y() > 275:
                 self.add_page()
-                self._table_header(header, widths, size)
-            for c, w in zip(r, widths):
-                self.cell(w, 5.2, str(c), border=1, align="C" if w < 40 else "L")
+                self._table_header(header, widths, size, chips)
+            shade = zebra and i % 2 == 1
+            if shade:
+                self.set_fill_color(245)
+            for j, (c, w) in enumerate(zip(r, widths)):
+                align = "L" if (j == 0 and first_left) or w >= 40 else "C"
+                self.cell(w, 5.2, str(c), border=1, align=align, fill=shade)
             self.ln()
+
+
+def _empty_text(r: dict) -> bool:
+    """The segment's own transcript is empty: the text-emotion model then answers "neutral 100%", which is no data."""
+    return "text_en" in r and not str(r.get("text_en") or "").strip()
+
+
+def _seg_words(r: dict) -> int:
+    try:
+        return int((r.get("speech") or {}).get("words") or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _analyses_sections(pdf, report: dict) -> None:
@@ -158,9 +254,21 @@ def _analyses_sections(pdf, report: dict) -> None:
         pdf.add_page()
     pdf.h2("5. Эмоции, голос и мимика")
     pdf.para(analyses_sentences(report), 9)
+    per = an.get("per_segment") or []
     if charts.get("emotions"):
         pdf.image(charts["emotions"], w=180)
     te, fa, vo = an.get("emotions_text") or {}, an.get("face") or {}, an.get("voice") or {}
+    # hatched gaps on the emotions chart. A segment with an empty transcript is not always silent: its own recognition
+    # may return nothing while the whole-video transcript still has words in that window (tempo and pauses come
+    # from there), so "нет речи" is said only when there are no words at all
+    text_gaps = [r for r in per if _empty_text(r) or not r.get("emotions_text")]
+    parts = []
+    if text_gaps:
+        parts.append("по речи — " + ("в отрезке нет речи" if all(_seg_words(r) == 0 for r in text_gaps)
+                                     else "для отрезка нет распознанного текста"))
+    if any(not (r.get("face") or {}).get("expressions") for r in per):
+        parts.append("по лицу — лицо не найдено")
+    gap_note = f" Штриховка на графике — нет данных ({'; '.join(parts)})." if parts and charts.get("emotions") else ""
     if te.get("mean") or fa.get("mean"):
         order = ["joy", "surprise", "neutral", "sadness", "fear", "anger", "disgust"]
         face_map = {"joy": "happy", "sadness": "sad", "anger": "angry"}
@@ -172,9 +280,10 @@ def _analyses_sections(pdf, report: dict) -> None:
             rows.append(["по речи"] + [f"{te['mean'].get(k, 0):.0%}" for k in order])
         if fa.get("mean"):
             rows.append(["по лицу"] + [f"{fa['mean'].get(face_map.get(k, k), 0):.0%}" for k in order])
-        pdf.ln(1); pdf.table(header, rows, [40] + [20] * 7, size=8)
-        pdf.para("Средние доли за ролик. Речь — модель эмоций текста по переводу транскрипта; лицо — модель выражений по кадрам "
-                 "(обучена на фотографиях, завышает «грусть» и «страх» у спокойного лица).", 7)
+        pdf.ln(1); pdf.table(header, rows, [40] + [20] * 7, size=8, chips=[None] + [emo_pdf(k) for k in order])
+        pdf.para("Средние доли за ролик; цветная полоска над названием — цвет этой эмоции на графике. Речь — модель эмоций текста "
+                 "по переводу транскрипта; лицо — модель выражений по кадрам (обучена на фотографиях, завышает «грусть» и «страх» "
+                 "у спокойного лица)." + gap_note, 7)
     if charts.get("voice_speech"):
         if pdf.get_y() > 200:
             pdf.add_page()
@@ -182,30 +291,45 @@ def _analyses_sections(pdf, report: dict) -> None:
     if vo.get("mean"):
         pdf.para("Голос (модель эмоций в речи, 0…1): " + ", ".join(f"{VOICE_RU[d]} {vo['mean'].get(d, 0):.2f} (±{vo.get('std', {}).get(d, 0):.2f})"
                                                             for d in VOICE_RU) + ".", 8)
-    per = an.get("per_segment") or []
+    # filler words (hover text of the web speech chart) are not drawn on the PDF chart: they are the last column of the
+    # per-segment table below, explained in its note
     if per:
-        if pdf.get_y() > 230:
-            pdf.add_page()
-        pdf.set_font("ui", "B", 9); pdf.cell(0, 6, "По отрезкам", new_x="LMARGIN", new_y="NEXT")
-        header = ["Отрезок", "Эмоция\nречи", "Выражение\nлица", "Возбуж-\nдение", "Уверен-\nность", "Позитив-\nность", "Слов/\nмин", "Паузы"]
-        rows = []
+        pdf.h3("По отрезкам", keep_mm=45)
+        header = ["Отрезок", "Эмоция\nречи", "Выражение\nлица", "Возбуж-\nдение", "Уверен-\nность", "Позитив-\nность",
+                  "Слов\nв минуту", "Паузы", "Заполни-\nтели"]
+        rows, any_no_text = [], False
         for r in per:
             t_e = (r.get("emotions_text") or {}); f_e = ((r.get("face") or {}).get("expressions") or {}); v = r.get("voice") or {}
             sp = r.get("speech") or {}
+            wpm = sp.get("words_per_min_speech")
+            if _empty_text(r):              # scored "neutral" by the text model, hatched on the chart
+                speech_emo = "нет речи" if _seg_words(r) == 0 else "нет текста"
+                any_no_text = any_no_text or speech_emo == "нет текста"
+            else:
+                speech_emo = EMO_RU.get(max(t_e.items(), key=lambda kv: kv[1])[0], "—") if t_e else "—"
             rows.append([seg_label(r["start"], r["end"]),
-                         EMO_RU.get(max(t_e.items(), key=lambda kv: kv[1])[0], "—") if t_e else "—",
+                         speech_emo,
                          EMO_RU.get(max(f_e.items(), key=lambda kv: kv[1])[0], "—") if f_e else "—",
                          f"{v.get('arousal', 0):.2f}" if v else "—", f"{v.get('dominance', 0):.2f}" if v else "—",
                          f"{v.get('valence', 0):.2f}" if v else "—",
-                         f"{sp.get('words_per_min_speech') or 0:.0f}" if sp else "—", f"{sp.get('pause_share', 0):.0%}" if sp else "—"])
-        pdf.table(header, rows, [26, 26, 26, 20, 20, 20, 20, 20], size=7)
+                         f"{wpm:.0f}" if wpm is not None else "—",
+                         f"{sp.get('pause_share', 0):.0%}" if sp else "—",
+                         f"{sp.get('fillers_per_100', 0):.1f}" if sp else "—"])
+        pdf.table(header, rows, [23, 25, 25, 18, 18, 18, 19, 16, 18], size=8)
+        pdf.para("«—» — нет данных (в столбце темпа — речи в отрезке меньше секунды)."
+                 + (" «нет текста» — для отрезка не распознан текст, поэтому эмоция речи не оценена; темп и паузы берутся "
+                    "из транскрипта всего ролика." if any_no_text else "")
+                 + " «Слов в минуту» — темп внутри речи, без пауз. «Паузы» — доля времени отрезка без речи. «Заполнители» — "
+                 "слов-заполнителей («ну», «вот», «как бы») на 100 слов.", 7)
     sp = an.get("speech") or {}
     if sp:
         if pdf.get_y() > 240:
             pdf.add_page()
         pdf.h2("6. Речь")
+        wpm = sp.get("words_per_min_speech")
         pdf.kv_table([("Слов всего / уникальных", f"{sp.get('words')} / {sp.get('unique_words')}"),
-                      ("Темп", f"{sp.get('words_per_min_speech') or 0:.0f} слов в минуту речи; {sp.get('words_per_min_wall', 0):.0f} по времени ролика"),
+                      ("Темп", (f"{wpm:.0f} слов в минуту речи" if wpm is not None else "не посчитан (речи меньше секунды)")
+                               + f"; {sp.get('words_per_min_wall', 0):.0f} по времени ролика"),
                       ("Паузы", f"{sp.get('pause_share', 0):.0%} времени; длинных пауз (более 2 с): {sp.get('long_pauses', 0)}"),
                       ("Слова-заполнители", f"{sp.get('fillers', 0)} ({sp.get('fillers_per_100', 0):.1f} на 100 слов)"),
                       ("Средняя фраза", f"{sp.get('mean_sentence') or 0:.0f} слов"), ("Разнообразие словаря", f"{sp.get('ttr') or 0:.2f}")])
@@ -228,13 +352,13 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
         rows += [("Имя файла", media.get("file_name")), ("Размер", f"{media.get('size_mb')} МБ ({media.get('size_bytes')} байт)"),
                  ("Длительность", f"{fmt_secs(media.get('duration_sec'))} ({media.get('duration_sec')} с)"),
                  ("Контейнер", media.get("container")),
-                 ("Видео", f"{media.get('video_codec')} {media.get('width')}×{media.get('height')} @ {media.get('fps')} fps"
+                 ("Видео", f"{media.get('video_codec')}, {media.get('width')}×{media.get('height')}, {media.get('fps')} кадра/с"
                            + (f", поворот {media.get('rotation')}°" if media.get("rotation") else "")),
                  ("Аудио", f"{media.get('audio_codec')} {media.get('sample_rate')} Гц, каналов: {media.get('channels')}"),
-                 ("Битрейт", f"{media.get('bitrate_kbps')} кбит/с"), ("Изменён", media.get("modified"))]
+                 ("Битрейт", f"{media.get('bitrate_kbps')} кбит/с"), ("Файл изменён", _when(media.get("modified")))]
         for k, v in media.items():
             if k.startswith("tag_"):
-                rows.append((k[4:], v))
+                rows.append((MEDIA_TAGS.get(k[4:], k[4:]), _when(v) if k == "tag_creation_time" else v))
         if media.get("sha256"):
             rows.append(("SHA-256", media["sha256"]))
     else:
@@ -281,7 +405,7 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
         pdf.para("Разброс между сегментами: " + ", ".join(f"{RU_SHORT[k].lower()} ±{std.get(k, 0):.2f}" for k in TRAIT_KEYS), 8)
     var = report.get("variant_scores") or {}
     if var:
-        pdf.set_font("ui", "B", 9); pdf.cell(0, 6, "Оценки участников ансамбля", new_x="LMARGIN", new_y="NEXT")
+        pdf.h3("Оценки участников ансамбля", keep_mm=27)      # the table itself moves to a new page below y=255
         header = ["Участник"] + [TITLES_2L[k] for k in TRAIT_KEYS]
         primary = m.get("primary")
         rows = [[MEMBERS.get(n, n) + (" (основная)" if n == primary else "")] + [f"{v.get(k, float('nan')):.3f}" for k in TRAIT_KEYS]
@@ -304,8 +428,8 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
                             + [f"{s['scores'][k]:.2f}" for k in keys])
             else:
                 rows.append([seg_label(s["start"], s["end"]), "пропущен"] + [""] * (len(keys) - 1))
-        pdf.table(header, rows, [30] + [150 / len(keys)] * len(keys), size=7)
-        pdf.para("★ — сегмент, ближайший к среднему профилю; по нему построены объяснения.", 7)
+        pdf.table(header, rows, [30] + [150 / len(keys)] * len(keys), size=8)
+        pdf.para("★ — сегмент, ближайший к среднему профилю; по нему построены объяснения (на графике ниже он выделен рамкой).", 7)
     charts = report.get("chart_files") or {}
     if charts.get("traits"):
         pdf.ln(2)
@@ -315,11 +439,30 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
     # ---- key frames
     frames = [p for p in (key_frames or []) if os.path.exists(p)]
     if frames:
-        pdf.h2("7. Ключевые кадры")
         from PIL import Image
+        if pdf.get_y() > pdf.h - pdf.b_margin - 60:        # keep the heading together with the first row of frames
+            pdf.add_page()
+        pdf.h2("7. Ключевые кадры")
+        # frames come from the clip the explanations were computed on: the representative segment of a long video,
+        # otherwise the whole video; file names carry the frame index inside that clip (key_<i>_frame<N>.jpg)
+        tl_all = report.get("timeline") or []
+        seg = next((s for s in tl_all if s.get("segment") == report.get("representative_segment")), None) if tl_all else None
+        fps = float((media or {}).get("fps") or (report.get("media") or {}).get("fps") or 0)
+        seg_start = float(seg["start"]) if seg else 0.0
+
+        timed = []                      # captions that carry the moment of the video (the note below names it only then)
+
+        def caption(n: int, path: str) -> str:
+            m = re.search(r"_frame(\d+)", Path(path).stem)
+            if not (m and fps > 0 and (seg or not tl_all)):
+                return f"кадр {n}"
+            t = int(seg_start + int(m.group(1)) / fps)
+            timed.append(n)
+            return f"кадр {n} · {t // 60}:{t % 60:02d}"
+
         max_h, gap, per_row = 62.0, 4.0, 3
         cell_w = (pdf.w - pdf.l_margin - pdf.r_margin - gap * (per_row - 1)) / per_row
-        row, y0 = [], pdf.get_y()
+        row, y0, n_done = [], pdf.get_y(), 0
         for p in frames + [None]:
             if p is not None:
                 row.append(p)
@@ -344,14 +487,18 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
                 except Exception:  # noqa: BLE001
                     continue
                 pdf.set_xy(pdf.l_margin + i * (cell_w + gap), y0 + row_h + 1)
-                pdf.set_font("ui", "", 7); pdf.cell(cell_w, 4, Path(q).stem.replace("key_", "кадр "), align="C")
+                pdf.set_font("ui", "", 8); pdf.cell(cell_w, 4, caption(n_done + i + 1, q), align="C")
+            n_done += len(row)
             y0 += row_h + 8
             pdf.set_y(y0)
             row = []
+        where = f" (отрезок {seg_label(seg['start'], seg['end'])}, ★ в таблице раздела 4)" if seg else ""
+        pdf.para(f"Кадры, сильнее всего повлиявшие на оценку своей модели{where}. Рамкой отмечено найденное лицо; "
+                 + ("под кадром — его номер и момент ролика (мин:с)." if timed else "под кадром — его номер."), 8)
 
     # ---- explanations
     if explanation:
-        pdf.h2("8. Вклад модальностей (Input×Gradient, своя модель)")
+        pdf.h2("8. Вклад модальностей в оценку своей модели")
         ixg = explanation["modalities"]["input_x_gradient"]
         mods = list(next(iter(ixg.values())).keys())
         header = ["Черта"] + [MEMBERS.get(x, x) for x in mods]
@@ -360,18 +507,20 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
             return "<1%" if v < 0.95 else f"{v:.0f}%"
         rows = [[TITLES.get(k, k)] + [pct(row[x]["share"]) for x in mods] for k, row in ixg.items()]
         pdf.table(header, rows, [60] + [int(120 / len(mods))] * len(mods))
-        pdf.para("Доля вклада модальности в оценку своей модели (Input×Gradient). «<1%» — модальность почти не влияет на "
+        pdf.para("Доля вклада каждой модальности в оценку своей модели (метод Input×Gradient). «<1%» — модальность почти не влияет на "
                  "оценку этого ролика: модель, обученная на FIV2, опирается в основном на лицо и голос.", 7)
         loo = explanation["modalities"].get("leave_one_out_delta") or {}
         if loo:
             pdf.ln(2)
-            if pdf.get_y() > 240:            # keep the heading together with its table
-                pdf.add_page()
-            pdf.set_font("ui", "B", 9); pdf.cell(0, 6, "Сдвиг оценок при удалении модальности (leave-one-out)", new_x="LMARGIN", new_y="NEXT")
+            pdf.h3("Как изменятся оценки, если убрать одну модальность", keep_mm=36)
             keys_l = [k for k in list(TRAIT_KEYS) + ["interview"] if any(k in v for v in loo.values())]
             header = ["Без модальности"] + [TITLES_2L.get(k, TITLES.get(k, k)) for k in keys_l]
-            rows = [[MEMBERS.get(x, x).replace("\n", " ")] + [f"{v.get(k, 0):+.2f}" for k in keys_l] for x, v in loo.items()]
-            pdf.table(header, rows, [42] + [138 / len(keys_l)] * len(keys_l), size=7)
+            def delta(v):         # '-0.00' / '+0.00' would suggest a direction where there is none
+                v = float(v or 0)
+                return "0.00" if abs(v) < 0.005 else f"{v:+.2f}"
+            rows = [[MEMBERS.get(x, x).replace("\n", " ")] + [delta(v.get(k, 0)) for k in keys_l] for x, v in loo.items()]
+            # at 8 pt «Добросовест-» / «стабильность» need 24.2 mm and «описание поведения» 33 mm
+            pdf.table(header, rows, [34] + [146 / len(keys_l)] * len(keys_l), size=8, first_left=True)
             pdf.para("Положительное число — без этой модальности оценка была бы выше, отрицательное — ниже.", 7)
         from .words import WORDS_NOTE
         rw_all = explanation.get("readable_words") or {}
@@ -379,7 +528,7 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
         shown = False
         if rw_all:
             pdf.ln(1)
-            pdf.set_font("ui", "B", 9); pdf.cell(0, 6, "Слова, на которые откликнулась модель", new_x="LMARGIN", new_y="NEXT")
+            pdf.h3("Слова, на которые откликнулась модель", keep_mm=14)
             try:
                 from .narrative import words_summary
                 paras = words_summary(rw_all, explanation, TITLES, lang)
@@ -392,7 +541,7 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
             if key in rw_all:
                 continue
             elif key in explanation:        # explanation without the readable lists (old run): English tokens
-                pdf.set_font("ui", "B", 9); pdf.cell(0, 6, title, new_x="LMARGIN", new_y="NEXT")
+                pdf.h3(title, keep_mm=14)
                 for k, d in explanation[key]["per_output"].items():
                     pdf.para(f"{TITLES.get(k, k)}: " + ", ".join(clean_word(w["word"]) for w in d["top_words"][:6]), 8)
                 shown = True

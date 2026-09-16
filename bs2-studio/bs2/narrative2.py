@@ -2,14 +2,49 @@
 narrative. Deterministic templates over the numbers in result.json."""
 from __future__ import annotations
 
+import re
 from typing import List
 
 from .charts import EMO_RU
-from .report import seg_label
+from .report import fmt_secs
 
 
-def _level(v: float, low: float = 0.4, high: float = 0.6) -> str:
-    return "низкое" if v < low else ("высокое" if v > high else "среднее")
+def plural_ru(n, one: str, few: str, many: str) -> str:
+    """Russian noun form for a count: plural_ru(21, "отрезок", "отрезка", "отрезков") -> "отрезок"."""
+    n = abs(int(round(float(n))))
+    if n % 10 == 1 and n % 100 != 11:
+        return one
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return few
+    return many
+
+
+# texts stored in result.json by other modules say «92 слов в минуту», «31 сегментов»: fix the noun form on display
+_COUNT_NOUNS = {"слов": ("слово", "слова", "слов"), "сегментов": ("сегмент", "сегмента", "сегментов")}
+_GENITIVE_BEFORE = {"из", "до", "от", "около", "без", "для", "больше", "меньше", "более", "менее", "свыше"}
+
+
+def fix_counts(text: str) -> str:
+    """«92 слов в минуту» -> «92 слова в минуту», «(31 сегментов)» -> «(31 сегмент)». Only where the count is in the
+    nominative/accusative; after «из», «до», «больше» … the genitive plural is correct and stays."""
+    def repl(m):
+        prev, n, word = m.group(1) or "", int(m.group(2)), m.group(3)
+        if prev.strip().lower() in _GENITIVE_BEFORE:
+            return m.group(0)
+        return f"{prev}{n} {plural_ru(n, *_COUNT_NOUNS[word])}"
+    return re.sub(r"(\b\w+\s)?(\d+)\s(слов|сегментов)\b", repl, text or "")
+
+
+# «уверенность низкая», «возбуждение низкое»: the level agrees with the gender of the voice dimension
+_LEVELS = {"n": ("низкое", "среднее", "высокое"), "f": ("низкая", "средняя", "высокая")}
+# emotion names inside sentences: «нейтрально» is an adverb and does not fit after «преобладает» or «как»
+_TEXT_EMO = {"neutral": "нейтральный тон"}
+_FACE_EMO = {"neutral": "нейтральное"}
+
+
+def _level(v: float, gender: str = "n", low: float = 0.4, high: float = 0.6) -> str:
+    lo, mid, hi = _LEVELS[gender]
+    return lo if v < low else (hi if v > high else mid)
 
 
 def analyses_sentences(rep: dict) -> str:
@@ -25,23 +60,29 @@ def analyses_sentences(rep: dict) -> str:
                 s += f", из выраженных эмоций заметнее всего {EMO_RU.get(top[1][0], top[1][0])} ({top[1][1]:.0%})"
             parts.append(s + ".")
         else:
-            parts.append("По содержанию речи преобладает " + ", затем ".join(f"{EMO_RU.get(k, k)} ({v:.0%})" for k, v in top) + ".")
+            parts.append("По содержанию речи преобладает " + ", затем ".join(
+                f"{_TEXT_EMO.get(k, EMO_RU.get(k, k))} ({v:.0%})" for k, v in top) + ".")
         dps = te.get("dominant_per_segment") or []
         changes = sum(1 for a, b in zip(dps, dps[1:]) if a and b and a != b)
         if len(dps) >= 4:
-            parts.append("Эмоциональный тон речи " + ("ровный по всему ролику." if changes <= len(dps) // 4 else
-                                                    f"меняется по ходу ролика ({changes} смен доминирующей эмоции)."))
+            parts.append("Эмоциональный тон речи " + (
+                "ровный по всему ролику." if changes <= len(dps) // 4 else
+                f"меняется по ходу ролика: преобладающая эмоция сменяется {changes} "
+                f"{plural_ru(changes, 'раз', 'раза', 'раз')}."))
     vo = an.get("voice")
     if vo and vo.get("mean"):
         m = vo["mean"]
-        parts.append(f"Голос: возбуждение {_level(m.get('arousal', 0.5))} ({m.get('arousal', 0):.2f}), уверенность "
-                     f"{_level(m.get('dominance', 0.5))} ({m.get('dominance', 0):.2f}), позитивность {_level(m.get('valence', 0.5))} "
-                     f"({m.get('valence', 0):.2f}) по модели эмоций в речи; значения относительные, шкала английских записей.")
+        a, d, v = m.get("arousal", 0.5), m.get("dominance", 0.5), m.get("valence", 0.5)
+        parts.append(f"Голос (модель эмоций в речи, шкала 0…1): возбуждение {_level(a)} ({a:.2f}), уверенность "
+                     f"{_level(d, 'f')} ({d:.2f}), позитивность {_level(v, 'f')} ({v:.2f}). Модель обучена на английских "
+                     "записях, поэтому значения относительные: полезнее сравнивать отрезки между собой.")
     fa = an.get("face")
     if fa and fa.get("mean"):
         m = fa["mean"]
         top = sorted(m.items(), key=lambda kv: -kv[1])[:2]
-        s = "Выражение лица чаще всего читается как " + ", реже ".join(f"{EMO_RU.get(k, k)} ({v:.0%})" for k, v in top)
+        s = "Выражение лица чаще всего распознаётся как " + ", реже — как ".join(
+            f"{_FACE_EMO.get(k, EMO_RU.get(k, k))} ({v:.0%} кадров)" if i == 0 else
+            f"{_FACE_EMO.get(k, EMO_RU.get(k, k))} ({v:.0%})" for i, (k, v) in enumerate(top))
         if fa.get("head_motion") is not None:
             hm = fa["head_motion"]
             s += "; голова " + ("почти неподвижна" if hm < 0.05 else ("двигается умеренно" if hm < 0.15 else "двигается активно"))
@@ -50,20 +91,21 @@ def analyses_sentences(rep: dict) -> str:
         parts.append(s + ". Распознавание выражений обучено на фотографиях и склонно завышать «грусть» и «страх» у спокойного лица.")
     sp = an.get("speech")
     if sp and sp.get("description"):
-        parts.append(sp["description"])
+        parts.append(fix_counts(sp["description"]))
         if sp.get("vocabulary"):
             parts.append("Чаще всего звучат слова: " + ", ".join(f"«{w}»" for w, _ in sp["vocabulary"][:6]) + ".")
     return " ".join(parts)
 
 
 def key_facts(rep: dict) -> List[tuple]:
-    """(label, value, note) cards for the overview tab."""
+    """(label, value, note) cards for the overview tab. Every number carries its unit or scale; counts use the
+    correct Russian plural; rounding matches the «Речь» tab (whole words per minute, whole fillers per 100 words)."""
     an = rep.get("analyses") or {}
     facts = []
     te = an.get("emotions_text")
     if te and te.get("mean"):
         k, v = max(te["mean"].items(), key=lambda kv: kv[1])
-        facts.append(("Эмоция речи", EMO_RU.get(k, k), f"{v:.0%} времени"))
+        facts.append(("Эмоция по тексту речи", EMO_RU.get(k, k), f"{v:.0%} времени"))
     fa = an.get("face")
     if fa and fa.get("mean"):
         k, v = max(fa["mean"].items(), key=lambda kv: kv[1])
@@ -71,14 +113,24 @@ def key_facts(rep: dict) -> List[tuple]:
     vo = an.get("voice")
     if vo and vo.get("mean"):
         m = vo["mean"]
-        facts.append(("Голос", f"возбуждение {m.get('arousal', 0):.2f}", f"уверенность {m.get('dominance', 0):.2f}, позитивность {m.get('valence', 0):.2f}"))
+        facts.append(("Голос, шкала 0…1", f"возбуждение {m.get('arousal', 0):.2f}",
+                      f"уверенность {m.get('dominance', 0):.2f} · позитивность {m.get('valence', 0):.2f}"))
     sp = an.get("speech")
     if sp and sp.get("words"):
         wpm = sp.get("words_per_min_speech")
-        facts.append(("Речь", f"{wpm:.0f} слов/мин" if wpm else f"{sp['words']} слов", f"паузы {sp.get('pause_share', 0):.0%}, заполнители {sp.get('fillers_per_100', 0):.0f}/100"))
+        if wpm:
+            n = int(round(wpm))
+            value = f"{n} {plural_ru(n, 'слово', 'слова', 'слов')} в минуту"
+        else:
+            value = f"{sp['words']} {plural_ru(sp['words'], 'слово', 'слова', 'слов')}"
+        fillers = int(round(sp.get("fillers_per_100", 0) or 0))
+        facts.append(("Темп речи", value, f"паузы — {sp.get('pause_share', 0):.0%} времени, "
+                                          f"заполнители — {fillers} на 100 слов"))
     if rep.get("interview"):
-        facts.append(("«Собеседование»", f"{rep['interview']['score']:.2f}", "своя модель, шкала FIV2"))
+        facts.append(("Впечатление «собеседование»", f"{rep['interview']['score']:.2f}", "шкала 0…1, своя модель (FIV2)"))
     dur = rep.get("duration_sec")
     if dur:
-        facts.append(("Ролик", seg_label(0, dur).split("–")[-1] if dur >= 60 else f"{dur:.0f} с", f"{rep.get('segments', 1)} сегментов"))
+        n = int(rep.get("segments") or 1)
+        facts.append(("Длительность ролика", fmt_secs(dur),
+                      f"разбит на {n} {plural_ru(n, 'отрезок', 'отрезка', 'отрезков')}" if n > 1 else "один отрезок"))
     return facts

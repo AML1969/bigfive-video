@@ -1,6 +1,10 @@
 """BS 2.0 web UI (Gradio): Big Five + emotions, voice, face and speech analytics with interactive charts.
 
 Run:  bs2 web [--port 7870]      (inside WSL; open http://localhost:7870 on Windows). Independent of bs 1.0 (:7860).
+
+Readability rules for the HTML blocks (both Gradio themes, see palette.py): text colours are inherited from the theme,
+secondary text is the same colour at opacity .75 and at least 13 px, marks and outlines come from palette.HTML, and
+every block shows its title (show_label=True, container=True).
 """
 from __future__ import annotations
 
@@ -14,63 +18,102 @@ from pathlib import Path
 
 from .charts import (EMO_RU, VOICE_RU, fig_emotion_bars, fig_emotions_timeline, fig_face_expr, fig_radar,
                      fig_speech_timeline, fig_traits_timeline, fig_voice_timeline, plot_html as _plot_html)
-from .narrative2 import analyses_sentences, key_facts
+from .narrative2 import analyses_sentences, fix_counts, key_facts, plural_ru
 from .norms import TRAIT_KEYS
+from .palette import HTML as PAL
 from .pipeline import Studio, run_analysis
 from .report import DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU, fmt_secs, seg_label
-from .webparts import MEMBER_TITLES, TRAIT_TITLES, _bar_html, _contrib_html, _members_html, _words_text
+from .webparts import (MEMBER_TITLES, NOTE, TRAIT_TITLES, _bar_html, _contrib_html, _members_html, _words_text,
+                       table_html, th_text)
 
 log = logging.getLogger("bs2.web")
-CARD = ("display:inline-block;min-width:150px;margin:4px;padding:10px 14px;border:1px solid rgba(128,128,128,0.35);"
-        "border-radius:10px;vertical-align:top")
+# metric cards: 1 px outline 3:1 on every background, light tint so label, value and note read as one card
+CARDS = "display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px"
+CARD = (f"padding:10px 14px;border:1px solid {PAL['card_border']};background:rgba(128,128,128,.08);border-radius:10px;"
+        "min-width:0")
+
+
+def _cards(items) -> str:
+    """(label, value, note) -> a grid of cards; note may be empty."""
+    html = "".join(f"<div style='{CARD}'><div style='{NOTE}'>{lab}</div>"
+                   f"<div style='font-size:20px;font-weight:600;line-height:1.25;margin:3px 0;"
+                   f"font-variant-numeric:tabular-nums'>{val if val not in (None, '') else '—'}</div>"
+                   + (f"<div style='{NOTE}'>{note}</div>" if note else "") + "</div>" for lab, val, note in items)
+    return f"<div style='{CARDS}'>{html}</div>" if html else ""
 
 
 def _facts_html(rep: dict) -> str:
-    cards = "".join(f"<div style='{CARD}'><div style='font-size:12px;opacity:.75'>{lab}</div>"
-                    f"<div style='font-size:20px;font-weight:600;margin:2px 0'>{val}</div>"
-                    f"<div style='font-size:12px;opacity:.75'>{note}</div></div>" for lab, val, note in key_facts(rep))
-    return f"<div>{cards}</div>" if cards else ""
+    return _cards(key_facts(rep))
+
+
+def _dominant(dist: dict) -> str:
+    """«нейтрально 91%»: the dominant label with its share, so a weak and a clear dominance read differently."""
+    if not dist:
+        return "—"
+    k, v = max(dist.items(), key=lambda kv: kv[1])
+    return f"{EMO_RU.get(k, k)} {float(v):.0%}"
+
+
+def _clock(sec: float, hours: bool) -> str:
+    s = int(sec)
+    return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}" if hours else f"{s // 60}:{s % 60:02d}"
 
 
 def _segments_table(rep: dict) -> str:
     per = (rep.get("analyses") or {}).get("per_segment") or []
     if not per:
         return ""
-    th = "padding:4px 8px;font-size:12px;text-align:center;vertical-align:bottom;line-height:1.15"
-    head = "".join(f"<th style='{th}'>{h}</th>" for h in ("Отрезок", "Эмоция речи", "Выражение лица", "Возбуждение", "Уверенность",
-                                                          "Позитивность", "Слов/мин", "Паузы"))
-    rows = ""
-    for r in per:
-        te = r.get("emotions_text") or {}
-        fa = (r.get("face") or {}).get("expressions") or {}
+    t_max = max(float(r["end"]) for r in per)
+    # one time format for the whole column («0:00–0:20 … 10:00–10:12»), the same as on the chart time axes
+    if t_max >= 60:
+        hours = t_max >= 3600
+        seg_head = th_text("Отрезок", "ч:мин:с" if hours else "мин:с")
+        when = [f"{_clock(r['start'], hours)}–{_clock(r['end'], hours)}" for r in per]
+    else:
+        seg_head = th_text("Отрезок", "секунды")
+        when = [seg_label(r["start"], r["end"]) for r in per]
+    head = [seg_head, th_text("Эмоция", "по тексту речи"), th_text("Выражение", "лица"),
+            th_text("Возбуждение", "голос, 0…1"), th_text("Уверенность", "голос, 0…1"), th_text("Позитивность", "голос, 0…1"),
+            th_text("Темп", "слов в минуту"), th_text("Доля пауз", "в отрезке")]
+    rows = []
+    for r, w in zip(per, when):
         vo = r.get("voice") or {}
         sp = r.get("speech") or {}
-        e_t = max(te.items(), key=lambda kv: kv[1])[0] if te else "—"
-        e_f = max(fa.items(), key=lambda kv: kv[1])[0] if fa else "—"
-        cells = [seg_label(r["start"], r["end"]), EMO_RU.get(e_t, e_t), EMO_RU.get(e_f, e_f),
-                 f"{vo.get('arousal', float('nan')):.2f}" if vo else "—", f"{vo.get('dominance', float('nan')):.2f}" if vo else "—",
-                 f"{vo.get('valence', float('nan')):.2f}" if vo else "—",
-                 f"{sp.get('words_per_min_speech') or 0:.0f}" if sp else "—", f"{sp.get('pause_share', 0):.0%}" if sp else "—"]
-        rows += "<tr>" + "".join(f"<td style='padding:3px 8px;text-align:center;white-space:nowrap'>{c}</td>" for c in cells) + "</tr>"
-    return (f"<div style='overflow-x:auto'><table style='border-collapse:collapse;font-size:13px'><tr>{head}</tr>{rows}</table></div>"
-            "<div style='font-size:12px;opacity:.75;margin-top:6px'>Доминирующая эмоция по речи и по лицу, три измерения голоса "
-            "(0…1), темп и доля пауз — по каждому отрезку.</div>")
+        rows.append([w, _dominant(r.get("emotions_text") or {}),
+                     _dominant((r.get("face") or {}).get("expressions") or {}),
+                     *(f"{vo[d]:.2f}" if vo.get(d) is not None else "—" for d in ("arousal", "dominance", "valence")),
+                     f"{sp.get('words_per_min_speech') or 0:.0f}" if sp else "—",
+                     f"{sp.get('pause_share', 0):.0%}" if sp else "—"])
+    return (f"<div style='{NOTE};margin-bottom:8px'>Для каждого отрезка: преобладающая эмоция по тексту речи и по лицу "
+            "(с долей), три характеристики голоса от 0 до 1, темп речи и доля пауз. Шапка таблицы остаётся на месте "
+            "при прокрутке.</div>" + table_html(head, rows, max_height=480))
 
 
 def _speech_html(rep: dict) -> str:
     sp = (rep.get("analyses") or {}).get("speech") or {}
     if not sp:
         return ""
-    items = [("Слов всего", sp.get("words")), ("Уникальных слов", sp.get("unique_words")),
-             ("Темп (слов/мин речи)", sp.get("words_per_min_speech")), ("Темп по времени ролика", sp.get("words_per_min_wall")),
-             ("Доля пауз", f"{sp.get('pause_share', 0):.0%}"), ("Длинных пауз (>2 с)", sp.get("long_pauses")),
-             ("Слов-заполнителей", f"{sp.get('fillers', 0)} ({sp.get('fillers_per_100', 0):.1f} на 100 слов)"),
-             ("Средняя фраза, слов", sp.get("mean_sentence")), ("Разнообразие словаря", sp.get("ttr"))]
-    cards = "".join(f"<div style='{CARD}'><div style='font-size:12px;opacity:.75'>{k}</div>"
-                    f"<div style='font-size:18px;font-weight:600'>{v if v is not None else '—'}</div></div>" for k, v in items)
+
+    def whole(v):
+        return "—" if v is None else f"{float(v):.0f}"
+
+    fillers = sp.get("fillers")
+    items = [("Слов всего", whole(sp.get("words")), ""),
+             ("Разных слов", whole(sp.get("unique_words")), "без повторов"),
+             ("Темп речи, слов в минуту", whole(sp.get("words_per_min_speech")), "только время, когда человек говорит"),
+             ("Темп с учётом пауз, слов в минуту", whole(sp.get("words_per_min_wall")), "по всей длине ролика"),
+             ("Доля пауз", f"{sp.get('pause_share', 0):.0%}", "паузы от 0.5 с, доля времени ролика"),
+             ("Длинных пауз", whole(sp.get("long_pauses")), "дольше 2 секунд"),
+             ("Слов-заполнителей", whole(fillers),
+              f"{float(sp.get('fillers_per_100') or 0):.0f} на 100 слов" if fillers is not None else ""),
+             ("Слов во фразе", whole(sp.get("mean_sentence")), "в среднем"),
+             ("Разнообразие словаря", f"{float(sp['ttr']):.0%}" if sp.get("ttr") is not None else "—",
+              "доля разных слов среди всех; зависит от длины текста")]
     vocab = ", ".join(f"{w} ({n})" for w, n in sp.get("vocabulary", [])[:15])
-    return (f"<div>{cards}</div><p style='font-size:14px'>{sp.get('description', '')}</p>"
-            f"<p style='font-size:13px;opacity:.75'>Частые слова: {vocab}</p>")
+    return (_cards(items) + "<p style='font-size:15px;line-height:1.5;margin:12px 0 6px'>"
+            f"{fix_counts(sp.get('description', ''))}</p>"
+            + (f"<p style='font-size:14px;line-height:1.5;margin:0'><b>Частые слова</b> "
+               f"<span style='opacity:.75'>(в скобках — сколько раз)</span>: {vocab}</p>" if vocab else ""))
 
 
 def _face_html(rep: dict) -> str:
@@ -84,21 +127,39 @@ def _face_html(rep: dict) -> str:
     cards = []
     if m:
         k, v = max(m.items(), key=lambda kv: kv[1])
-        cards.append(("Чаще всего", EMO_RU.get(k, k), f"{v:.0%} кадров"))
+        cards.append(("Выражение лица чаще всего", EMO_RU.get(k, k), f"{v:.0%} кадров"))
     hm = fa.get("head_motion")
     if hm is not None:
         cards.append(("Движение головы", "слабое" if hm < 0.05 else ("умеренное" if hm < 0.15 else "активное"),
-                      f"{hm:.2f} ширины лица между кадрами"))
+                      f"смещение между кадрами — {hm:.0%} ширины лица"))
     if fa.get("face_share") is not None:
-        cards.append(("Лицо в кадре", f"{fa['face_share']:.0%}", "доля проанализированных кадров"))
+        cards.append(("Лицо найдено", f"{fa['face_share']:.0%}", "доля разобранных кадров"))
     if frames:
-        cards.append(("Кадров разобрано", f"{frames}", f"по {len(per)} отрезкам"))
-    html = "".join(f"<div style='{CARD}'><div style='font-size:12px;opacity:.75'>{lab}</div>"
-                   f"<div style='font-size:20px;font-weight:600;margin:2px 0'>{val}</div>"
-                   f"<div style='font-size:12px;opacity:.75'>{note}</div></div>" for lab, val, note in cards)
-    return (f"<div>{html}</div><p style='font-size:13px;opacity:.75;margin-top:8px'>Модель выражений обучена на фотографиях "
-            "FER-2013 и склонна видеть «грусть» и «страх» в спокойном лице: смотрите на изменения по ходу ролика "
-            "(вкладка «Таймлайн»), а не на абсолютные доли.</p>")
+        n = len(per)
+        # «взяты из 31 отрезка», not «372 / из 31 отрезка», which reads like a fraction
+        cards.append(("Кадров разобрано", f"{frames}", f"взяты из {n} {plural_ru(n, 'отрезка', 'отрезков', 'отрезков')}"))
+    return (_cards(cards) + f"<p style='{NOTE};margin-top:10px'>Модель выражений обучена на фотографиях FER-2013 и "
+            "склонна видеть «грусть» и «страх» в спокойном лице: смотрите на изменения по ходу ролика (вкладка «Таймлайн»), "
+            "а не на абсолютные доли.</p>")
+
+
+# key frames: the figure toggles .bs2-kf-big; enlarged, the image fills the window and the caption (moment of the
+# video) stays readable on a dark plate at the bottom, so it is always clear which moment is shown
+FRAMES_CSS = (
+    "<style>"
+    ".bs2-kf figure{margin:0!important;cursor:zoom-in}"
+    # thumbnails keep the frame's own proportions (no empty letterbox bands); tall portrait frames stop at 320 px
+    ".bs2-kf img{display:block;width:100%;height:auto;max-height:320px;object-fit:contain;border-radius:8px;"
+    "background:rgba(128,128,128,.12);outline:1px solid " + PAL["card_border"] + ";outline-offset:-1px}"
+    ".bs2-kf figcaption{text-align:center;font-size:14px;font-weight:600;margin-top:6px;font-variant-numeric:tabular-nums}"
+    ".bs2-kf figure.bs2-kf-big{cursor:zoom-out}"
+    ".bs2-kf figure.bs2-kf-big img{position:fixed;inset:4vh 4vw;width:92vw;height:92vh;max-height:none;z-index:9999;"
+    "border-radius:8px;background:rgba(0,0,0,.92);outline:0;box-shadow:0 0 0 100vmax rgba(0,0,0,.85)}"
+    ".bs2-kf figure.bs2-kf-big figcaption{position:fixed;left:50%;bottom:calc(4vh + 14px);transform:translateX(-50%);"
+    "z-index:10000;margin:0;padding:6px 14px;border-radius:8px;background:rgba(0,0,0,.8);color:#fff!important;"
+    "font-size:16px;white-space:nowrap;pointer-events:none}"
+    ".bs2-kf figure:not(.bs2-kf-big) .bs2-kf-more{display:none}"
+    "</style>")
 
 
 def _frames_html(rep: dict, max_side: int = 640) -> str:
@@ -110,7 +171,7 @@ def _frames_html(rep: dict, max_side: int = 640) -> str:
 
     paths = [p for p in rep.get("key_frames") or [] if Path(p).exists()]
     if not paths:
-        return "<p style='opacity:.75'>Ключевые кадры не построены (объяснения отключены или лицо не найдено).</p>"
+        return "<p style='font-size:14px'>Ключевые кадры не построены (объяснения отключены или лицо не найдено).</p>"
     seg = None
     if rep.get("timeline") and rep.get("representative_segment"):
         seg = next((t for t in rep["timeline"] if t.get("segment") == rep["representative_segment"]), None)
@@ -132,17 +193,22 @@ def _frames_html(rep: dict, max_side: int = 640) -> str:
             caption = f"{int(t) // 60}:{int(t) % 60:02d}"
         elif m:
             caption = f"кадр {m.group(1)}"
-        cells.append(
-            f"<figure style='margin:0'><img src='data:image/jpeg;base64,{b64}' alt='{caption}' title='Щёлкните, чтобы увеличить' "
-            "onclick=\"this.classList.toggle('bs-big')\" style='width:100%;height:220px;object-fit:contain;cursor:zoom-in;"
-            "border-radius:8px;background:rgba(128,128,128,.12)'>"
-            f"<figcaption style='text-align:center;font-size:13px;margin-top:4px'>{caption}</figcaption></figure>")
+        cells.append((b64, caption))
+    total = len(cells)
+    figs = "".join(
+        f"<figure role='button' tabindex='0' title='Щёлкните, чтобы увеличить' onclick=\"this.classList.toggle('bs2-kf-big')\" "
+        "onkeydown=\"if(event.key==='Enter'||event.key===' '){event.preventDefault();this.classList.toggle('bs2-kf-big')}"
+        "else if(event.key==='Escape'){this.classList.remove('bs2-kf-big')}\">"
+        f"<img src='data:image/jpeg;base64,{b64}' alt='Ключевой кадр, момент {caption}'>"
+        f"<figcaption><span class='bs2-kf-more'>Кадр {i} из {total} · момент </span>{caption}"
+        "<span class='bs2-kf-more'> · щелчок закрывает</span></figcaption></figure>"
+        for i, (b64, caption) in enumerate(cells, 1))
     where = f" (отрезок {seg_label(seg['start'], seg['end'])})" if seg else ""
-    return ("<style>.bs-big{position:fixed!important;inset:4vh 4vw;width:92vw!important;height:92vh!important;"
-            "z-index:9999;background:rgba(0,0,0,.9)!important;cursor:zoom-out!important;object-fit:contain}</style>"
-            f"<div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px'>{''.join(cells)}</div>"
-            f"<p style='font-size:13px;opacity:.75;margin-top:8px'>Кадры, сильнее всего повлиявшие на оценку своей модели{where}; "
-            "рамкой отмечено найденное лицо, подпись — момент ролика. Щелчок по кадру увеличивает его, повторный щелчок закрывает.</p>")
+    return (FRAMES_CSS + "<div class='bs2-kf' style='display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));"
+            f"gap:12px'>{figs}</div>"
+            f"<p style='{NOTE};margin-top:10px'>Кадры, сильнее всего повлиявшие на оценку своей модели{where}. "
+            "Рамкой на кадре отмечено найденное лицо, подпись под кадром — момент ролика (минуты:секунды). "
+            "Щелчок по кадру увеличивает его, повторный щелчок закрывает.</p>")
 
 
 def export_pdf(job_dir: str | Path) -> str:
@@ -163,16 +229,39 @@ def export_pdf(job_dir: str | Path) -> str:
     return build_pdf(rep, job / f"BS2_report_{stem}.pdf", explanation=expl, media=media, key_frames=frames)
 
 
+STATUS_LABELS = {"running": "Идёт обработка", "done": "Готово", "stopped": "Остановлено"}
 
 
-def _status_html(frac: float, desc: str, done: bool = False, label: str | None = None) -> str:
-    pct = max(2, min(100, int(frac * 100)))
-    color = "#2e8b57" if done else "#e8731a"
-    head = label or ("Готово" if done else "Идёт обработка")
-    txt = desc if done else f"{pct}% · {desc}"
-    return (f"<div style='margin:4px 0 8px'><div style='display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px'>"
-            f"<b>{head}</b><span>{txt}</span></div><div style='background:#e8e8e8;border-radius:6px;height:10px'>"
-            f"<div style='width:{pct}%;background:{color};height:10px;border-radius:6px;transition:width .5s'></div></div></div>")
+def _status_html(frac: float, desc: str, state: str = "running", label: str | None = None) -> str:
+    """Progress line above the page. state: running (orange, «34% · …»), done (green) or stopped (red).
+    The text shows the real percentage (0% at the start); the bar keeps a 2% minimum width so it is visible.
+    Done and stopped fill the whole outlined track in their colour; the label and a colour dot name the state."""
+    state = state if state in STATUS_LABELS else "running"
+    pct = max(0, min(100, int(round(float(frac) * 100))))
+    color = PAL[f"status_{state}"]
+    head = label or STATUS_LABELS[state]
+    if state == "running":
+        width, txt = max(2, pct), f"{pct}% · {desc}"
+    else:
+        width, txt = 100, desc
+    return (f"<div role='status' aria-live='polite' style='margin:4px 0 8px'>"
+            "<div style='display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px 12px;"
+            "font-size:14px;margin-bottom:5px'>"
+            f"<b style='white-space:nowrap'><span aria-hidden='true' style='display:inline-block;width:10px;height:10px;"
+            f"border-radius:50%;background:{color};margin-right:7px'></span>{head}</b> "
+            f"<span style='text-align:right;font-variant-numeric:tabular-nums'>{txt}</span></div>"
+            "<div role='progressbar' aria-valuemin='0' aria-valuemax='100' "
+            + (f"aria-valuenow='{pct}' " if state != "stopped" else "") + f"aria-label='{head}' "
+            f"style='height:10px;border-radius:6px;background:{PAL['track']};box-shadow:inset 0 0 0 1px {PAL['track_outline']}'>"
+            f"<div style='width:{width}%;height:10px;border-radius:6px;background:{color};transition:width .5s'></div>"
+            "</div></div>")
+
+
+# the Code icon Gradio puts into every gr.HTML label chip reads as «code»: hide it on the result blocks.
+# Chart blocks: charts.plot_html puts the chart title (bold 15 px div) and its subtitle above the iframe; the block chip
+# already shows the same title, so the bold title line is hidden there and the subtitle (units, scale) stays.
+APP_CSS = (".bs2-block > label[data-testid='block-label'] > span{display:none}"
+           ".prose.bs2-chart > div:first-child[style*='font-weight:600']{display:none}")
 
 
 def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
@@ -187,7 +276,7 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
         expl_path = job / "explain" / "explanation.json"
         expl = json.loads(expl_path.read_text(encoding="utf-8")) if expl_path.exists() else None
         lang = (rep.get("model") or {}).get("lang", "ru")
-        narrative = (rep.get("narrative") or "") + " " + analyses_sentences(rep)
+        narrative = fix_counts(rep.get("narrative") or "") + " " + analyses_sentences(rep)
         members = rep.get("variant_scores") or {}
         primary = (rep.get("model") or {}).get("primary")
         member_txt = "\n".join(f"{MEMBER_TITLES.get(m, m)}{' — основная оценка' if m == primary else ''}: "
@@ -230,12 +319,11 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
                 raise gr.Error("Обработка остановлена. Проверьте язык речи и запустите заново.")
             raise e
         rep = result["r"]
-        yield (_status_html(1.0, f"обработано за {fmt_secs(time.time() - state['t0'])}", done=True),) + render(rep)
+        yield (_status_html(1.0, f"обработано за {fmt_secs(time.time() - state['t0'])}", state="done"),) + render(rep)
 
     def stop():
         studio.stop_event.set()
-        return _status_html(0.0, "текущий сегмент дорабатывается, затем обработка прерывается (до ~20 с)", done=True,
-                            label="Остановлено")
+        return _status_html(0.0, "текущий отрезок дорабатывается, затем обработка прерывается (до ~20 с)", state="stopped")
 
     def make_pdf(job_dir):
         if not job_dir:
@@ -245,7 +333,18 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
         except Exception as e:  # noqa: BLE001
             raise gr.Error(f"Не удалось собрать PDF: {e}")
 
-    with gr.Blocks(title="BS 2.0 — Big Five, эмоции, голос, речь", theme=gr.themes.Soft()) as demo:
+    def block(label: str, chart: bool = False):
+        """Result block with a visible title chip (gr.HTML hides its label and frame by default). Chart blocks
+        (chart=True) use the chart's own title as the label; units and scales are in the chart subtitle under it."""
+        return gr.HTML(label=label, show_label=True, container=True,
+                       elem_classes=["bs2-block", "bs2-chart"] if chart else ["bs2-block"])
+
+    # Soft theme with readable titles: label chips and block titles in primary-700 (6.4:1 on the light chip; the dark
+    # theme keeps white on primary-600), the Radio/Checkbox info line in neutral-600 (7.6:1 on white; dark unchanged)
+    theme = gr.themes.Soft(font=["system-ui", "Segoe UI", "Roboto", "Arial", "sans-serif"],
+                           font_mono=["ui-monospace", "Consolas", "monospace"]).set(block_label_text_color="*primary_700", block_title_text_color="*primary_700",
+                                 block_info_text_color="*neutral_600")
+    with gr.Blocks(title="BS 2.0 — Big Five, эмоции, голос, речь", theme=theme, css=APP_CSS) as demo:
         job_state = gr.State("")
         with gr.Row():
             with gr.Column(scale=4):
@@ -264,46 +363,50 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
                     btn = gr.Button("Анализировать", variant="primary")
                     stop_btn = gr.Button("Остановить обработку", variant="stop")
             with gr.Column(scale=2, min_width=480):
-                facts = gr.HTML(label="Ключевые факты")
-                narrative = gr.Textbox(label="Пояснение простыми словами", lines=9, max_lines=12)
+                facts = block("Ключевые факты")
+                narrative = gr.Textbox(label="Пояснение простыми словами", lines=9, max_lines=12, autoscroll=False)
         with gr.Tabs():
             with gr.Tab("Обзор"):
                 with gr.Row():
                     with gr.Column(scale=1, min_width=360):
-                        radar = gr.HTML(label="Профиль Big Five")
+                        radar = block("Профиль Big Five", chart=True)
                     with gr.Column(scale=1, min_width=360):
-                        bars = gr.HTML(label="Оценки")
+                        bars = block("Оценки по чертам и второе мнение")
             with gr.Tab("Таймлайн"):
-                traits_plot = gr.HTML(label="Big Five по ходу ролика")
-                emo_plot = gr.HTML(label="Эмоции по ходу ролика (доли, сумма = 100%)")
+                traits_plot = block("Big Five по ходу ролика", chart=True)
+                emo_plot = block("Эмоции по ходу ролика", chart=True)
                 with gr.Row():
                     with gr.Column(scale=1, min_width=360):
-                        voice_plot = gr.HTML(label="Голос по ходу ролика (0…1)")
+                        voice_plot = block("Голос по ходу ролика", chart=True)
                     with gr.Column(scale=1, min_width=360):
-                        speech_plot = gr.HTML(label="Речь: темп и паузы по ходу ролика")
+                        speech_plot = block("Речь по ходу ролика", chart=True)
             with gr.Tab("Эмоции и голос"):
-                emo_bars = gr.HTML(label="Средний профиль эмоций за ролик")
-                seg_table = gr.HTML(label="По отрезкам")
+                emo_bars = block("Средний профиль эмоций за ролик", chart=True)
+                seg_table = block("Эмоции, голос и темп по отрезкам")
             with gr.Tab("Речь"):
-                speech_html = gr.HTML(label="Речевая аналитика")
-                transcript = gr.Textbox(label="Транскрипт речи", lines=10, max_lines=14)
+                speech_html = block("Речь в цифрах")
+                transcript = gr.Textbox(label="Транскрипт речи", lines=10, max_lines=14, autoscroll=False)
             with gr.Tab("Мимика и кадры"):
-                face_html = gr.HTML(label="Лицо в кадре")
-                face_plot = gr.HTML(label="Выражение лица за ролик")
-                gallery = gr.HTML(label="Ключевые кадры")
+                face_html = block("Лицо: итоги по ролику")
+                face_plot = block("Выражение лица за ролик", chart=True)
+                gallery = block("Ключевые кадры")
             with gr.Tab("Объяснения"):
                 with gr.Row():
                     with gr.Column(scale=1, min_width=360):
-                        contrib = gr.HTML(label="Вклад модальностей")
+                        contrib = block("Вклад модальностей в оценку своей модели")
                     with gr.Column(scale=1, min_width=360):
-                        words_detail = gr.Textbox(label="Слова, на которые откликнулась модель", lines=8, max_lines=12)
-                desc = gr.Textbox(label="Описание поведения по сегментам", lines=8, max_lines=12)
+                        words_detail = gr.Textbox(label="Слова, на которые откликнулась модель", lines=8, max_lines=12,
+                                                  autoscroll=False)
+                desc = gr.Textbox(label="Описание поведения по отрезкам", lines=8, max_lines=12, autoscroll=False)
             with gr.Tab("Данные"):
-                members = gr.Textbox(label="Участники ансамбля и время обработки", lines=4, max_lines=8)
+                members = gr.Textbox(label="Участники ансамбля и время обработки", lines=4, max_lines=8, autoscroll=False)
                 raw = gr.Code(label="result.json", language="json", lines=24)
                 path = gr.Textbox(label="Сохранено в", interactive=False)
-        gr.Markdown(f"<small>{DISCLAIMER_RU}<br>{INTERVIEW_DISCLAIMER_RU}<br>Эмоции, голос и мимика — сигналы моделей, обученных "
-                    "на англоязычных корпусах и фотографиях; это наблюдения о поведении на видео, а не диагноз.</small>")
+        # the caveats are the most important small print on the page: 13 px (gr.Markdown <small> gave 11 px)
+        gr.HTML(f"<div style='font-size:13px;line-height:1.5;margin-top:6px;padding-top:10px;"
+                f"border-top:1px solid {PAL['card_border']}'><b>Как читать результаты.</b> {DISCLAIMER_RU}<br>"
+                f"{INTERVIEW_DISCLAIMER_RU}<br>Эмоции, голос и мимика — сигналы моделей, обученных на англоязычных корпусах "
+                "и фотографиях; это наблюдения о поведении на видео, а не диагноз.</div>")
         outputs = [status, radar, bars, facts, narrative, traits_plot, emo_plot, voice_plot, speech_plot, emo_bars, seg_table,
                    speech_html, transcript, face_html, face_plot, gallery, contrib, words_detail, desc, members, raw, path, job_state, pdf_btn]
         assert len(outputs) == N_REST + 1
@@ -314,7 +417,7 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
             def _preview():
                 rep = json.loads((Path(preview_job) / "result.json").read_text(encoding="utf-8"))
                 rep["job_dir"] = str(preview_job)
-                return (_status_html(1.0, "предпросмотр готового результата", done=True),) + render(rep)
+                return (_status_html(1.0, "предпросмотр готового результата", state="done"),) + render(rep)
             demo.load(_preview, inputs=None, outputs=outputs, show_progress="hidden", api_name=False)
     return demo
 
