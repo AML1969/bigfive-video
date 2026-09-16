@@ -1,0 +1,66 @@
+{
+  "n": 200,
+  "per_trait": {
+    "openness": {
+      "mae": 0.0868,
+      "acc": 0.9132,
+      "ccc": 0.6328,
+      "pearson": 0.6665,
+      "pred_mean": 0.545,
+      "true_mean": 0.5742,
+      "pred_std": 0.1099,
+      "true_std": 0.1375
+    },
+    "conscientiousness": {
+      "mae": 0.0784,
+      "acc": 0.9216,
+      "ccc": 0.7675,
+      "pearson": 0.7827,
+      "pred_mean": 0.512,
+      "true_mean": 0.5148,
+      "pred_std": 0.1306,
+      "true_std": 0.1592
+    },
+    "extraversion": {
+      "mae": 0.0835,
+      "acc": 0.9165,
+      "ccc": 0.7119,
+      "pearson": 0.7421,
+      "pred_mean": 0.4503,
+      "true_mean": 0.4771,
+      "pred_std": 0.1182,
+      "true_std": 0.1452
+    },
+    "agreeableness": {
+      "mae": 0.0901,
+      "acc": 0.9099,
+      "ccc": 0.5909,
+      "pearson": 0.6219,
+      "pred_mean": 0.5344,
+      "true_mean": 0.5462,
+      "pred_std": 0.1032,
+      "true_std": 0.1403
+    },
+    "emotional_stability": {
+      "mae": 0.0913,
+      "acc": 0.9087,
+      "ccc": 0.6857,
+      "pearson": 0.7105,
+      "pred_mean": 0.5001,
+      "true_mean": 0.5157,
+      "pred_std": 0.1208,
+      "true_std": 0.154
+    }
+  },
+  "mACC": 0.914,
+  "mCCC": 0.6778,
+  "failed_files": [],
+  "seconds_total": 274.4,
+  "seconds_per_clip": 1.37,
+  "backend": "mm",
+  "corpus": "mm-psyche-style (face+audio+text+behavior)",
+  "lang": "en",
+  "asr": false,
+  "dir": "/home/nrsmh/bs/eval/fi_test200_desc30b",
+  "bs_version": "0.1.0"
+}

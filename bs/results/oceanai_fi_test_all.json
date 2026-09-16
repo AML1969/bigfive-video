@@ -1,0 +1,70 @@
+{
+  "n": 1997,
+  "per_trait": {
+    "openness": {
+      "mae": 0.0782,
+      "acc": 0.9218,
+      "ccc": 0.667,
+      "pearson": 0.7403,
+      "pred_mean": 0.5866,
+      "true_mean": 0.5683,
+      "pred_std": 0.0933,
+      "true_std": 0.1446
+    },
+    "conscientiousness": {
+      "mae": 0.0742,
+      "acc": 0.9258,
+      "ccc": 0.7319,
+      "pearson": 0.788,
+      "pred_mean": 0.5388,
+      "true_mean": 0.5254,
+      "pred_std": 0.1046,
+      "true_std": 0.1522
+    },
+    "extraversion": {
+      "mae": 0.0696,
+      "acc": 0.9304,
+      "ccc": 0.7559,
+      "pearson": 0.81,
+      "pred_mean": 0.4803,
+      "true_mean": 0.478,
+      "pred_std": 0.1031,
+      "true_std": 0.1501
+    },
+    "agreeableness": {
+      "mae": 0.0757,
+      "acc": 0.9243,
+      "ccc": 0.6164,
+      "pearson": 0.6948,
+      "pred_mean": 0.5672,
+      "true_mean": 0.5517,
+      "pred_std": 0.0825,
+      "true_std": 0.1331
+    },
+    "emotional_stability": {
+      "mae": 0.0745,
+      "acc": 0.9255,
+      "ccc": 0.7421,
+      "pearson": 0.8074,
+      "pred_mean": 0.5428,
+      "true_mean": 0.5218,
+      "pred_std": 0.1044,
+      "true_std": 0.1531
+    }
+  },
+  "mACC": 0.9255,
+  "mCCC": 0.7027,
+  "failed_files": [
+    "JmAQlC-FEV8.000.mp4",
+    "L-rmZZP_wj8.005.mp4",
+    "_plk5k7PBEg.004.mp4"
+  ],
+  "seconds_total": 6522.9,
+  "seconds_per_clip": 3.27,
+  "backend": "oceanai",
+  "corpus": "fi",
+  "lang": "en",
+  "asr": false,
+  "dir": "/home/nrsmh/bs/eval/fi_test_all",
+  "bs_version": "0.1.0"
+}

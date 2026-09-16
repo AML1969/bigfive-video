@@ -1,0 +1,79 @@
+{
+  "input": "/home/nrsmh/bs/eval/mm_smoke/clip.mp4",
+  "created_at": "2026-09-15T13:38:00",
+  "traits": {
+    "openness": {
+      "score": 0.6441,
+      "percentile_vs_fiv2": 68.0,
+      "name_ru": "открытость опыту"
+    },
+    "conscientiousness": {
+      "score": 0.5847,
+      "percentile_vs_fiv2": 64.2,
+      "name_ru": "добросовестность"
+    },
+    "extraversion": {
+      "score": 0.5016,
+      "percentile_vs_fiv2": 55.7,
+      "name_ru": "экстраверсия"
+    },
+    "agreeableness": {
+      "score": 0.5352,
+      "percentile_vs_fiv2": 43.7,
+      "name_ru": "доброжелательность"
+    },
+    "emotional_stability": {
+      "score": 0.5385,
+      "percentile_vs_fiv2": 52.7,
+      "name_ru": "эмоциональная стабильность (non-neuroticism)",
+      "alias": "non-neuroticism"
+    }
+  },
+  "interview": {
+    "score": 0.5489,
+    "percentile_vs_fiv2": 59.7,
+    "name_ru": "впечатление «пригласить на собеседование»",
+    "disclaimer": "ChaLearn job-interview variable: how often crowd annotators said they would invite the person to a job interview after a 15-second first impression. Not a hiring recommendation; the dataset authors ask not to use it for decisions affecting people."
+  },
+  "behavior_description": "The woman appears calm and composed, with subtle movements of her lips and eyes suggesting she is speaking or reacting to something. Her facial expressions are neutral, and her posture is relaxed, indicating a neutral emotional state. There are no strong indicators of personality traits, but her composed demeanor suggests she may be conscientious and agreeable. The slight movements of her lips and eyes could indicate a mix of emotions or thoughts, but the overall impression is one of neutrality and calmness.",
+  "transcript": "I assume what they mean by TV is like having cable. So I feel like, for me, having cable is pointless because I could just watch everything on the internet.",
+  "modalities_used": [
+    "oceanai",
+    "mm"
+  ],
+  "model": {
+    "name": "bs-bigfive",
+    "version": "0.1.0",
+    "backend": "ensemble",
+    "corpus": "ensemble(oceanai+mm)",
+    "lang": "en",
+    "asr_model": "openai/whisper-large-v3-turbo",
+    "trained_on": "MuPTA"
+  },
+  "timings_sec": {
+    "total": 31.81,
+    "model_load": 29.6,
+    "mm_face": 0.37,
+    "mm_audio": 0.3,
+    "mm_asr_text": 1.84,
+    "mm_behavior": 18.83
+  },
+  "disclaimer": "Apparent personality as perceived by observers (First Impressions V2 style); probabilistic research estimate, not a psychological assessment or diagnosis.",
+  "variant_scores": {
+    "oceanai": {
+      "openness": 0.6188540458679199,
+      "conscientiousness": 0.5325013399124146,
+      "extraversion": 0.47700998187065125,
+      "agreeableness": 0.5601158738136292,
+      "emotional_stability": 0.5238524675369263
+    },
+    "mm": {
+      "openness": 0.6693845987319946,
+      "conscientiousness": 0.6368100643157959,
+      "extraversion": 0.5262322425842285,
+      "agreeableness": 0.5102778077125549,
+      "emotional_stability": 0.5531048774719238,
+      "interview": 0.5488682985305786
+    }
+  }
+}

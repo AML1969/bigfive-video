@@ -1,0 +1,139 @@
+{
+  "n": 200,
+  "per_trait": {
+    "openness": {
+      "mae": 0.0857,
+      "acc": 0.9143,
+      "ccc": 0.5523,
+      "pearson": 0.6424,
+      "pred_mean": 0.595,
+      "true_mean": 0.5742,
+      "pred_std": 0.0809,
+      "true_std": 0.1375
+    },
+    "conscientiousness": {
+      "mae": 0.0803,
+      "acc": 0.9197,
+      "ccc": 0.6632,
+      "pearson": 0.7955,
+      "pred_mean": 0.5328,
+      "true_mean": 0.5148,
+      "pred_std": 0.087,
+      "true_std": 0.1592
+    },
+    "extraversion": {
+      "mae": 0.0843,
+      "acc": 0.9157,
+      "ccc": 0.6291,
+      "pearson": 0.7198,
+      "pred_mean": 0.5029,
+      "true_mean": 0.4771,
+      "pred_std": 0.0897,
+      "true_std": 0.1452
+    },
+    "agreeableness": {
+      "mae": 0.0914,
+      "acc": 0.9086,
+      "ccc": 0.4738,
+      "pearson": 0.6295,
+      "pred_mean": 0.5622,
+      "true_mean": 0.5462,
+      "pred_std": 0.0647,
+      "true_std": 0.1403
+    },
+    "emotional_stability": {
+      "mae": 0.0914,
+      "acc": 0.9086,
+      "ccc": 0.5738,
+      "pearson": 0.7254,
+      "pred_mean": 0.5492,
+      "true_mean": 0.5157,
+      "pred_std": 0.0804,
+      "true_std": 0.154
+    }
+  },
+  "mACC": 0.9134,
+  "mCCC": 0.5785,
+  "variants": {
+    "audio": {
+      "mACC": 0.9013,
+      "mCCC": 0.547,
+      "acc": {
+        "openness": 0.9055,
+        "conscientiousness": 0.8957,
+        "extraversion": 0.9087,
+        "agreeableness": 0.8978,
+        "emotional_stability": 0.8987
+      },
+      "ccc": {
+        "openness": 0.5344,
+        "conscientiousness": 0.5637,
+        "extraversion": 0.6221,
+        "agreeableness": 0.4324,
+        "emotional_stability": 0.5825
+      }
+    },
+    "fusion": {
+      "mACC": 0.8652,
+      "mCCC": 0.577,
+      "acc": {
+        "openness": 0.8479,
+        "conscientiousness": 0.8616,
+        "extraversion": 0.8757,
+        "agreeableness": 0.8704,
+        "emotional_stability": 0.8704
+      },
+      "ccc": {
+        "openness": 0.503,
+        "conscientiousness": 0.6259,
+        "extraversion": 0.6283,
+        "agreeableness": 0.5174,
+        "emotional_stability": 0.6104
+      }
+    },
+    "scene": {
+      "mACC": 0.9154,
+      "mCCC": 0.704,
+      "acc": {
+        "openness": 0.9133,
+        "conscientiousness": 0.9227,
+        "extraversion": 0.9142,
+        "agreeableness": 0.9134,
+        "emotional_stability": 0.9134
+      },
+      "ccc": {
+        "openness": 0.6531,
+        "conscientiousness": 0.7989,
+        "extraversion": 0.716,
+        "agreeableness": 0.6358,
+        "emotional_stability": 0.7164
+      }
+    },
+    "text": {
+      "mACC": 0.8737,
+      "mCCC": 0.1365,
+      "acc": {
+        "openness": 0.88,
+        "conscientiousness": 0.8778,
+        "extraversion": 0.8714,
+        "agreeableness": 0.8763,
+        "emotional_stability": 0.8631
+      },
+      "ccc": {
+        "openness": 0.1477,
+        "conscientiousness": 0.2251,
+        "extraversion": 0.1581,
+        "agreeableness": 0.07,
+        "emotional_stability": 0.0816
+      }
+    }
+  },
+  "seconds_total": 332.7,
+  "seconds_per_clip": 1.66,
+  "backend": "sslmepr",
+  "corpus": "ssl-mepr(scene+audio+text)",
+  "lang": "en",
+  "asr": false,
+  "dir": "/home/nrsmh/bs/eval/fi_test200",
+  "bs_version": "0.1.0"
+}

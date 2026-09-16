@@ -1,0 +1,800 @@
+{
+  "oceanai": {
+    "n": 1997,
+    "per_trait": {
+      "openness": {
+        "mae": 0.0782,
+        "acc": 0.9218,
+        "ccc": 0.667,
+        "pearson": 0.7403,
+        "pred_mean": 0.5866,
+        "true_mean": 0.5683,
+        "pred_std": 0.0933,
+        "true_std": 0.1446
+      },
+      "conscientiousness": {
+        "mae": 0.0742,
+        "acc": 0.9258,
+        "ccc": 0.7319,
+        "pearson": 0.788,
+        "pred_mean": 0.5388,
+        "true_mean": 0.5254,
+        "pred_std": 0.1046,
+        "true_std": 0.1522
+      },
+      "extraversion": {
+        "mae": 0.0696,
+        "acc": 0.9304,
+        "ccc": 0.7559,
+        "pearson": 0.81,
+        "pred_mean": 0.4803,
+        "true_mean": 0.478,
+        "pred_std": 0.1031,
+        "true_std": 0.1501
+      },
+      "agreeableness": {
+        "mae": 0.0757,
+        "acc": 0.9243,
+        "ccc": 0.6164,
+        "pearson": 0.6948,
+        "pred_mean": 0.5672,
+        "true_mean": 0.5517,
+        "pred_std": 0.0825,
+        "true_std": 0.1331
+      },
+      "emotional_stability": {
+        "mae": 0.0745,
+        "acc": 0.9255,
+        "ccc": 0.7421,
+        "pearson": 0.8074,
+        "pred_mean": 0.5428,
+        "true_mean": 0.5218,
+        "pred_std": 0.1044,
+        "true_std": 0.1531
+      }
+    },
+    "mACC": 0.9255,
+    "mCCC": 0.7027
+  },
+  "scene": {
+    "n": 1997,
+    "per_trait": {
+      "openness": {
+        "mae": 0.0891,
+        "acc": 0.9109,
+        "ccc": 0.6407,
+        "pearson": 0.6592,
+        "pred_mean": 0.5863,
+        "true_mean": 0.5683,
+        "pred_std": 0.1187,
+        "true_std": 0.1446
+      },
+      "conscientiousness": {
+        "mae": 0.0795,
+        "acc": 0.9205,
+        "ccc": 0.7578,
+        "pearson": 0.7638,
+        "pred_mean": 0.5304,
+        "true_mean": 0.5254,
+        "pred_std": 0.135,
+        "true_std": 0.1522
+      },
+      "extraversion": {
+        "mae": 0.0847,
+        "acc": 0.9153,
+        "ccc": 0.7198,
+        "pearson": 0.7323,
+        "pred_mean": 0.4976,
+        "true_mean": 0.478,
+        "pred_std": 0.1326,
+        "true_std": 0.1501
+      },
+      "agreeableness": {
+        "mae": 0.0877,
+        "acc": 0.9123,
+        "ccc": 0.5629,
+        "pearson": 0.5882,
+        "pred_mean": 0.5602,
+        "true_mean": 0.5517,
+        "pred_std": 0.0996,
+        "true_std": 0.1331
+      },
+      "emotional_stability": {
+        "mae": 0.0914,
+        "acc": 0.9086,
+        "ccc": 0.6706,
+        "pearson": 0.6826,
+        "pred_mean": 0.5334,
+        "true_mean": 0.5218,
+        "pred_std": 0.1292,
+        "true_std": 0.1531
+      }
+    },
+    "mACC": 0.9135,
+    "mCCC": 0.6704
+  },
+  "own4": {
+    "n": 1997,
+    "per_trait": {
+      "openness": {
+        "mae": 0.0836,
+        "acc": 0.9164,
+        "ccc": 0.6872,
+        "pearson": 0.7025,
+        "pred_mean": 0.5635,
+        "true_mean": 0.5683,
+        "pred_std": 0.1176,
+        "true_std": 0.1446
+      },
+      "conscientiousness": {
+        "mae": 0.0777,
+        "acc": 0.9223,
+        "ccc": 0.768,
+        "pearson": 0.7729,
+        "pred_mean": 0.5248,
+        "true_mean": 0.5254,
+        "pred_std": 0.136,
+        "true_std": 0.1522
+      },
+      "extraversion": {
+        "mae": 0.0826,
+        "acc": 0.9174,
+        "ccc": 0.7458,
+        "pearson": 0.759,
+        "pred_mean": 0.4556,
+        "true_mean": 0.478,
+        "pred_std": 0.1353,
+        "true_std": 0.1501
+      },
+      "agreeableness": {
+        "mae": 0.0865,
+        "acc": 0.9135,
+        "ccc": 0.6052,
+        "pearson": 0.6224,
+        "pred_mean": 0.5387,
+        "true_mean": 0.5517,
+        "pred_std": 0.1077,
+        "true_std": 0.1331
+      },
+      "emotional_stability": {
+        "mae": 0.0844,
+        "acc": 0.9156,
+        "ccc": 0.713,
+        "pearson": 0.7292,
+        "pred_mean": 0.52,
+        "true_mean": 0.5218,
+        "pred_std": 0.1238,
+        "true_std": 0.1531
+      }
+    },
+    "mACC": 0.917,
+    "mCCC": 0.7039
+  },
+  "own4iv": {
+    "n": 1997,
+    "per_trait": {
+      "openness": {
+        "mae": 0.0852,
+        "acc": 0.9148,
+        "ccc": 0.6699,
+        "pearson": 0.6838,
+        "pred_mean": 0.564,
+        "true_mean": 0.5683,
+        "pred_std": 0.1183,
+        "true_std": 0.1446
+      },
+      "conscientiousness": {
+        "mae": 0.0769,
+        "acc": 0.9231,
+        "ccc": 0.7609,
+        "pearson": 0.7715,
+        "pred_mean": 0.524,
+        "true_mean": 0.5254,
+        "pred_std": 0.1289,
+        "true_std": 0.1522
+      },
+      "extraversion": {
+        "mae": 0.0799,
+        "acc": 0.9201,
+        "ccc": 0.745,
+        "pearson": 0.7554,
+        "pred_mean": 0.4737,
+        "true_mean": 0.478,
+        "pred_std": 0.1274,
+        "true_std": 0.1501
+      },
+      "agreeableness": {
+        "mae": 0.0855,
+        "acc": 0.9145,
+        "ccc": 0.5796,
+        "pearson": 0.6078,
+        "pred_mean": 0.5487,
+        "true_mean": 0.5517,
+        "pred_std": 0.0977,
+        "true_std": 0.1331
+      },
+      "emotional_stability": {
+        "mae": 0.0853,
+        "acc": 0.9147,
+        "ccc": 0.7109,
+        "pearson": 0.726,
+        "pred_mean": 0.5256,
+        "true_mean": 0.5218,
+        "pred_std": 0.1248,
+        "true_std": 0.1531
+      }
+    },
+    "mACC": 0.9174,
+    "mCCC": 0.6932
+  },
+  "mean(oceanai,scene)": {
+    "n": 1997,
+    "per_trait": {
+      "openness": {
+        "mae": 0.0781,
+        "acc": 0.9219,
+        "ccc": 0.6857,
+        "pearson": 0.7429,
+        "pred_mean": 0.5865,
+        "true_mean": 0.5683,
+        "pred_std": 0.0992,
+        "true_std": 0.1446
+      },
+      "conscientiousness": {
+        "mae": 0.0691,
+        "acc": 0.9309,
+        "ccc": 0.7845,
+        "pearson": 0.8216,
+        "pred_mean": 0.5346,
+        "true_mean": 0.5254,
+        "pred_std": 0.1129,
+        "true_std": 0.1522
+      },
+      "extraversion": {
+        "mae": 0.0705,
+        "acc": 0.9295,
+        "ccc": 0.7749,
+        "pearson": 0.813,
+        "pred_mean": 0.4889,
+        "true_mean": 0.478,
+        "pred_std": 0.1111,
+        "true_std": 0.1501
+      },
+      "agreeableness": {
+        "mae": 0.0773,
+        "acc": 0.9227,
+        "ccc": 0.6177,
+        "pearson": 0.6868,
+        "pred_mean": 0.5637,
+        "true_mean": 0.5517,
+        "pred_std": 0.0844,
+        "true_std": 0.1331
+      },
+      "emotional_stability": {
+        "mae": 0.0769,
+        "acc": 0.9231,
+        "ccc": 0.7381,
+        "pearson": 0.785,
+        "pred_mean": 0.5381,
+        "true_mean": 0.5218,
+        "pred_std": 0.1099,
+        "true_std": 0.1531
+      }
+    },
+    "mACC": 0.9256,
+    "mCCC": 0.7202
+  },
+  "mean(oceanai,own4)": {
+    "n": 1997,
+    "per_trait": {
+      "openness": {
+        "mae": 0.0756,
+        "acc": 0.9244,
+        "ccc": 0.7066,
+        "pearson": 0.7552,
+        "pred_mean": 0.5751,
+        "true_mean": 0.5683,
+        "pred_std": 0.1004,
+        "true_std": 0.1446
+      },
+      "conscientiousness": {
+        "mae": 0.0695,
+        "acc": 0.9305,
+        "ccc": 0.7846,
+        "pearson": 0.817,
+        "pred_mean": 0.5318,
+        "true_mean": 0.5254,
+        "pred_std": 0.1148,
+        "true_std": 0.1522
+      },
+      "extraversion": {
+        "mae": 0.0694,
+        "acc": 0.9306,
+        "ccc": 0.7843,
+        "pearson": 0.8163,
+        "pred_mean": 0.468,
+        "true_mean": 0.478,
+        "pred_std": 0.1141,
+        "true_std": 0.1501
+      },
+      "agreeableness": {
+        "mae": 0.0765,
+        "acc": 0.9235,
+        "ccc": 0.6409,
+        "pearson": 0.6903,
+        "pred_mean": 0.5529,
+        "true_mean": 0.5517,
+        "pred_std": 0.0901,
+        "true_std": 0.1331
+      },
+      "emotional_stability": {
+        "mae": 0.0742,
+        "acc": 0.9258,
+        "ccc": 0.7527,
+        "pearson": 0.7976,
+        "pred_mean": 0.5314,
+        "true_mean": 0.5218,
+        "pred_std": 0.1094,
+        "true_std": 0.1531
+      }
+    },
+    "mACC": 0.927,
+    "mCCC": 0.7338
+  },
+  "mean(oceanai,own4iv)": {
+    "n": 1997,
+    "per_trait": {
+      "openness": {
+        "mae": 0.0763,
+        "acc": 0.9237,
+        "ccc": 0.6982,
+        "pearson": 0.7462,
+        "pred_mean": 0.5753,
+        "true_mean": 0.5683,
+        "pred_std": 0.1005,
+        "true_std": 0.1446
+      },
+      "conscientiousness": {
+        "mae": 0.07,
+        "acc": 0.93,
+        "ccc": 0.7761,
+        "pearson": 0.8145,
+        "pred_mean": 0.5314,
+        "true_mean": 0.5254,
+        "pred_std": 0.1117,
+        "true_std": 0.1522
+      },
+      "extraversion": {
+        "mae": 0.0695,
+        "acc": 0.9305,
+        "ccc": 0.7777,
+        "pearson": 0.815,
+        "pred_mean": 0.477,
+        "true_mean": 0.478,
+        "pred_std": 0.1103,
+        "true_std": 0.1501
+      },
+      "agreeableness": {
+        "mae": 0.0766,
+        "acc": 0.9234,
+        "ccc": 0.6227,
+        "pearson": 0.688,
+        "pred_mean": 0.5579,
+        "true_mean": 0.5517,
+        "pred_std": 0.0848,
+        "true_std": 0.1331
+      },
+      "emotional_stability": {
+        "mae": 0.0747,
+        "acc": 0.9253,
+        "ccc": 0.7512,
+        "pearson": 0.7966,
+        "pred_mean": 0.5342,
+        "true_mean": 0.5218,
+        "pred_std": 0.1098,
+        "true_std": 0.1531
+      }
+    },
+    "mACC": 0.9266,
+    "mCCC": 0.7252
+  },
+  "mean(scene,own4)": {
+    "n": 1997,
+    "per_trait": {
+      "openness": {
+        "mae": 0.0814,
+        "acc": 0.9186,
+        "ccc": 0.6899,
+        "pearson": 0.712,
+        "pred_mean": 0.5749,
+        "true_mean": 0.5683,
+        "pred_std": 0.113,
+        "true_std": 0.1446
+      },
+      "conscientiousness": {
+        "mae": 0.0729,
+        "acc": 0.9271,
+        "ccc": 0.7898,
+        "pearson": 0.7995,
+        "pred_mean": 0.5276,
+        "true_mean": 0.5254,
+        "pred_std": 0.1302,
+        "true_std": 0.1522
+      },
+      "extraversion": {
+        "mae": 0.0757,
+        "acc": 0.9243,
+        "ccc": 0.7695,
+        "pearson": 0.779,
+        "pred_mean": 0.4766,
+        "true_mean": 0.478,
+        "pred_std": 0.1283,
+        "true_std": 0.1501
+      },
+      "agreeableness": {
+        "mae": 0.0823,
+        "acc": 0.9177,
+        "ccc": 0.6132,
+        "pearson": 0.6428,
+        "pred_mean": 0.5494,
+        "true_mean": 0.5517,
+        "pred_std": 0.0977,
+        "true_std": 0.1331
+      },
+      "emotional_stability": {
+        "mae": 0.0823,
+        "acc": 0.9177,
+        "ccc": 0.7205,
+        "pearson": 0.742,
+        "pred_mean": 0.5267,
+        "true_mean": 0.5218,
+        "pred_std": 0.1203,
+        "true_std": 0.1531
+      }
+    },
+    "mACC": 0.9211,
+    "mCCC": 0.7166
+  },
+  "mean(scene,own4iv)": {
+    "n": 1997,
+    "per_trait": {
+      "openness": {
+        "mae": 0.0818,
+        "acc": 0.9182,
+        "ccc": 0.6853,
+        "pearson": 0.7083,
+        "pred_mean": 0.5752,
+        "true_mean": 0.5683,
+        "pred_std": 0.1124,
+        "true_std": 0.1446
+      },
+      "conscientiousness": {
+        "mae": 0.072,
+        "acc": 0.928,
+        "ccc": 0.7894,
+        "pearson": 0.8035,
+        "pred_mean": 0.5272,
+        "true_mean": 0.5254,
+        "pred_std": 0.1261,
+        "true_std": 0.1522
+      },
+      "extraversion": {
+        "mae": 0.0757,
+        "acc": 0.9243,
+        "ccc": 0.7641,
+        "pearson": 0.7792,
+        "pred_mean": 0.4857,
+        "true_mean": 0.478,
+        "pred_std": 0.1241,
+        "true_std": 0.1501
+      },
+      "agreeableness": {
+        "mae": 0.0815,
+        "acc": 0.9185,
+        "ccc": 0.6006,
+        "pearson": 0.6428,
+        "pred_mean": 0.5544,
+        "true_mean": 0.5517,
+        "pred_std": 0.0917,
+        "true_std": 0.1331
+      },
+      "emotional_stability": {
+        "mae": 0.0821,
+        "acc": 0.9179,
+        "ccc": 0.7217,
+        "pearson": 0.7441,
+        "pred_mean": 0.5295,
+        "true_mean": 0.5218,
+        "pred_std": 0.1202,
+        "true_std": 0.1531
+      }
+    },
+    "mACC": 0.9214,
+    "mCCC": 0.7122
+  },
+  "mean(own4,own4iv)": {
+    "n": 1997,
+    "per_trait": {
+      "openness": {
+        "mae": 0.0825,
+        "acc": 0.9175,
+        "ccc": 0.6893,
+        "pearson": 0.7071,
+        "pred_mean": 0.5638,
+        "true_mean": 0.5683,
+        "pred_std": 0.1156,
+        "true_std": 0.1446
+      },
+      "conscientiousness": {
+        "mae": 0.0753,
+        "acc": 0.9247,
+        "ccc": 0.7748,
+        "pearson": 0.7841,
+        "pred_mean": 0.5244,
+        "true_mean": 0.5254,
+        "pred_std": 0.1305,
+        "true_std": 0.1522
+      },
+      "extraversion": {
+        "mae": 0.0789,
+        "acc": 0.9211,
+        "ccc": 0.7562,
+        "pearson": 0.7679,
+        "pred_mean": 0.4647,
+        "true_mean": 0.478,
+        "pred_std": 0.1295,
+        "true_std": 0.1501
+      },
+      "agreeableness": {
+        "mae": 0.084,
+        "acc": 0.916,
+        "ccc": 0.6055,
+        "pearson": 0.6318,
+        "pred_mean": 0.5437,
+        "true_mean": 0.5517,
+        "pred_std": 0.1,
+        "true_std": 0.1331
+      },
+      "emotional_stability": {
+        "mae": 0.083,
+        "acc": 0.917,
+        "ccc": 0.7221,
+        "pearson": 0.7407,
+        "pred_mean": 0.5228,
+        "true_mean": 0.5218,
+        "pred_std": 0.1221,
+        "true_std": 0.1531
+      }
+    },
+    "mACC": 0.9193,
+    "mCCC": 0.7096
+  },
+  "mean(oceanai,scene,own4)": {
+    "n": 1997,
+    "per_trait": {
+      "openness": {
+        "mae": 0.0765,
+        "acc": 0.9235,
+        "ccc": 0.7043,
+        "pearson": 0.7496,
+        "pred_mean": 0.5788,
+        "true_mean": 0.5683,
+        "pred_std": 0.1022,
+        "true_std": 0.1446
+      },
+      "conscientiousness": {
+        "mae": 0.0681,
+        "acc": 0.9319,
+        "ccc": 0.7979,
+        "pearson": 0.8259,
+        "pred_mean": 0.5313,
+        "true_mean": 0.5254,
+        "pred_std": 0.1173,
+        "true_std": 0.1522
+      },
+      "extraversion": {
+        "mae": 0.0691,
+        "acc": 0.9309,
+        "ccc": 0.789,
+        "pearson": 0.8156,
+        "pred_mean": 0.4778,
+        "true_mean": 0.478,
+        "pred_std": 0.1158,
+        "true_std": 0.1501
+      },
+      "agreeableness": {
+        "mae": 0.0771,
+        "acc": 0.9229,
+        "ccc": 0.6343,
+        "pearson": 0.6875,
+        "pred_mean": 0.5553,
+        "true_mean": 0.5517,
+        "pred_std": 0.0887,
+        "true_std": 0.1331
+      },
+      "emotional_stability": {
+        "mae": 0.0758,
+        "acc": 0.9242,
+        "ccc": 0.7472,
+        "pearson": 0.7883,
+        "pred_mean": 0.5321,
+        "true_mean": 0.5218,
+        "pred_std": 0.1111,
+        "true_std": 0.1531
+      }
+    },
+    "mACC": 0.9267,
+    "mCCC": 0.7345
+  },
+  "mean(oceanai,scene,own4iv)": {
+    "n": 1997,
+    "per_trait": {
+      "openness": {
+        "mae": 0.0768,
+        "acc": 0.9232,
+        "ccc": 0.7006,
+        "pearson": 0.7467,
+        "pred_mean": 0.579,
+        "true_mean": 0.5683,
+        "pred_std": 0.1019,
+        "true_std": 0.1446
+      },
+      "conscientiousness": {
+        "mae": 0.068,
+        "acc": 0.932,
+        "ccc": 0.7949,
+        "pearson": 0.8274,
+        "pred_mean": 0.531,
+        "true_mean": 0.5254,
+        "pred_std": 0.1148,
+        "true_std": 0.1522
+      },
+      "extraversion": {
+        "mae": 0.0696,
+        "acc": 0.9304,
+        "ccc": 0.7836,
+        "pearson": 0.8159,
+        "pred_mean": 0.4839,
+        "true_mean": 0.478,
+        "pred_std": 0.1131,
+        "true_std": 0.1501
+      },
+      "agreeableness": {
+        "mae": 0.0768,
+        "acc": 0.9232,
+        "ccc": 0.6235,
+        "pearson": 0.6893,
+        "pred_mean": 0.5587,
+        "true_mean": 0.5517,
+        "pred_std": 0.0848,
+        "true_std": 0.1331
+      },
+      "emotional_stability": {
+        "mae": 0.076,
+        "acc": 0.924,
+        "ccc": 0.7474,
+        "pearson": 0.7895,
+        "pred_mean": 0.5339,
+        "true_mean": 0.5218,
+        "pred_std": 0.1111,
+        "true_std": 0.1531
+      }
+    },
+    "mACC": 0.9265,
+    "mCCC": 0.73
+  },
+  "mean(oceanai,own4,own4iv)": {
+    "n": 1997,
+    "per_trait": {
+      "openness": {
+        "mae": 0.0767,
+        "acc": 0.9233,
+        "ccc": 0.7057,
+        "pearson": 0.7442,
+        "pred_mean": 0.5714,
+        "true_mean": 0.5683,
+        "pred_std": 0.1041,
+        "true_std": 0.1446
+      },
+      "conscientiousness": {
+        "mae": 0.07,
+        "acc": 0.93,
+        "ccc": 0.7866,
+        "pearson": 0.8131,
+        "pred_mean": 0.5292,
+        "true_mean": 0.5254,
+        "pred_std": 0.1177,
+        "true_std": 0.1522
+      },
+      "extraversion": {
+        "mae": 0.0711,
+        "acc": 0.9289,
+        "ccc": 0.7803,
+        "pearson": 0.8066,
+        "pred_mean": 0.4699,
+        "true_mean": 0.478,
+        "pred_std": 0.1167,
+        "true_std": 0.1501
+      },
+      "agreeableness": {
+        "mae": 0.0779,
+        "acc": 0.9221,
+        "ccc": 0.6305,
+        "pearson": 0.6786,
+        "pred_mean": 0.5515,
+        "true_mean": 0.5517,
+        "pred_std": 0.0903,
+        "true_std": 0.1331
+      },
+      "emotional_stability": {
+        "mae": 0.0759,
+        "acc": 0.9241,
+        "ccc": 0.7485,
+        "pearson": 0.7856,
+        "pred_mean": 0.5295,
+        "true_mean": 0.5218,
+        "pred_std": 0.1125,
+        "true_std": 0.1531
+      }
+    },
+    "mACC": 0.9257,
+    "mCCC": 0.7303
+  },
+  "mean(scene,own4,own4iv)": {
+    "n": 1997,
+    "per_trait": {
+      "openness": {
+        "mae": 0.0806,
+        "acc": 0.9194,
+        "ccc": 0.696,
+        "pearson": 0.7189,
+        "pred_mean": 0.5713,
+        "true_mean": 0.5683,
+        "pred_std": 0.1121,
+        "true_std": 0.1446
+      },
+      "conscientiousness": {
+        "mae": 0.0718,
+        "acc": 0.9282,
+        "ccc": 0.7924,
+        "pearson": 0.8049,
+        "pred_mean": 0.5264,
+        "true_mean": 0.5254,
+        "pred_std": 0.1274,
+        "true_std": 0.1522
+      },
+      "extraversion": {
+        "mae": 0.0748,
+        "acc": 0.9252,
+        "ccc": 0.7724,
+        "pearson": 0.7846,
+        "pred_mean": 0.4757,
+        "true_mean": 0.478,
+        "pred_std": 0.1258,
+        "true_std": 0.1501
+      },
+      "agreeableness": {
+        "mae": 0.0812,
+        "acc": 0.9188,
+        "ccc": 0.6148,
+        "pearson": 0.6507,
+        "pred_mean": 0.5492,
+        "true_mean": 0.5517,
+        "pred_std": 0.0948,
+        "true_std": 0.1331
+      },
+      "emotional_stability": {
+        "mae": 0.0807,
+        "acc": 0.9193,
+        "ccc": 0.7296,
+        "pearson": 0.7532,
+        "pred_mean": 0.5264,
+        "true_mean": 0.5218,
+        "pred_std": 0.1191,
+        "true_std": 0.1531
+      }
+    },
+    "mACC": 0.9222,
+    "mCCC": 0.721
+  }
+}

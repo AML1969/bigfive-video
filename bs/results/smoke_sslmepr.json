@@ -1,0 +1,75 @@
+{
+  "input": "/home/nrsmh/bs/eval/fi_test200/--Ymqszjv54.000.mp4",
+  "created_at": "2026-09-14T23:04:11",
+  "traits": {
+    "openness": {
+      "score": 0.1417,
+      "percentile_vs_fiv2": 0.7,
+      "name_ru": "открытость опыту"
+    },
+    "conscientiousness": {
+      "score": 0.1564,
+      "percentile_vs_fiv2": 0.9,
+      "name_ru": "добросовестность"
+    },
+    "extraversion": {
+      "score": 0.1106,
+      "percentile_vs_fiv2": 0.8,
+      "name_ru": "экстраверсия"
+    },
+    "agreeableness": {
+      "score": 0.1861,
+      "percentile_vs_fiv2": 0.9,
+      "name_ru": "доброжелательность"
+    },
+    "emotional_stability": {
+      "score": 0.1291,
+      "percentile_vs_fiv2": 0.8,
+      "name_ru": "эмоциональная стабильность (non-neuroticism)",
+      "alias": "non-neuroticism"
+    }
+  },
+  "transcript": "So I'm going to take a bite and experience it with you guys. [you heard it all? 00:00:07]. Now when you don't bite the seeds, see -",
+  "modalities_used": [
+    "scene",
+    "audio",
+    "text"
+  ],
+  "model": {
+    "name": "bs-bigfive",
+    "version": "0.1.0",
+    "backend": "sslmepr",
+    "corpus": "ssl-mepr(scene+audio+text)",
+    "lang": "en",
+    "asr_model": null,
+    "trained_on": "MuPTA"
+  },
+  "timings_sec": {
+    "total": 3.93,
+    "model_load": 9.4
+  },
+  "disclaimer": "Apparent personality as perceived by observers (First Impressions V2 style); probabilistic research estimate, not a psychological assessment or diagnosis.",
+  "unimodal_scores": {
+    "scene": {
+      "openness": 0.47249898314476013,
+      "conscientiousness": 0.5453323721885681,
+      "extraversion": 0.39013952016830444,
+      "agreeableness": 0.4919048547744751,
+      "emotional_stability": 0.4725054204463959
+    },
+    "audio": {
+      "openness": 0.35978615283966064,
+      "conscientiousness": 0.2711692452430725,
+      "extraversion": 0.2779863476753235,
+      "agreeableness": 0.3376576900482178,
+      "emotional_stability": 0.279347687959671
+    },
+    "text": {
+      "openness": 0.500819981098175,
+      "conscientiousness": 0.42326679825782776,
+      "extraversion": 0.42086005210876465,
+      "agreeableness": 0.4826929569244385,
+      "emotional_stability": 0.4802260994911194
+    }
+  }
+}

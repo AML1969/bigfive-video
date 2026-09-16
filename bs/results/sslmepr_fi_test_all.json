@@ -1,0 +1,103 @@
+{
+  "n": 2000,
+  "per_trait": {
+    "openness": {
+      "mae": 0.089,
+      "acc": 0.911,
+      "ccc": 0.6416,
+      "pearson": 0.66,
+      "pred_mean": 0.5862,
+      "true_mean": 0.5682,
+      "pred_std": 0.1189,
+      "true_std": 0.1446
+    },
+    "conscientiousness": {
+      "mae": 0.0797,
+      "acc": 0.9203,
+      "ccc": 0.7576,
+      "pearson": 0.7637,
+      "pred_mean": 0.5302,
+      "true_mean": 0.5251,
+      "pred_std": 0.1351,
+      "true_std": 0.1526
+    },
+    "extraversion": {
+      "mae": 0.0846,
+      "acc": 0.9154,
+      "ccc": 0.7204,
+      "pearson": 0.7328,
+      "pred_mean": 0.4975,
+      "true_mean": 0.4779,
+      "pred_std": 0.1327,
+      "true_std": 0.1501
+    },
+    "agreeableness": {
+      "mae": 0.0877,
+      "acc": 0.9123,
+      "ccc": 0.5638,
+      "pearson": 0.5894,
+      "pred_mean": 0.5601,
+      "true_mean": 0.5517,
+      "pred_std": 0.0997,
+      "true_std": 0.1333
+    },
+    "emotional_stability": {
+      "mae": 0.0914,
+      "acc": 0.9086,
+      "ccc": 0.6718,
+      "pearson": 0.6836,
+      "pred_mean": 0.5333,
+      "true_mean": 0.5217,
+      "pred_std": 0.1294,
+      "true_std": 0.1533
+    }
+  },
+  "mACC": 0.9135,
+  "mCCC": 0.671,
+  "variants": {
+    "fusion": {
+      "mACC": 0.8408,
+      "mCCC": 0.5335,
+      "acc": {
+        "openness": 0.8365,
+        "conscientiousness": 0.8315,
+        "extraversion": 0.8564,
+        "agreeableness": 0.8372,
+        "emotional_stability": 0.8426
+      },
+      "ccc": {
+        "openness": 0.5153,
+        "conscientiousness": 0.5642,
+        "extraversion": 0.6072,
+        "agreeableness": 0.4334,
+        "emotional_stability": 0.5474
+      }
+    },
+    "scene": {
+      "mACC": 0.9135,
+      "mCCC": 0.671,
+      "acc": {
+        "openness": 0.911,
+        "conscientiousness": 0.9203,
+        "extraversion": 0.9154,
+        "agreeableness": 0.9123,
+        "emotional_stability": 0.9086
+      },
+      "ccc": {
+        "openness": 0.6416,
+        "conscientiousness": 0.7576,
+        "extraversion": 0.7204,
+        "agreeableness": 0.5638,
+        "emotional_stability": 0.6718
+      }
+    }
+  },
+  "seconds_total": 1559.3,
+  "seconds_per_clip": 0.78,
+  "backend": "sslmepr",
+  "corpus": "ssl-mepr(scene+audio+text)",
+  "lang": "en",
+  "asr": false,
+  "dir": "/home/nrsmh/bs/eval/fi_test_all",
+  "bs_version": "0.1.0"
+}

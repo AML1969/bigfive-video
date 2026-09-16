@@ -1,0 +1,29 @@
+# data, media and personal material never go to the public repository
+data/
+video_ru/
+bs/results/video_ru/
+web_jobs/
+*.mp4
+*.MP4
+*.mov
+*.wav
+
+# third-party repositories are referenced by URL, not vendored
+MM-PSYCHE/
+OCEANAI/
+SSL-MEPR-app/
+
+# model weights are published as release assets
+*.pt
+*.pth
+*.ckpt
+
+# python / tooling
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.claude/
+*.log
+.DS_Store
+Thumbs.db

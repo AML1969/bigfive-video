@@ -1,0 +1,52 @@
+{
+  "input": "/home/nrsmh/bs/eval/fi_test200/--Ymqszjv54.000.mp4",
+  "created_at": "2026-09-14T22:50:51",
+  "traits": {
+    "openness": {
+      "score": 0.5277,
+      "percentile_vs_fiv2": 38.5,
+      "name_ru": "открытость опыту"
+    },
+    "conscientiousness": {
+      "score": 0.4815,
+      "percentile_vs_fiv2": 39.6,
+      "name_ru": "добросовестность"
+    },
+    "extraversion": {
+      "score": 0.3992,
+      "percentile_vs_fiv2": 30.7,
+      "name_ru": "экстраверсия"
+    },
+    "agreeableness": {
+      "score": 0.5219,
+      "percentile_vs_fiv2": 39.5,
+      "name_ru": "доброжелательность"
+    },
+    "emotional_stability": {
+      "score": 0.4669,
+      "percentile_vs_fiv2": 34.8,
+      "name_ru": "эмоциональная стабильность (non-neuroticism)",
+      "alias": "non-neuroticism"
+    }
+  },
+  "transcript": "So I'm going to take a bite and experience it with you guys. [you heard it all? 00:00:07]. Now when you don't bite the seeds, see -",
+  "modalities_used": [
+    "audio",
+    "video",
+    "text"
+  ],
+  "model": {
+    "name": "bs-bigfive",
+    "version": "0.1.0",
+    "backend": "oceanai",
+    "corpus": "fi",
+    "lang": "en",
+    "asr_model": null,
+    "trained_on": "FIV2 train"
+  },
+  "timings_sec": {
+    "total": 3.6,
+    "model_load": 30.3
+  },
+  "disclaimer": "Apparent personality as perceived by observers (First Impressions V2 style); probabilistic research estimate, not a psychological assessment or diagnosis."
+}

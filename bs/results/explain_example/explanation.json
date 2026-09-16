@@ -1,0 +1,867 @@
+{
+  "input": "/home/nrsmh/bs/eval/mm_smoke/clip.mp4",
+  "transcript": "I assume what they mean by TV is like having cable. So I feel like for me having cable is pointless because I could just watch everything on the internet.",
+  "behavior_description": "The person displays a neutral to slightly engaged emotional state, with subtle shifts in gaze (direct to side glances) and mouth movements (closed, slightly open, or smiling) indicating mild hesitation or thoughtfulness. Facial muscles show minimal tension, with eyebrows shifting subtly, suggesting calmness with occasional uncertainty. Posture remains steady, and expressions",
+  "modalities": {
+    "input_x_gradient": {
+      "openness": {
+        "face": {
+          "signed": 0.00081,
+          "share": 0.1826
+        },
+        "audio": {
+          "signed": -0.00114,
+          "share": 0.259
+        },
+        "text": {
+          "signed": 0.00102,
+          "share": 0.2315
+        },
+        "behavior": {
+          "signed": -0.00144,
+          "share": 0.3269
+        }
+      },
+      "conscientiousness": {
+        "face": {
+          "signed": 0.00529,
+          "share": 0.497
+        },
+        "audio": {
+          "signed": 0.00497,
+          "share": 0.467
+        },
+        "text": {
+          "signed": -0.00038,
+          "share": 0.036
+        },
+        "behavior": {
+          "signed": 0.0,
+          "share": 0.0
+        }
+      },
+      "extraversion": {
+        "face": {
+          "signed": -0.00996,
+          "share": 0.5781
+        },
+        "audio": {
+          "signed": 0.00444,
+          "share": 0.2575
+        },
+        "text": {
+          "signed": 0.00121,
+          "share": 0.07
+        },
+        "behavior": {
+          "signed": -0.00163,
+          "share": 0.0943
+        }
+      },
+      "agreeableness": {
+        "face": {
+          "signed": -0.025,
+          "share": 0.8744
+        },
+        "audio": {
+          "signed": 0.00257,
+          "share": 0.0899
+        },
+        "text": {
+          "signed": 0.00035,
+          "share": 0.0124
+        },
+        "behavior": {
+          "signed": -0.00066,
+          "share": 0.0232
+        }
+      },
+      "emotional_stability": {
+        "face": {
+          "signed": -0.01214,
+          "share": 0.6737
+        },
+        "audio": {
+          "signed": 0.00368,
+          "share": 0.2041
+        },
+        "text": {
+          "signed": 0.00085,
+          "share": 0.0472
+        },
+        "behavior": {
+          "signed": -0.00135,
+          "share": 0.075
+        }
+      },
+      "interview": {
+        "face": {
+          "signed": -0.01642,
+          "share": 0.727
+        },
+        "audio": {
+          "signed": 0.00495,
+          "share": 0.2194
+        },
+        "text": {
+          "signed": 0.00046,
+          "share": 0.0203
+        },
+        "behavior": {
+          "signed": -0.00075,
+          "share": 0.0334
+        }
+      }
+    },
+    "leave_one_out_delta": {
+      "face": {
+        "openness": -0.2453,
+        "conscientiousness": -0.1628,
+        "extraversion": -0.1458,
+        "agreeableness": -0.0576,
+        "emotional_stability": -0.1949,
+        "interview": -0.1271
+      },
+      "audio": {
+        "openness": 0.0477,
+        "conscientiousness": 0.0463,
+        "extraversion": 0.0086,
+        "agreeableness": 0.0255,
+        "emotional_stability": 0.0533,
+        "interview": 0.0408
+      },
+      "text": {
+        "openness": 0.0052,
+        "conscientiousness": 0.0051,
+        "extraversion": -0.0012,
+        "agreeableness": -0.011,
+        "emotional_stability": 0.0044,
+        "interview": -0.0055
+      },
+      "behavior": {
+        "openness": 0.0428,
+        "conscientiousness": 0.0102,
+        "extraversion": 0.0363,
+        "agreeableness": 0.0191,
+        "emotional_stability": 0.0378,
+        "interview": 0.021
+      }
+    }
+  },
+  "scores": {
+    "openness": 0.6625,
+    "conscientiousness": 0.6304,
+    "extraversion": 0.5104,
+    "agreeableness": 0.498,
+    "emotional_stability": 0.5674,
+    "interview": 0.5254
+  },
+  "frames": {
+    "per_output": {
+      "openness": {
+        "importance": [
+          0.00417,
+          0.00114,
+          0.00257,
+          0.00355,
+          0.00254,
+          0.00182,
+          0.00292,
+          0.00327,
+          0.00169,
+          0.00103,
+          0.00142,
+          0.00431,
+          0.00651,
+          0.0007,
+          0.0013,
+          0.00195,
+          0.00673,
+          0.00015,
+          0.00213,
+          0.00119,
+          0.00057,
+          0.0002,
+          0.00299,
+          0.00092,
+          0.00044,
+          0.00035,
+          0.00042,
+          0.00037,
+          0.00168,
+          0.00188
+        ],
+        "top_frames": [
+          16,
+          12,
+          11,
+          0,
+          3
+        ]
+      },
+      "conscientiousness": {
+        "importance": [
+          0.00367,
+          0.00075,
+          0.00185,
+          0.00057,
+          0.00017,
+          0.00019,
+          0.00297,
+          0.00332,
+          0.00186,
+          0.00046,
+          0.00102,
+          8e-05,
+          0.00442,
+          0.00274,
+          0.00233,
+          0.00186,
+          0.00378,
+          0.00042,
+          0.00402,
+          0.00064,
+          0.00178,
+          0.00011,
+          0.00215,
+          0.00097,
+          0.00081,
+          0.00289,
+          0.0022,
+          0.00373,
+          0.00074,
+          0.00554
+        ],
+        "top_frames": [
+          29,
+          12,
+          18,
+          16,
+          27
+        ]
+      },
+      "extraversion": {
+        "importance": [
+          0.00406,
+          0.00029,
+          0.00319,
+          0.00489,
+          0.00573,
+          6e-05,
+          0.00407,
+          0.00185,
+          0.00257,
+          0.00465,
+          3e-05,
+          0.00141,
+          0.00807,
+          0.00102,
+          0.00085,
+          0.00074,
+          0.00983,
+          0.00107,
+          0.00056,
+          0.00266,
+          0.00109,
+          0.00011,
+          0.00169,
+          0.00081,
+          3e-05,
+          0.00335,
+          0.00188,
+          0.00275,
+          0.00059,
+          0.00492
+        ],
+        "top_frames": [
+          16,
+          12,
+          4,
+          29,
+          3
+        ]
+      },
+      "agreeableness": {
+        "importance": [
+          0.0017,
+          0.00045,
+          0.00327,
+          0.00028,
+          0.00246,
+          0.00033,
+          0.00217,
+          0.00109,
+          0.00238,
+          0.00325,
+          0.00056,
+          0.00193,
+          0.00476,
+          0.00179,
+          0.00085,
+          0.00065,
+          0.00546,
+          0.00078,
+          0.00085,
+          0.00152,
+          0.00024,
+          0.00063,
+          0.00061,
+          0.00086,
+          0.0018,
+          0.00045,
+          0.00064,
+          4e-05,
+          0.0015,
+          0.0044
+        ],
+        "top_frames": [
+          16,
+          12,
+          29,
+          2,
+          9
+        ]
+      },
+      "emotional_stability": {
+        "importance": [
+          0.00531,
+          0.0013,
+          0.00306,
+          0.0045,
+          0.00257,
+          0.00226,
+          0.00369,
+          0.00359,
+          0.00199,
+          0.00176,
+          0.0005,
+          0.00625,
+          0.00886,
+          0.00031,
+          0.00101,
+          0.00174,
+          0.0102,
+          0.00118,
+          0.00059,
+          0.00345,
+          0.00031,
+          0.00062,
+          0.00313,
+          0.00081,
+          0.00034,
+          7e-05,
+          0.00073,
+          0.00053,
+          0.00182,
+          0.0038
+        ],
+        "top_frames": [
+          16,
+          12,
+          11,
+          0,
+          3
+        ]
+      },
+      "interview": {
+        "importance": [
+          0.00407,
+          0.00093,
+          0.00364,
+          0.00245,
+          0.00305,
+          0.00032,
+          0.00315,
+          0.00269,
+          0.00246,
+          0.00308,
+          0.00061,
+          0.0008,
+          0.00735,
+          0.0005,
+          0.00107,
+          0.00079,
+          0.00765,
+          0.00063,
+          0.00192,
+          0.00175,
+          0.00041,
+          0.00039,
+          0.00204,
+          0.00088,
+          0.00095,
+          0.00168,
+          0.00071,
+          0.00159,
+          0.00026,
+          0.00516
+        ],
+        "top_frames": [
+          16,
+          12,
+          29,
+          0,
+          2
+        ]
+      }
+    },
+    "top_frames_overall": [
+      16,
+      12,
+      29,
+      0,
+      6
+    ],
+    "n_frames": 30,
+    "key_frame_files": [
+      "/home/nrsmh/bs/eval/mm_smoke/explain/key_00_frame0.jpg",
+      "/home/nrsmh/bs/eval/mm_smoke/explain/key_06_frame75.jpg",
+      "/home/nrsmh/bs/eval/mm_smoke/explain/key_12_frame151.jpg",
+      "/home/nrsmh/bs/eval/mm_smoke/explain/key_16_frame201.jpg",
+      "/home/nrsmh/bs/eval/mm_smoke/explain/key_29_frame366.jpg"
+    ]
+  },
+  "transcript_words": {
+    "per_output": {
+      "openness": {
+        "top_words": [
+          {
+            "word": "internet.",
+            "signed": 0.00178
+          },
+          {
+            "word": "feel",
+            "signed": 0.00169
+          },
+          {
+            "word": "TV",
+            "signed": 0.00109
+          },
+          {
+            "word": "watch",
+            "signed": 0.00101
+          },
+          {
+            "word": "what",
+            "signed": 0.00091
+          },
+          {
+            "word": "pointless",
+            "signed": 0.00086
+          },
+          {
+            "word": "they",
+            "signed": -0.00082
+          },
+          {
+            "word": "me",
+            "signed": 0.0008
+          }
+        ]
+      },
+      "conscientiousness": {
+        "top_words": [
+          {
+            "word": "feel",
+            "signed": 0.00177
+          },
+          {
+            "word": "internet.",
+            "signed": 0.00173
+          },
+          {
+            "word": "cable.",
+            "signed": 0.001
+          },
+          {
+            "word": "the",
+            "signed": 0.00085
+          },
+          {
+            "word": "having",
+            "signed": -0.00079
+          },
+          {
+            "word": "could",
+            "signed": -0.00076
+          },
+          {
+            "word": "I",
+            "signed": 0.00072
+          },
+          {
+            "word": "assume",
+            "signed": -0.00071
+          }
+        ]
+      },
+      "extraversion": {
+        "top_words": [
+          {
+            "word": "feel",
+            "signed": 0.00231
+          },
+          {
+            "word": "internet.",
+            "signed": 0.00211
+          },
+          {
+            "word": "watch",
+            "signed": 0.00134
+          },
+          {
+            "word": "pointless",
+            "signed": 0.00132
+          },
+          {
+            "word": "TV",
+            "signed": 0.0012
+          },
+          {
+            "word": "is",
+            "signed": 0.00117
+          },
+          {
+            "word": "me",
+            "signed": 0.00095
+          },
+          {
+            "word": "they",
+            "signed": -0.00091
+          }
+        ]
+      },
+      "agreeableness": {
+        "top_words": [
+          {
+            "word": "feel",
+            "signed": 0.0025
+          },
+          {
+            "word": "internet.",
+            "signed": 0.00183
+          },
+          {
+            "word": "watch",
+            "signed": 0.00167
+          },
+          {
+            "word": "me",
+            "signed": 0.00132
+          },
+          {
+            "word": "they",
+            "signed": -0.00106
+          },
+          {
+            "word": "could",
+            "signed": -0.001
+          },
+          {
+            "word": "what",
+            "signed": 0.00098
+          },
+          {
+            "word": "TV",
+            "signed": 0.00089
+          }
+        ]
+      },
+      "emotional_stability": {
+        "top_words": [
+          {
+            "word": "feel",
+            "signed": 0.00216
+          },
+          {
+            "word": "internet.",
+            "signed": 0.00181
+          },
+          {
+            "word": "pointless",
+            "signed": 0.00122
+          },
+          {
+            "word": "is",
+            "signed": 0.00122
+          },
+          {
+            "word": "TV",
+            "signed": 0.00099
+          },
+          {
+            "word": "they",
+            "signed": -0.00092
+          },
+          {
+            "word": "could",
+            "signed": -0.00087
+          },
+          {
+            "word": "watch",
+            "signed": 0.00083
+          }
+        ]
+      },
+      "interview": {
+        "top_words": [
+          {
+            "word": "feel",
+            "signed": 0.00267
+          },
+          {
+            "word": "internet.",
+            "signed": 0.00213
+          },
+          {
+            "word": "watch",
+            "signed": 0.0013
+          },
+          {
+            "word": "could",
+            "signed": -0.00103
+          },
+          {
+            "word": "they",
+            "signed": -0.00098
+          },
+          {
+            "word": "is",
+            "signed": 0.00097
+          },
+          {
+            "word": "having",
+            "signed": -0.00097
+          },
+          {
+            "word": "me",
+            "signed": 0.00093
+          }
+        ]
+      }
+    },
+    "n_tokens": 34
+  },
+  "behavior_words": {
+    "per_output": {
+      "openness": {
+        "top_words": [
+          {
+            "word": "hesitation",
+            "signed": 0.00427
+          },
+          {
+            "word": "smiling)",
+            "signed": 0.00343
+          },
+          {
+            "word": "engaged",
+            "signed": -0.0022
+          },
+          {
+            "word": "person",
+            "signed": 0.00204
+          },
+          {
+            "word": "uncertainty.",
+            "signed": 0.00196
+          },
+          {
+            "word": "thoughtfulness.",
+            "signed": 0.0018
+          },
+          {
+            "word": "indicating",
+            "signed": -0.00164
+          },
+          {
+            "word": "glances)",
+            "signed": 0.00121
+          }
+        ]
+      },
+      "conscientiousness": {
+        "top_words": [
+          {
+            "word": "hesitation",
+            "signed": 0.0015
+          },
+          {
+            "word": "smiling)",
+            "signed": 0.00114
+          },
+          {
+            "word": "person",
+            "signed": 0.00081
+          },
+          {
+            "word": "uncertainty.",
+            "signed": 0.00078
+          },
+          {
+            "word": "thoughtfulness.",
+            "signed": 0.00074
+          },
+          {
+            "word": "engaged",
+            "signed": -0.0007
+          },
+          {
+            "word": "indicating",
+            "signed": -0.00056
+          },
+          {
+            "word": "displays",
+            "signed": 0.00038
+          }
+        ]
+      },
+      "extraversion": {
+        "top_words": [
+          {
+            "word": "hesitation",
+            "signed": 0.00391
+          },
+          {
+            "word": "smiling)",
+            "signed": 0.00318
+          },
+          {
+            "word": "engaged",
+            "signed": -0.00204
+          },
+          {
+            "word": "person",
+            "signed": 0.00187
+          },
+          {
+            "word": "uncertainty.",
+            "signed": 0.00177
+          },
+          {
+            "word": "thoughtfulness.",
+            "signed": 0.00168
+          },
+          {
+            "word": "indicating",
+            "signed": -0.0015
+          },
+          {
+            "word": "glances)",
+            "signed": 0.00109
+          }
+        ]
+      },
+      "agreeableness": {
+        "top_words": [
+          {
+            "word": "hesitation",
+            "signed": 0.00191
+          },
+          {
+            "word": "smiling)",
+            "signed": 0.00148
+          },
+          {
+            "word": "engaged",
+            "signed": -0.00089
+          },
+          {
+            "word": "uncertainty.",
+            "signed": 0.00085
+          },
+          {
+            "word": "thoughtfulness.",
+            "signed": 0.00083
+          },
+          {
+            "word": "person",
+            "signed": 0.00081
+          },
+          {
+            "word": "indicating",
+            "signed": -0.00071
+          },
+          {
+            "word": "glances)",
+            "signed": 0.00048
+          }
+        ]
+      },
+      "emotional_stability": {
+        "top_words": [
+          {
+            "word": "hesitation",
+            "signed": 0.00389
+          },
+          {
+            "word": "smiling)",
+            "signed": 0.00314
+          },
+          {
+            "word": "engaged",
+            "signed": -0.00202
+          },
+          {
+            "word": "person",
+            "signed": 0.00189
+          },
+          {
+            "word": "uncertainty.",
+            "signed": 0.00182
+          },
+          {
+            "word": "thoughtfulness.",
+            "signed": 0.00164
+          },
+          {
+            "word": "indicating",
+            "signed": -0.00152
+          },
+          {
+            "word": "glances)",
+            "signed": 0.0011
+          }
+        ]
+      },
+      "interview": {
+        "top_words": [
+          {
+            "word": "hesitation",
+            "signed": 0.00262
+          },
+          {
+            "word": "smiling)",
+            "signed": 0.00207
+          },
+          {
+            "word": "engaged",
+            "signed": -0.00129
+          },
+          {
+            "word": "person",
+            "signed": 0.00124
+          },
+          {
+            "word": "uncertainty.",
+            "signed": 0.00122
+          },
+          {
+            "word": "thoughtfulness.",
+            "signed": 0.00117
+          },
+          {
+            "word": "indicating",
+            "signed": -0.00099
+          },
+          {
+            "word": "glances)",
+            "signed": 0.00069
+          }
+        ]
+      }
+    },
+    "n_tokens": 69
+  },
+  "seconds": 12.58
+}

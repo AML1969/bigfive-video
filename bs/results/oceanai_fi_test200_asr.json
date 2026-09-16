@@ -1,0 +1,65 @@
+{
+  "n": 200,
+  "per_trait": {
+    "openness": {
+      "mae": 0.0773,
+      "acc": 0.9227,
+      "ccc": 0.6442,
+      "pearson": 0.6894,
+      "pred_mean": 0.5872,
+      "true_mean": 0.5742,
+      "pred_std": 0.0963,
+      "true_std": 0.1375
+    },
+    "conscientiousness": {
+      "mae": 0.0777,
+      "acc": 0.9223,
+      "ccc": 0.7298,
+      "pearson": 0.8015,
+      "pred_mean": 0.5353,
+      "true_mean": 0.5148,
+      "pred_std": 0.1055,
+      "true_std": 0.1592
+    },
+    "extraversion": {
+      "mae": 0.0739,
+      "acc": 0.9261,
+      "ccc": 0.6968,
+      "pearson": 0.7512,
+      "pred_mean": 0.4821,
+      "true_mean": 0.4771,
+      "pred_std": 0.0983,
+      "true_std": 0.1452
+    },
+    "agreeableness": {
+      "mae": 0.0865,
+      "acc": 0.9135,
+      "ccc": 0.5606,
+      "pearson": 0.6581,
+      "pred_mean": 0.5726,
+      "true_mean": 0.5462,
+      "pred_std": 0.0826,
+      "true_std": 0.1403
+    },
+    "emotional_stability": {
+      "mae": 0.0801,
+      "acc": 0.9199,
+      "ccc": 0.6878,
+      "pearson": 0.7875,
+      "pred_mean": 0.5494,
+      "true_mean": 0.5157,
+      "pred_std": 0.0974,
+      "true_std": 0.154
+    }
+  },
+  "mACC": 0.9209,
+  "mCCC": 0.6638,
+  "seconds_total": 1488.2,
+  "seconds_per_clip": 7.44,
+  "backend": "oceanai",
+  "corpus": "fi",
+  "lang": "en",
+  "asr": true,
+  "dir": "/home/nrsmh/bs/eval/fi_test200",
+  "bs_version": "0.1.0"
+}

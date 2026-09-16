@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bs-bigfive"
+version = "0.1.0"
+description = "Big Five (OCEAN) apparent personality scores from a video. Stage 1: OCEAN-AI backend."
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+bs = "bs_bigfive.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["bs_bigfive*"]
+
+[tool.setuptools.package-data]
+bs_bigfive = ["*.json"]
