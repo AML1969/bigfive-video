@@ -349,7 +349,8 @@ def frames_html(rep: dict, frames: List[Tuple[str, str]], max_side: int = 1280) 
             "cursor:zoom-in;border-radius:8px;background:rgba(128,128,128,.12)'>"
             f"<figcaption style='text-align:center;font-size:14px;margin-top:4px'>{caption}</figcaption></figure>")
     where = f" (отрезок {seg_label(seg['start'], seg['end'])})" if seg else ""
-    what = "подпись — момент ролика (мин:с)" if timed else "подпись — номер кадра"
+    what = (("подпись — момент ролика (мин:с, после запятой — десятые доли секунды)" if tenths
+             else "подпись — момент ролика (мин:с)") if timed else "подпись — номер кадра")
     return ("<style>.bs-big{position:fixed!important;inset:4vh 4vw;width:92vw!important;height:92vh!important;"
             "max-height:none!important;aspect-ratio:auto!important;z-index:9999;background:rgba(0,0,0,.9)!important;box-shadow:0 0 0 100vmax rgba(0,0,0,.85);"
             "cursor:zoom-out!important;object-fit:contain;border-radius:0!important}"
