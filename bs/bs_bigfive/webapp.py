@@ -33,7 +33,7 @@ TRAIT_TITLES = {
     "interview": "Впечатление «пригласить на собеседование»",
 }
 # which OCEAN-AI weights were used, for the «Готово» line
-CORPUS_RU = {"mupta": "веса OCEAN-AI для русской речи (MuPTA)", "fi": "веса OCEAN-AI для английской речи (First Impressions V2)"}
+CORPUS_RU = {"mupta": "веса OCEAN-AI MuPTA для русской речи", "fi": "веса OCEAN-AI First Impressions V2 для английской речи"}
 MEMBER_TITLES = {"oceanai":"OCEAN-AI", "mm": "Своя модель (MM-PSYCHE)", "scene": "SSL-MEPR сцена",
                  "face": "лицо", "audio": "голос (CLAP)", "audio_whisper": "голос (Whisper)", "audio_xlsr": "голос (XLS-R)",
                  "audio_w2v_emo": "голос (wav2vec2)", "text": "речь", "behavior": "описание поведения"}
@@ -135,14 +135,41 @@ class Engine:
         return getattr(self, key)
 
 
+SMALL_POOL = 20      # below this many processed videos a percentage only looks precise: say it in words (as narrative.py)
+
+
+def _pool_n(ref: str | None) -> int | None:
+    m = re.search(r"N\s*=\s*(\d+)", ref or "")
+    return int(m.group(1)) if m else None
+
+
 def _pct_phrase(pct, ref: str | None) -> str:
-    """Position relative to the reference group in words: «выше, чем у 72% русских роликов». The group is the
-    pool of processed videos when `ref` names it («пула …»), otherwise the FIV2 train labels."""
+    """Position relative to the reference group in words: «выше, чем у 72% людей в FIV2»; against a small pool of
+    processed videos «выше, чем у большинства из 10 русских роликов». The group is the pool when `ref` names it
+    («пула …»), otherwise the FIV2 train labels."""
     if pct is None:
-        return "положение: пул пока мал"
-    group = "русских роликов" if "пула" in (ref or "") else "людей в FIV2"
+        return "мало роликов для сравнения"
     p = max(0.0, min(100.0, float(pct)))
+    if "пула" in (ref or ""):
+        n = _pool_n(ref)
+        if n is not None and n < SMALL_POOL:
+            if p > 60:
+                return f"выше, чем у большинства из {n} русских роликов"
+            if p < 40:
+                return f"ниже, чем у большинства из {n} русских роликов"
+            return f"примерно посередине среди {n} русских роликов"
+        group = "русских роликов"
+    else:
+        group = "людей в FIV2"
     return f"выше, чем у {p:.0f}% {group}" if p >= 50 else f"ниже, чем у {100 - p:.0f}% {group}"
+
+
+def _ref_words(ref: str | None) -> str:
+    """«среди обработанных русских роликов (сейчас их 10)» / «среди 6000 клипов обучающей выборки First Impressions V2»."""
+    if "пула" in (ref or ""):
+        n = _pool_n(ref)
+        return "среди обработанных русских роликов" + (f" (сейчас их {n})" if n else "")
+    return "среди 6000 клипов обучающей выборки First Impressions V2"
 
 
 def _has_chart(rep: dict | None) -> bool:
@@ -153,14 +180,11 @@ def _has_chart(rep: dict | None) -> bool:
 def _bar_html(traits: dict, interview: dict | None, with_chart: bool = False) -> str:
     rows = []
     items = [(k, traits[k]) for k in TRAIT_KEYS] + ([("interview", interview)] if interview else [])
-    refs = []
     for k, t in items:
         pct = t.get("percentile", t.get("percentile_vs_fiv2"))
         score = float(t["score"])
         color = TRAIT_COLORS[k]                       # the same colour as the trait's line on the chart
         ref = t.get("percentile_ref", "train FIV2")
-        if ref not in refs:
-            refs.append(ref)
         txt = f"{score:.2f} · {_pct_phrase(pct, ref)}"
         width = max(2, min(100, score * 100))        # bar length = the score itself (0…1)
         rows.append(
@@ -168,8 +192,15 @@ def _bar_html(traits: dict, interview: dict | None, with_chart: bool = False) ->
             f"<b>{TRAIT_TITLES[k]}</b><span style='text-align:right'>{txt}</span></div>"
             f"<div style='{TRACK};border-radius:6px;height:14px'>"
             f"<div style='width:{width:.0f}%;height:100%;background:{color}'></div></div></div>")
-    note = ("Длина полоски — оценка от 0 до 1 (вся рамка соответствует 1). Рядом — положение относительно опорной группы: "
-            + "; ".join(refs) + ".")
+    tr_ref = traits[TRAIT_KEYS[0]].get("percentile_ref", "train FIV2")
+    iv_ref = (interview or {}).get("percentile_ref", "train FIV2")
+    if interview and ("пула" in tr_ref) != ("пула" in iv_ref):
+        where = f"пять черт — {_ref_words(tr_ref)}, «собеседование» — {_ref_words(iv_ref)}"
+    else:
+        where = _ref_words(tr_ref)
+    note = f"Длина полоски — оценка от 0 до 1 (вся рамка соответствует 1). Рядом — положение: {where}."
+    if "пула" in tr_ref and (_pool_n(tr_ref) or 0) < SMALL_POOL:
+        note += " Пока роликов в сравнении мало, поэтому положение черт описано словами, а не в процентах."
     if with_chart:
         note += " Цвет полоски совпадает с цветом линии этой черты на графике ниже."
     return ("<div style='max-width:640px'>" + "".join(rows) +
@@ -191,7 +222,7 @@ def _members_html(rep: dict) -> str:
         # «Второе мнение — своя модель (MM-PSYCHE)»: lower-case inside the sentence, names like OCEAN-AI stay as they are
         title = ("Второе мнение — "
                  + ", ".join(f"<span style='white-space:nowrap'>{_mid_sentence(MEMBER_TITLES.get(m, m))}</span>" for m in others)
-                 + f"<div style='{NOTE};font-weight:400;margin-top:2px'>Шкала FIV2, положение — относительно train FIV2</div>")
+                 + f"<div style='{NOTE};font-weight:400;margin-top:2px'>Шкала First Impressions V2, положение — {_ref_words('train FIV2')}</div>")
         for m in others:
             for k in TRAIT_KEYS:
                 s = float(var[m][k]); pct = percentile(k, s)
@@ -445,6 +476,14 @@ def export_pdf(job_dir: str | Path) -> str:
 STATUS_LABELS = {"running": "Идёт обработка", "done": "Готово", "stopped": "Остановлено", "error": "Ошибка"}
 
 
+def _live_desc(state: dict) -> str:
+    """«[1 мин 05 с] Отрезок 3/29 (0:40–1:00)»: the time since the start, counted anew on every refresh, so it keeps
+    running during a long stage such as model loading (stage messages carry the time at which the stage began)."""
+    e = time.time() - state["t0"]
+    when = f"{int(e)} с" if e < 60 else fmt_secs(e)
+    return f"[{when}] " + re.sub(r"^\[[^\]]*\]\s*", "", str(state["desc"]))
+
+
 def _status_html(frac: float, desc: str, kind: str = "running", label: str | None = None) -> str:
     """The progress / result bar above the page (gr.HTML without a container, i.e. on the page background).
     kind: running (orange, width = progress), done (green), stopped / error (red); the last three fill the bar."""
@@ -509,7 +548,7 @@ def build_app(engine: Engine, work_dir: Path):
         th.start()
         while th.is_alive():
             th.join(1.0)
-            yield (_status_html(state["frac"], state["desc"]),) + (gr.update(),) * N_REST
+            yield (_status_html(state["frac"], _live_desc(state)),) + (gr.update(),) * N_REST
         if "e" in result:
             e = result["e"]
             # the status bar must not stay on the orange «Идёт обработка» after a failure: show the outcome first
