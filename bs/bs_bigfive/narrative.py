@@ -13,15 +13,49 @@ MOD_RU = {"face": "лицо", "audio": "голос", "audio_whisper": "голо�
           "text": "содержание речи", "behavior": "описание поведения"}
 
 
+SMALL_POOL = 20          # below this many processed videos a percentage only looks precise: say it in words
+SYSTEM_RU = {"oceanai": "OCEAN-AI", "mm": "своя модель (MM-PSYCHE)", "scene": "SSL-MEPR (сцена)"}
+# grammatical gender of the modality names, for «почти не повлиял / повлияло»
+MOD_GENDER = {"лицо": "n", "голос": "m", "содержание речи": "n", "описание поведения": "n"}
+
+
+def plural_ru(n: int, forms: tuple) -> str:
+    """plural_ru(21, ("отрезок", "отрезка", "отрезков")) -> "отрезок"."""
+    n = abs(int(n))
+    if n % 10 == 1 and n % 100 != 11:
+        return forms[0]
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return forms[1]
+    return forms[2]
+
+
+def _pool_size(ref: str):
+    import re
+    m = re.search(r"N\s*=\s*(\d+)", ref or "")
+    return int(m.group(1)) if m else None
+
+
 def _pct_phrase(t: dict, what: str = "роликов") -> str:
+    """Same wording as the score bars: a percentage for large reference groups, words for a small pool."""
     pct = t.get("percentile")
     if pct is None:
         return ""
     ref = t.get("percentile_ref", "")
-    pool = "обработанных русских роликов" if "пула" in ref else "людей в датасете First Impressions V2"
-    if pct >= 50:
-        return f"выше, чем у {pct:.0f}% {pool}"
-    return f"ниже, чем у {100 - pct:.0f}% {pool}"
+    if "пула" in ref:
+        group = "русских роликов" if "русских" in ref else ("английских роликов" if "английских" in ref else "обработанных роликов")
+    else:
+        group = "людей в First Impressions V2"
+    p = max(0.0, min(100.0, float(pct)))
+    n = _pool_size(ref)
+    if "пула" in ref and n is not None and n < SMALL_POOL:
+        if p > 60:
+            return f"выше, чем у большинства из {n} {group}"
+        if p < 40:
+            return f"ниже, чем у большинства из {n} {group}"
+        return f"примерно посередине среди {n} {group}"
+    if 45 <= p <= 55:
+        return f"примерно посередине среди {group}"
+    return f"выше, чем у {p:.0f}% {group}" if p > 50 else f"ниже, чем у {100 - p:.0f}% {group}"
 
 
 def _name(k: str) -> str:
@@ -39,7 +73,7 @@ def build_narrative(rep: dict, expl: dict | None = None) -> str:
         parts.append("Основные оценки дала система OCEAN-AI на весах MuPTA, обученных на русскоязычных участниках; своя модель "
                      "показана как второе мнение.")
     elif primary:
-        parts.append(f"Основные оценки дала система {primary}.")
+        parts.append(f"Основные оценки дала система {SYSTEM_RU.get(primary, primary)}.")
     else:
         parts.append("Оценки — среднее двух систем (OCEAN-AI и своей модели), обе на шкале First Impressions V2.")
 
@@ -65,16 +99,18 @@ def build_narrative(rep: dict, expl: dict | None = None) -> str:
     if tl and std:
         worst = max(TRAIT_KEYS, key=lambda k: std.get(k, 0))
         if std.get(worst, 0) <= 0.05:
-            parts.append(f"По ходу ролика ({len(tl)} сегментов) оценки устойчивы: разброс не больше ±{std[worst]:.2f}.")
+            parts.append(f"По ходу ролика ({len(tl)} {plural_ru(len(tl), ('отрезок', 'отрезка', 'отрезков'))}) оценки устойчивы: "
+                         f"разброс не больше ±{std[worst]:.2f}.")
         else:
-            parts.append(f"По ходу ролика ({len(tl)} сегментов) оценки в целом устойчивы, сильнее всего колеблется "
+            parts.append(f"По ходу ролика ({len(tl)} {plural_ru(len(tl), ('отрезок', 'отрезка', 'отрезков'))}) оценки в целом "
+                         f"устойчивы, сильнее всего колеблется "
                          f"{_name(worst)} (±{std[worst]:.2f}).")
         means = np.array([np.mean([t["scores"][k] for k in TRAIT_KEYS]) for t in tl])
         if len(means) >= 4 and means.std() > 0:
             z = (means - means.mean()) / means.std()
             odd = [(t, z_) for t, z_ in zip(tl, z) if abs(z_) > 2.0]
             for t, z_ in odd[:2]:
-                parts.append(f"Заметно отличается сегмент {seg_label(t['start'], t['end'])}: оценки "
+                parts.append(f"Заметно отличается отрезок {seg_label(t['start'], t['end'])}: оценки "
                              f"{'выше' if z_ > 0 else 'ниже'} остального ролика.")
 
     # 5. what the own model looked at
@@ -86,7 +122,10 @@ def build_narrative(rep: dict, expl: dict | None = None) -> str:
         weak = [m for m in mods if share[m] < 0.01]
         s = "Своя модель опиралась в основном на " + " и ".join(f"{MOD_RU.get(m, m)} ({share[m] * 100:.0f}%)" for m in main)
         if weak:
-            s += "; " + " и ".join(MOD_RU.get(m, m) for m in weak) + " почти не повлияли (меньше 1%)"
+            names = list(dict.fromkeys(MOD_RU.get(m, m) for m in weak))
+            verb = "почти не повлияли" if len(names) > 1 else (
+                "почти не повлиял" if MOD_GENDER.get(names[0]) == "m" else "почти не повлияло")
+            s += "; " + " и ".join(names) + f" {verb} (меньше 1%)"
         parts.append(s + ".")
 
     # 6. words (union over traits, largest effects)
