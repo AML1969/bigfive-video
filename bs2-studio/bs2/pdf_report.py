@@ -164,7 +164,9 @@ def _analyses_sections(pdf, report: dict) -> None:
     if te.get("mean") or fa.get("mean"):
         order = ["joy", "surprise", "neutral", "sadness", "fear", "anger", "disgust"]
         face_map = {"joy": "happy", "sadness": "sad", "anger": "angry"}
-        header = ["Эмоция"] + [EMO_RU[k] for k in order]
+        two_line = {"joy": "радость", "surprise": "удивле-\nние", "neutral": "нейтраль-\nно", "sadness": "грусть", "fear": "страх",
+                    "anger": "злость", "disgust": "отвраще-\nние"}
+        header = ["Эмоция"] + [two_line[k] for k in order]
         rows = []
         if te.get("mean"):
             rows.append(["по речи"] + [f"{te['mean'].get(k, 0):.0%}" for k in order])
