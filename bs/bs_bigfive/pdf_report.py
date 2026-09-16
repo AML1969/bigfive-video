@@ -66,12 +66,32 @@ def _pool_n(ref: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
+SMALL_POOL = 20      # below this many processed videos a percentage only looks precise (same rule as the web page)
+
+
+def _small_pool_phrase(pct: float, ref: str, group: str):
+    """«выше, чем у большинства из 10 русских роликов» for a small pool, otherwise None."""
+    import re as _re
+    m = _re.search(r"N\s*=\s*(\d+)", ref or "")
+    if "пула" not in (ref or "") or not m or int(m.group(1)) >= SMALL_POOL:
+        return None
+    n = int(m.group(1))
+    if pct > 60:
+        return f"выше, чем у большинства из {n} {group}"
+    if pct < 40:
+        return f"ниже, чем у большинства из {n} {group}"
+    return f"примерно посередине среди {n} {group}"
+
+
 def pct_phrase(pct, ref: str = "") -> str:
     """'выше, чем у 83% русских роликов' / 'ниже, чем у 95% клипов First Impressions V2' / 'мало роликов для сравнения'."""
     if pct is None:
         return "мало роликов для сравнения"
     group = _pool_group(ref) if "пула" in (ref or "") else "клипов First Impressions V2"
     pct = float(pct)
+    small = _small_pool_phrase(pct, ref, group)
+    if small:
+        return small
     return f"выше, чем у {pct:.0f}% {group}" if pct >= 50 else f"ниже, чем у {100 - pct:.0f}% {group}"
 
 
@@ -278,20 +298,20 @@ class Report(FPDF):
         lines = ["Полоска — оценка от 0 до 1, риска — середина шкалы (0.5)"
                  + ("; ± — разброс оценки между отрезками ролика." if std else ".")]
         tref = traits[TRAIT_KEYS[0]].get("percentile_ref", "")
+        n = _pool_n(tref) if "пула" in tref else None
         if "пула" in tref:
-            n = _pool_n(tref)
-            where = f"среди обработанных {_pool_group(tref)}" + (f" (N={n})" if n else "")
-            if n is not None and n < 30:
-                where += "; группа пока мала, поэтому проценты приблизительные"
+            where = f"среди обработанных {_pool_group(tref)}" + (f" (сейчас их {n})" if n else "")
         else:
             where = "среди 6000 клипов обучающей выборки First Impressions V2"
-        lines.append(f"Пять черт (синие полоски) — {score_source(model)}; процент — положение {where}.")
+        if n is not None and n < SMALL_POOL:
+            where += "; пока роликов мало, поэтому положение описано словами, а не в процентах"
+        lines.append(f"Пять черт (цветные полоски) — {score_source(model)}; справа — положение {where}.")
         if interview:
             iref = interview.get("percentile_ref", "")
             iwhere = (f"среди обработанных {_pool_group(iref)}" if "пула" in iref
                       else "среди 6000 клипов обучающей выборки First Impressions V2")
             lines.append(f"«Собеседование» (коричневая полоска, отдельно снизу) — своя модель, шкала First Impressions V2; "
-                         f"процент — положение {iwhere}.")
+                         f"справа — положение {iwhere}.")
         return lines
 
     SCORE_ROW_H = 6.0
