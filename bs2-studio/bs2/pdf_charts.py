@@ -125,12 +125,12 @@ def _traits_chart(plt, rep: dict, out_dir: Path) -> Optional[str]:
         ax.text((t_rep["start"] + t_rep["end"]) / 2, 0.02, "★", transform=blended_transform_factory(ax.transData, ax.transAxes),
                 ha="center", va="bottom", fontsize=12, color=border, zorder=4)
         handles.append(Patch(facecolor=band, edgecolor=border, lw=0.9, ls="--"))
-        labels.append("★ сегмент объяснений")
+        labels.append("★ отрезок для объяснений")
     skipped = [t for t in (rep.get("timeline") or []) if not t.get("scores")]
     for t in skipped:
         _nodata_span(ax, t["start"], t["end"])
     if skipped:
-        handles.append(_nodata_patch("")); labels.append("сегмент пропущен (нет оценки)")
+        handles.append(_nodata_patch("")); labels.append("отрезок пропущен (нет оценки)")
     ax.set_ylim(0, 1); ax.set_ylabel("оценка 0…1"); ax.set_title("Big Five по ходу ролика")
     _time_axis(ax, dur, max_ticks=12)
     ax.set_axisbelow(True); ax.grid(color=GRID, lw=0.6)

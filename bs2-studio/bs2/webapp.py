@@ -22,11 +22,13 @@ from .narrative2 import analyses_sentences, fix_counts, key_facts, plural_ru
 from .norms import TRAIT_KEYS
 from .palette import HTML as PAL
 from .pipeline import Studio, run_analysis
-from .report import DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU, fmt_secs, seg_label
+from .report import DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU, fmt_secs, mmss_labels, seg_label
 from .webparts import (MEMBER_TITLES, NOTE, TRAIT_TITLES, _bar_html, _contrib_html, _members_html, _words_text,
                        table_html, th_text)
 
 log = logging.getLogger("bs2.web")
+# which OCEAN-AI weights were used, for the «Участники ансамбля» box
+CORPUS_RU = {"mupta": "веса OCEAN-AI для русской речи (MuPTA)", "fi": "веса OCEAN-AI для английской речи (First Impressions V2)"}
 # metric cards: 1 px outline 3:1 on every background, light tint so label, value and note read as one card
 CARDS = "display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px"
 CARD = (f"padding:10px 14px;border:1px solid {PAL['card_border']};background:rgba(128,128,128,.08);border-radius:10px;"
@@ -70,7 +72,7 @@ def _segments_table(rep: dict) -> str:
         seg_head = th_text("Отрезок", "ч:мин:с" if hours else "мин:с")
         when = [f"{_clock(r['start'], hours)}–{_clock(r['end'], hours)}" for r in per]
     else:
-        seg_head = th_text("Отрезок", "секунды")
+        seg_head = th_text("Отрезок", "мин:с")
         when = [seg_label(r["start"], r["end"]) for r in per]
     head = [seg_head, th_text("Эмоция", "по тексту речи"), th_text("Выражение", "лица"),
             th_text("Возбуждение", "голос, 0…1"), th_text("Уверенность", "голос, 0…1"), th_text("Позитивность", "голос, 0…1"),
@@ -187,13 +189,19 @@ def _frames_html(rep: dict, max_side: int = 640) -> str:
         except Exception:  # noqa: BLE001
             continue
         m = re.search(r"_frame(\d+)", Path(p).stem)
-        caption = "кадр"
-        if m and seg and fps:
-            t = seg["start"] + int(m.group(1)) / fps
-            caption = f"{int(t) // 60}:{int(t) % 60:02d}"
-        elif m:
-            caption = f"кадр {m.group(1)}"
-        cells.append((b64, caption))
+        t = seg["start"] + int(m.group(1)) / fps if m and seg and fps else None
+        cells.append((b64, t, f"кадр {m.group(1)}" if m else "кадр"))
+    # frames a fraction of a second apart would get the same «0:37» twice: then show tenths («0:37,2»)
+    whole = [f"{int(t) // 60}:{int(t) % 60:02d}" for _, t, _ in cells if t is not None]
+    tenths = len(set(whole)) < len(whole)
+
+    def _moment(t):
+        if not tenths:
+            return f"{int(t) // 60}:{int(t) % 60:02d}"
+        d = int(round(t * 10))
+        return f"{d // 600}:{d // 10 % 60:02d},{d % 10}"
+
+    cells = [(b64, _moment(t) if t is not None else fallback) for b64, t, fallback in cells]
     total = len(cells)
     figs = "".join(
         f"<figure role='button' tabindex='0' title='Щёлкните, чтобы увеличить' onclick=\"this.classList.toggle('bs2-kf-big')\" "
@@ -207,7 +215,8 @@ def _frames_html(rep: dict, max_side: int = 640) -> str:
     return (FRAMES_CSS + "<div class='bs2-kf' style='display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));"
             f"gap:12px'>{figs}</div>"
             f"<p style='{NOTE};margin-top:10px'>Кадры, сильнее всего повлиявшие на оценку своей модели{where}. "
-            "Рамкой на кадре отмечено найденное лицо, подпись под кадром — момент ролика (минуты:секунды). "
+            "Рамкой на кадре отмечено найденное лицо, подпись под кадром — момент ролика (минуты:секунды"
+            + (", после запятой — десятые доли секунды" if tenths else "") + "). "
             "Щелчок по кадру увеличивает его, повторный щелчок закрывает.</p>")
 
 
@@ -279,16 +288,21 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
         narrative = fix_counts(rep.get("narrative") or "") + " " + analyses_sentences(rep)
         members = rep.get("variant_scores") or {}
         primary = (rep.get("model") or {}).get("primary")
-        member_txt = "\n".join(f"{MEMBER_TITLES.get(m, m)}{' — основная оценка' if m == primary else ''}: "
-                               + ", ".join(f"{TRAIT_TITLES[k][:12]} {v[k]:.2f}" for k in TRAIT_KEYS) for m, v in members.items())
-        member_txt += f"\nВремя обработки: {fmt_secs(rep['timings_sec'].get('total_wall', 0))}; модели: {rep.get('model', {}).get('corpus')}"
+        role = lambda m: " — основная оценка" if m == primary else (" — второе мнение" if primary else "")
+        member_txt = "\n".join(f"{MEMBER_TITLES.get(m, m)}{role(m)}: "
+                               + ", ".join(f"{TRAIT_TITLES[k].lower()} {v[k]:.2f}" for k in TRAIT_KEYS if k in v) + "."
+                               for m, v in members.items())
+        # model.corpus of an ensemble is a technical descriptor; the OCEAN-AI weights follow the language
+        weights = CORPUS_RU["mupta" if (rep.get("model") or {}).get("lang") == "ru" else "fi"] if "oceanai" in members else ""
+        member_txt += (f"\nОбработка заняла {fmt_secs(rep['timings_sec'].get('total_wall', 0))}"
+                       + (f"; {weights}." if weights else "."))
         return (_plot_html(fig_radar, rep), _bar_html(rep["traits"], rep.get("interview")) + _members_html(rep), _facts_html(rep),
                 narrative.strip(), _plot_html(fig_traits_timeline, rep), _plot_html(fig_emotions_timeline, rep),
                 _plot_html(fig_voice_timeline, rep), _plot_html(fig_speech_timeline, rep), _plot_html(fig_emotion_bars, rep),
                 _segments_table(rep), _speech_html(rep),
                 rep.get("transcript", ""), _face_html(rep), _plot_html(fig_face_expr, rep), _frames_html(rep), _contrib_html(expl),
                 _words_text(expl, rep, lang, expl_path) if expl else "",
-                rep.get("behavior_description_ru") or rep.get("behavior_description", ""), member_txt,
+                mmss_labels(rep.get("behavior_description_ru") or rep.get("behavior_description", "")), member_txt,
                 json.dumps(rep, ensure_ascii=False, indent=2), str(job / "result.json"), str(job), gr.update(interactive=True))
 
     def analyze(video, lang, explain):
@@ -356,8 +370,9 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
         with gr.Row():
             with gr.Column(scale=1, min_width=320):
                 video = gr.Video(label="Видео", sources=["upload"], height=300)
-                lang = gr.Radio(choices=["ru", "en"], value="ru", label="Язык речи",
-                                info="ru: основная оценка OCEAN-AI (веса MuPTA), своя модель — второе мнение; en: среднее двух систем")
+                lang = gr.Radio(choices=[("русский", "ru"), ("английский", "en")], value="ru", label="Язык речи",
+                                info="Русский: основную оценку даёт OCEAN-AI (веса MuPTA), своя модель — второе мнение. "
+                                     "Английский: среднее двух систем.")
                 explain = gr.Checkbox(value=True, label="Объяснения (ключевые кадры, вклад модальностей, слова)")
                 with gr.Row():
                     btn = gr.Button("Анализировать", variant="primary")

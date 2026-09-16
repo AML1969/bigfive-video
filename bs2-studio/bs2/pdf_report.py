@@ -12,7 +12,7 @@ from fpdf import FPDF
 
 from .norms import RU_SHORT, TRAIT_KEYS
 from .palette import SCORE_BAR_PDF, emo_pdf
-from .report import DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU, clean_word, fmt_secs, seg_label
+from .report import DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU, clean_word, fmt_secs, mmss_labels, seg_label
 
 TITLES = {
     "openness": "Открытость опыту", "conscientiousness": "Добросовестность", "extraversion": "Экстраверсия",
@@ -28,6 +28,8 @@ TITLES_2L = {"openness": "Открытость\nопыту", "conscientiousness"
              "interview": "Собесе-\nдование"}
 SYSTEM_TITLES = {"oceanai": "OCEAN-AI", "mm": "своя модель (MM-PSYCHE)", "scene": "SSL-MEPR (сцена)",
                  "ensemble": "ансамбль", "sslmepr": "SSL-MEPR"}
+MODALITY_TITLES = {**SYSTEM_TITLES, "audio": "голос", "video": "видео", "text": "речь", "face": "лицо",
+                   "behavior": "описание поведения"}
 # container tags from media.probe_media (ffprobe names) -> row titles of the «Файл» table
 MEDIA_TAGS = {"creation_time": "Записан (метка в файле)", "encoder": "Программа записи",
               "com.apple.quicktime.make": "Производитель камеры", "com.apple.quicktime.model": "Модель камеры",
@@ -379,10 +381,10 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
         system = f"{SYSTEM_TITLES.get(m.get('backend'), m.get('backend'))} ({m.get('corpus')})"
     rows = [("Система", system), ("Язык речи", {"ru": "русский", "en": "английский"}.get(m.get("lang"), m.get("lang"))),
             ("Распознавание речи", m.get("asr_model") or "готовый транскрипт"),
-            ("Обучающие данные", m.get("trained_on")), ("Модальности", ", ".join(report.get("modalities_used", []))),
+            ("Обучающие данные", m.get("trained_on")), ("Модальности", ", ".join(MODALITY_TITLES.get(x, x) for x in report.get("modalities_used", []))),
             ("Версия", m.get("version"))]
     if report.get("segments"):
-        rows.append(("Сегменты", f"{report['segments']} по ~20 с; итог — среднее с весом по длительности"))
+        rows.append(("Отрезки", f"{report['segments']} по ~20 с; итог — среднее с весом по длительности"))
     t = report.get("timings_sec", {})
     if t:
         rows.append(("Время обработки", fmt_secs(t.get("total_wall", t.get("total")))))
@@ -402,7 +404,7 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
     pdf.score_bars(report["traits"], report.get("interview"))
     std = report.get("scores_std_across_segments") or {}
     if std:
-        pdf.para("Разброс между сегментами: " + ", ".join(f"{RU_SHORT[k].lower()} ±{std.get(k, 0):.2f}" for k in TRAIT_KEYS), 8)
+        pdf.para("Разброс между отрезками: " + ", ".join(f"{RU_SHORT[k].lower()} ±{std.get(k, 0):.2f}" for k in TRAIT_KEYS), 8)
     var = report.get("variant_scores") or {}
     if var:
         pdf.h3("Оценки участников ансамбля", keep_mm=27)      # the table itself moves to a new page below y=255
@@ -418,9 +420,9 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
     # ---- timeline
     tl = report.get("timeline") or []
     if tl:
-        pdf.h2("4. Таймлайн по сегментам")
+        pdf.h2("4. Таймлайн по отрезкам")
         keys = TRAIT_KEYS + (["interview"] if any(s.get("scores") and "interview" in s["scores"] for s in tl) else [])
-        header = ["Сегмент"] + [TITLES_2L.get(k, TITLES.get(k, k)) for k in keys]
+        header = ["Отрезок"] + [TITLES_2L.get(k, TITLES.get(k, k)) for k in keys]
         rows = []
         for s in tl:
             if s.get("scores"):
@@ -429,7 +431,7 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
             else:
                 rows.append([seg_label(s["start"], s["end"]), "пропущен"] + [""] * (len(keys) - 1))
         pdf.table(header, rows, [30] + [150 / len(keys)] * len(keys), size=8)
-        pdf.para("★ — сегмент, ближайший к среднему профилю; по нему построены объяснения (на графике ниже он выделен рамкой).", 7)
+        pdf.para("★ — отрезок, ближайший к среднему профилю; по нему построены объяснения (на графике ниже он выделен рамкой).", 7)
     charts = report.get("chart_files") or {}
     if charts.get("traits"):
         pdf.ln(2)
@@ -552,8 +554,8 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
     if report.get("behavior_description"):
         if report.get("behavior_description_ru"):
             pdf.h2("9. Описание поведения")
-            pdf.para("Описание строит видеоязыковая модель по кадрам каждого сегмента.", 7)
-            pdf.para(report["behavior_description_ru"], 9)
+            pdf.para("Описание строит видеоязыковая модель по кадрам каждого отрезка.", 7)
+            pdf.para(mmss_labels(report["behavior_description_ru"]), 9)
         else:
             pdf.h2("9. Описание поведения (видеоязыковая модель)")
             pdf.para(report["behavior_description"], 9)

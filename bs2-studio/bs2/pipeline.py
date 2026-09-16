@@ -120,7 +120,7 @@ def run_extra_analyses(studio: Studio, res: dict, lang: str, work_dir: Path, pro
             if should_stop and should_stop():
                 raise AnalysisCancelled("остановлено пользователем")
             if progress:
-                progress(0.75 + 0.15 * (i - 1) / len(tl), f"Эмоции, голос, мимика: сегмент {i}/{len(tl)}")
+                progress(0.75 + 0.15 * (i - 1) / len(tl), f"Эмоции, голос, мимика: отрезок {i}/{len(tl)}")
             row = {"segment": t["segment"], "start": t["start"], "end": t["end"]}
             text_en = _to_en(t.get("transcript", ""), lang)
             row["text_en"] = text_en

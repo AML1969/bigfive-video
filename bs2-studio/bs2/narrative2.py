@@ -20,7 +20,8 @@ def plural_ru(n, one: str, few: str, many: str) -> str:
 
 
 # texts stored in result.json by other modules say «92 слов в минуту», «31 сегментов»: fix the noun form on display
-_COUNT_NOUNS = {"слов": ("слово", "слова", "слов"), "сегментов": ("сегмент", "сегмента", "сегментов")}
+_COUNT_NOUNS = {"слов": ("слово", "слова", "слов"), "сегментов": ("отрезок", "отрезка", "отрезков"),
+                "отрезков": ("отрезок", "отрезка", "отрезков")}
 _GENITIVE_BEFORE = {"из", "до", "от", "около", "без", "для", "больше", "меньше", "более", "менее", "свыше"}
 
 
@@ -32,7 +33,7 @@ def fix_counts(text: str) -> str:
         if prev.strip().lower() in _GENITIVE_BEFORE:
             return m.group(0)
         return f"{prev}{n} {plural_ru(n, *_COUNT_NOUNS[word])}"
-    return re.sub(r"(\b\w+\s)?(\d+)\s(слов|сегментов)\b", repl, text or "")
+    return re.sub(r"(\b\w+\s)?(\d+)\s(слов|сегментов|отрезков)\b", repl, text or "")
 
 
 # «уверенность низкая», «возбуждение низкое»: the level agrees with the gender of the voice dimension

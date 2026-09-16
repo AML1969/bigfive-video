@@ -1,6 +1,7 @@
 """JSON report for one video, following the TZ schema (section 6)."""
 from __future__ import annotations
 import datetime as _dt
+import re
 from pathlib import Path
 
 from . import __version__
@@ -46,6 +47,15 @@ def seg_label(start, end) -> str:
     two formats."""
     s, e = int(round(float(start))), int(round(float(end)))
     return f"{s // 60}:{s % 60:02d}–{e // 60}:{e % 60:02d}"
+
+
+_SEC_LABEL = re.compile(r"\[(\d+(?:[.,]\d+)?)\s*[–-]\s*(\d+(?:[.,]\d+)?)\s*(?:с|s)\]")
+
+
+def mmss_labels(text) -> str:
+    """Segment labels inside behaviour descriptions ('[100–120 с]') in the timeline format ('[1:40–2:00]')."""
+    return _SEC_LABEL.sub(lambda m: "[" + seg_label(float(m.group(1).replace(",", ".")),
+                                                    float(m.group(2).replace(",", "."))) + "]", str(text or ""))
 
 
 def build_report(video: str | Path, result: dict, *, backend: str, corpus: str, lang: str,

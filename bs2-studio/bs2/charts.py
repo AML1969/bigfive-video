@@ -153,10 +153,10 @@ def fig_traits_timeline(rep: dict, theme: str = "dark"):
     t_rep = next((t for t in segs if t["segment"] == rep_i), None) if rep_i else None
     if t_rep:
         fig.add_vrect(x0=t_rep["start"], x1=t_rep["end"], fillcolor=T["band"], layer="below",
-                      line=dict(color=T["band_border"], width=1, dash="dash"), annotation_text="сегмент объяснений",
+                      line=dict(color=T["band_border"], width=1, dash="dash"), annotation_text="отрезок для объяснений",
                       annotation_position="top " + side(t_rep["start"], t_rep["end"]), annotation_font=band_font,
                       annotation_bgcolor=T["hover_bg"], annotation_bordercolor=T["hover_border"], annotation_borderpad=2)
-        _legend_proxy(fig, "сегмент объяснений (ключевые кадры)", T["band"], T["band_border"])
+        _legend_proxy(fig, "отрезок для объяснений (ключевые кадры)", T["band"], T["band_border"])
     # consecutive segments without scores are merged into one red band
     gaps: List[list] = []
     for t in timeline:
