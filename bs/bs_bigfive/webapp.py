@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 
 from .norms import RU_NAMES, TRAIT_KEYS, percentile
+from .charts import frames_html as _charts_frames_html, traits_timeline_html as _charts_traits_html
 from .report import DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU, build_report, clean_word, fmt_secs, seg_label
 
 log = logging.getLogger("bs.web")
@@ -322,6 +323,8 @@ def run_analysis(engine: Engine, work_dir: Path, video_path: str, lang: str = "e
         "description": rep.get("behavior_description_ru") or rep.get("behavior_description", "") or "(описание не получено)",
         "transcript": transcript_txt,
         "frames": frames,
+        "traits_plot": _charts_traits_html(rep),      # full-width Big Five timeline chart (as in BS 2.0)
+        "frames_html": _charts_frames_html(rep, frames),
         "contrib_html": _contrib_html(expl),
         "words": words.strip(),
         "words_detail": words_detail.strip(),
@@ -380,9 +383,9 @@ def build_app(engine: Engine, work_dir: Path):
                 f"<div style='background:#e8e8e8;border-radius:6px;height:10px'><div style='width:{width}%;background:{color};"
                 f"height:10px;border-radius:6px;transition:width .5s'></div></div></div>")
 
-    # outputs after the status block: bars, desc, transcript, gallery, contrib, words, words_detail, members, raw,
-    # path, job_state, pdf_btn — must match the `outputs=[...]` list of btn.click below
-    N_REST = 12
+    # outputs after the status block: bars, traits_plot, desc, transcript, gallery, contrib, words, words_detail,
+    # members, raw, path, job_state, pdf_btn — must match the `outputs=[...]` list of btn.click below
+    N_REST = 13
 
     def analyze(video, lang, explain):
         """Generator: one status bar at the top is updated once a second while the analysis runs in a thread;
@@ -419,8 +422,8 @@ def build_app(engine: Engine, work_dir: Path):
         # in the members textbox inside the accordion
         members_txt = (r["members"] + "\n\n" if r["members"] else "") + f"Время обработки: {r['timing']}"
         yield (_status_html(1.0, f"обработано за {r['timing']}", done=True),
-               r["bars_html"], r["description"], r["transcript"], r["frames"], r["contrib_html"], r["words"],
-               r["words_detail"], members_txt, r["json"], r["path"], job_dir, gr.update(interactive=True))
+               r["bars_html"], r["traits_plot"], r["description"], r["transcript"], r["frames_html"], r["contrib_html"],
+               r["words"], r["words_detail"], members_txt, r["json"], r["path"], job_dir, gr.update(interactive=True))
 
     def stop():
         engine.stop_event.set()
@@ -460,6 +463,8 @@ def build_app(engine: Engine, work_dir: Path):
             with gr.Column(scale=1, min_width=320):
                 # scores, second opinion and the per-segment timeline; framed like the video block on the left
                 bars = gr.HTML(label="Оценки", show_label=True, container=True)
+        # Big Five over the video, full width right under the scores (same chart as BS 2.0)
+        traits_plot = gr.HTML(label="Big Five по ходу ролика", show_label=True, container=True)
         with gr.Row():
             with gr.Column(scale=1, min_width=320):
                 # fixed height, scrollable: long texts must not push the blocks below off the screen
@@ -467,7 +472,8 @@ def build_app(engine: Engine, work_dir: Path):
             with gr.Column(scale=1, min_width=320):
                 transcript = gr.Textbox(label="Транскрипт речи", lines=8, max_lines=8)
         words = gr.Textbox(label="Пояснение простыми словами", lines=6, max_lines=8)
-        gallery = gr.Gallery(label="Ключевые кадры", columns=5, height=200)
+        # key frames are embedded as images: gr.Gallery relies on Gradio serving files and showed broken images
+        gallery = gr.HTML(label="Ключевые кадры", show_label=True, container=True)
         with gr.Row():
             with gr.Column(scale=1, min_width=320):
                 contrib = gr.HTML(label="Вклад модальностей", show_label=True, container=True)
@@ -480,8 +486,8 @@ def build_app(engine: Engine, work_dir: Path):
             path = gr.Textbox(label="Сохранено в", interactive=False)
         gr.Markdown(f"<small>{DISCLAIMER_RU}<br>{INTERVIEW_DISCLAIMER_RU}</small>")
         run_ev = btn.click(analyze, inputs=[video, lang, explain],
-                           outputs=[status, bars, desc, transcript, gallery, contrib, words, words_detail, members, raw,
-                                    path, job_state, pdf_btn],
+                           outputs=[status, bars, traits_plot, desc, transcript, gallery, contrib, words, words_detail,
+                                    members, raw, path, job_state, pdf_btn],
                            show_progress="hidden", api_name=False)
         # the stop button frees the page at once (cancels the queued event) and raises the flag that the running
         # analysis checks between segments, so the GPU is released within one segment
