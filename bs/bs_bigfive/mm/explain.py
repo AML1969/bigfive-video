@@ -114,6 +114,16 @@ def token_attribution(model, text_encoder, text: str, modality: str, other_feats
     return {"per_output": res, "n_tokens": valid}
 
 
+def draw_face_box(im: np.ndarray, x1: int, y1: int, x2: int, y2: int) -> None:
+    """Face box that stays visible on light skin, white clothes and dark hair, in the 640 px web thumbnail and in
+    the PDF: an amber core with an equally wide black edge on each side, the width scaled by the long side of the
+    frame (8 px core at 1920 px, never below 3 px)."""
+    import cv2
+    t = max(3, round(max(im.shape[:2]) / 240))
+    cv2.rectangle(im, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 0), 3 * t, cv2.LINE_AA)
+    cv2.rectangle(im, (int(x1), int(y1)), (int(x2), int(y2)), (0, 200, 255), t, cv2.LINE_AA)   # BGR amber
+
+
 def save_key_frames(video_path: str, frame_ids: List[int], n_frames: int, out_dir: Path, prefix: str = "key") -> List[str]:
     """Re-decode the clip, take the uniformly sampled frames used for features, and write the requested ones
     (with the detected face box) as JPEG. Returns the written paths."""
@@ -132,7 +142,7 @@ def save_key_frames(video_path: str, frame_ids: List[int], n_frames: int, out_di
         if t in wanted:
             rgb = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
             for (x1, y1, x2, y2, _) in detect_faces(rgb):
-                cv2.rectangle(im, (x1, y1), (x2, y2), (0, 200, 255), 2)
+                draw_face_box(im, x1, y1, x2, y2)
             p = out_dir / f"{prefix}_{wanted[t]:02d}_frame{t}.jpg"
             cv2.imwrite(str(p), im)
             paths.append(str(p))

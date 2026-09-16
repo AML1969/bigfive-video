@@ -5,6 +5,7 @@ Run:  bs web [--port 7860] [--members oceanai,mm]      (inside WSL; open http://
 """
 from __future__ import annotations
 
+import html
 import json
 import logging
 import os
@@ -17,6 +18,8 @@ from pathlib import Path
 
 from .norms import RU_NAMES, TRAIT_KEYS, percentile
 from .charts import frames_html as _charts_frames_html, traits_timeline_html as _charts_traits_html
+from .palette import (BUTTON_PRIMARY, BUTTON_PRIMARY_HOVER, BUTTON_STOP, BUTTON_STOP_HOVER, MUTED_OPACITY, OUTLINE,
+                      SECOND_OPINION, SKIP_TEXT, STATUS, SUBDUED_TEXT_LIGHT, TABLE_RULE, TRAIT_COLORS)
 from .report import DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU, build_report, clean_word, fmt_secs, seg_label
 
 log = logging.getLogger("bs.web")
@@ -36,7 +39,51 @@ MEMBER_TITLES = {"oceanai": "OCEAN-AI", "mm": "Своя модель (MM-PSYCHE)
 TRAIT_TITLES_2L = {"openness": "Открытость<br>опыту", "conscientiousness": "Добросо-<br>вестность",
                    "extraversion": "Экстра-<br>версия", "agreeableness": "Доброжела-<br>тельность",
                    "emotional_stability": "Эмоц.<br>стабильность", "interview": "Собесе-<br>дование"}
-TH = "padding:3px 6px;font-size:12px;line-height:1.15;text-align:center;vertical-align:bottom"
+# short trait names for plain-text lists (the members textbox); cutting TRAIT_TITLES gave «Эмоциональна»
+TRAIT_SHORT = {"openness": "открытость", "conscientiousness": "добросовестность", "extraversion": "экстраверсия",
+               "agreeableness": "доброжелательность", "emotional_stability": "эмоц. стабильность"}
+# Tables: Gradio's prose CSS draws every cell border in the full text colour (a heavy grid on the dark theme), so the
+# cells get thin neutral rules instead; the first column and the header row stay visible while the table scrolls.
+RULE = f"border:0;border-bottom:1px solid {TABLE_RULE}"
+# whole-pixel line heights: with fractional row heights the opaque sticky cells of the first column are snapped
+# differently from the scrolling cells and cover the rule of the row above (seen at phone width)
+TH = f"padding:3px 6px;font-size:12px;line-height:14px;text-align:center;vertical-align:bottom;{RULE}"
+TD = f"text-align:center;padding:3px 6px;line-height:18px;{RULE}"
+STICKY_COL = "position:sticky;left:0;z-index:1;background:var(--block-background-fill);text-align:left"
+STICKY_HEAD = "position:sticky;top:0;z-index:2;background:var(--block-background-fill)"
+TD_FIRST = f"padding:3px 8px 3px 6px;white-space:nowrap;line-height:18px;{RULE};{STICKY_COL}"
+# long row names («Впечатление «пригласить на собеседование»», «Своя модель (MM-PSYCHE)») may wrap: kept on one
+# line, the sticky column took almost the whole block on a phone and the values scrolled away under it;
+# the minimum width keeps whole words together («OCEAN-AI», not «OCEAN-» / «AI»)
+TD_FIRST_WRAP = TD_FIRST.replace("white-space:nowrap", "white-space:normal") + ";min-width:7.5em"
+TH_FIRST = f"{TH};{STICKY_COL};z-index:3"
+NOTE = f"font-size:13px;opacity:{MUTED_OPACITY}"            # notes under bars and tables: dimmed theme text, not grey
+TRACK = f"border:1px solid {OUTLINE};box-sizing:border-box;overflow:hidden"   # hollow bar track, visible on both themes
+TABLE = "border:0;border-collapse:separate;border-spacing:0;font-size:13px;margin:0"
+# no single red reaches 4.5:1 on both white and #27272a, so the class switches with Gradio's `dark` class;
+# !important because gr.HTML content sits under `.gradio-container .prose *{color:var(--body-text-color)}`
+SKIP_STYLE = (f"<style>.bs-skip{{color:{SKIP_TEXT['light']}!important;font-style:italic}}"
+              f".dark .bs-skip{{color:{SKIP_TEXT['dark']}!important}}</style>")
+
+
+def _scroll(table: str, max_height: int | None = None) -> str:
+    """Horizontal scroll on narrow screens (the sticky first column stays in view); optional height limit."""
+    mh = f"max-height:{max_height}px;" if max_height else ""
+    return f"<div style='overflow:auto;max-width:100%;{mh}'>{table}</div>"
+
+
+def _mid_sentence(name: str) -> str:
+    """«Своя модель (MM-PSYCHE)» -> «своя модель (MM-PSYCHE)»; acronyms («OCEAN-AI», «SSL-MEPR сцена») are kept."""
+    return name[:1].lower() + name[1:] if name[:2].istitle() else name
+
+
+def _plural(n: int, one: str, few: str, many: str) -> str:
+    n = abs(int(n))
+    if n % 10 == 1 and n % 100 != 11:
+        return one
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return few
+    return many
 
 
 class Engine:
@@ -96,14 +143,19 @@ def _pct_phrase(pct, ref: str | None) -> str:
     return f"выше, чем у {p:.0f}% {group}" if p >= 50 else f"ниже, чем у {100 - p:.0f}% {group}"
 
 
-def _bar_html(traits: dict, interview: dict | None) -> str:
+def _has_chart(rep: dict | None) -> bool:
+    """The full-width timeline chart is drawn (at least two segments with scores)."""
+    return sum(1 for t in ((rep or {}).get("timeline") or []) if t.get("scores")) >= 2
+
+
+def _bar_html(traits: dict, interview: dict | None, with_chart: bool = False) -> str:
     rows = []
     items = [(k, traits[k]) for k in TRAIT_KEYS] + ([("interview", interview)] if interview else [])
     refs = []
     for k, t in items:
         pct = t.get("percentile", t.get("percentile_vs_fiv2"))
         score = float(t["score"])
-        color = "#4c8bf5" if k != "interview" else "#8a6d3b"
+        color = TRAIT_COLORS[k]                       # the same colour as the trait's line on the chart
         ref = t.get("percentile_ref", "train FIV2")
         if ref not in refs:
             refs.append(ref)
@@ -112,11 +164,14 @@ def _bar_html(traits: dict, interview: dict | None) -> str:
         rows.append(
             f"<div style='margin:6px 0'><div style='display:flex;justify-content:space-between;gap:12px;font-size:14px'>"
             f"<b>{TRAIT_TITLES[k]}</b><span style='text-align:right'>{txt}</span></div>"
-            f"<div style='background:#e8e8e8;border-radius:6px;height:14px'>"
-            f"<div style='width:{width:.0f}%;background:{color};height:14px;border-radius:6px'></div></div></div>")
-    note = ("Полоска — оценка от 0 до 1. Рядом — положение относительно опорной группы: " + "; ".join(refs) + ".")
+            f"<div style='{TRACK};border-radius:6px;height:14px'>"
+            f"<div style='width:{width:.0f}%;height:100%;background:{color}'></div></div></div>")
+    note = ("Длина полоски — оценка от 0 до 1 (вся рамка соответствует 1). Рядом — положение относительно опорной группы: "
+            + "; ".join(refs) + ".")
+    if with_chart:
+        note += " Цвет полоски совпадает с цветом линии этой черты на графике ниже."
     return ("<div style='max-width:640px'>" + "".join(rows) +
-            f"<div style='font-size:12px;color:#666;margin-top:8px'>{note}</div></div>")
+            f"<div style='{NOTE};margin-top:8px'>{note}</div></div>")
 
 
 def _members_html(rep: dict) -> str:
@@ -131,28 +186,31 @@ def _members_html(rep: dict) -> str:
         others = [m for m in var if m != primary]
         if not others:
             return ""
-        title = "Второе мнение — " + ", ".join(MEMBER_TITLES.get(m, m) for m in others) + " (шкала FIV2; положение — относительно train FIV2)"
+        # «Второе мнение — своя модель (MM-PSYCHE)»: lower-case inside the sentence, names like OCEAN-AI stay as they are
+        title = ("Второе мнение — "
+                 + ", ".join(f"<span style='white-space:nowrap'>{_mid_sentence(MEMBER_TITLES.get(m, m))}</span>" for m in others)
+                 + f"<div style='{NOTE};font-weight:400;margin-top:2px'>Шкала FIV2, положение — относительно train FIV2</div>")
         for m in others:
             for k in TRAIT_KEYS:
                 s = float(var[m][k]); pct = percentile(k, s)
                 rows += (f"<div style='margin:3px 0'><div style='display:flex;justify-content:space-between;gap:12px;font-size:13px'>"
                          f"<span>{TRAIT_TITLES[k]}</span><span style='text-align:right'>{s:.2f} · {_pct_phrase(pct, 'train FIV2')}</span></div>"
-                         f"<div style='background:#eee;border-radius:5px;height:8px'>"
-                         f"<div style='width:{max(2, min(100, s * 100)):.0f}%;background:#9bb7e8;height:8px;border-radius:5px'></div></div></div>")
+                         f"<div style='{TRACK};border-radius:5px;height:8px'>"
+                         f"<div style='width:{max(2, min(100, s * 100)):.0f}%;height:100%;background:{SECOND_OPINION}'></div></div></div>")
         note = (f"Основная оценка выше — {MEMBER_TITLES.get(primary, primary)}. Полоска — оценка от 0 до 1. Второе мнение "
                 "считается на другой шкале (модель обучена на англоязычных влогерах FIV2), поэтому его значения на русских "
                 "роликах систематически ниже; сравнивать нужно положение относительно группы и порядок черт, а не сами числа.")
     else:
         title = "Участники ансамбля (итог — среднее)"
         head = "".join(f"<th style='{TH}'>{TRAIT_TITLES_2L[k]}</th>" for k in TRAIT_KEYS)
-        body = "".join(f"<tr><td style='padding:3px 8px'>{MEMBER_TITLES.get(m, m)}</td>"
-                       + "".join(f"<td style='text-align:center;padding:3px 8px'>{float(v[k]):.3f}</td>" for k in TRAIT_KEYS)
+        body = "".join(f"<tr><td style='{TD_FIRST_WRAP}'>{MEMBER_TITLES.get(m, m)}</td>"
+                       + "".join(f"<td style='{TD}'>{float(v[k]):.2f}</td>" for k in TRAIT_KEYS)
                        + "</tr>" for m, v in var.items())
-        rows = f"<table style='border-collapse:collapse;font-size:13px'><tr><th></th>{head}</tr>{body}</table>"
+        rows = _scroll(f"<table style='{TABLE}'><tr><th style='{TH_FIRST}'>Модель</th>{head}</tr>{body}</table>")
         note = "Обе системы на шкале FIV2; итоговая оценка — их среднее."
-    return (f"<div style='max-width:640px;margin-top:14px;padding:10px 12px;border:1px solid #ddd;border-radius:8px'>"
+    return (f"<div style='max-width:640px;margin-top:14px;padding:10px 12px;border:1px solid {OUTLINE};border-radius:8px'>"
             f"<div style='font-weight:600;font-size:14px;margin-bottom:6px'>{title}</div>{rows}"
-            f"<div style='font-size:12px;color:#666;margin-top:6px'>{note}</div></div>")
+            f"<div style='{NOTE};margin-top:6px'>{note}</div></div>")
 
 
 def _words_text(expl: dict, rep: dict, lang: str, expl_path: Path | None = None) -> str:
@@ -189,22 +247,30 @@ def _timeline_html(rep: dict) -> str:
     rows = ""
     rep_i = rep.get("representative_segment")
     keys = TRAIT_KEYS + (["interview"] if any(t.get("scores") and "interview" in t["scores"] for t in tl) else [])
-    head = "".join(f"<th style='{TH}'>{TRAIT_TITLES_2L.get(k, TRAIT_TITLES[k])}</th>" for k in keys)
+    head = "".join(f"<th style='{TH};{STICKY_HEAD}'>{TRAIT_TITLES_2L.get(k, TRAIT_TITLES[k])}</th>" for k in keys)
     for seg in tl:
         label = seg_label(seg["start"], seg["end"])
         if not seg.get("scores"):
-            rows += (f"<tr><td style='padding:3px 6px;white-space:nowrap'>{label}</td>"
-                     f"<td colspan='{len(keys)}' style='color:#a66;padding:3px 6px'>пропущен: нет лица или речи</td></tr>")
+            rows += (f"<tr><td style='{TD_FIRST}'>{label}</td>"
+                     f"<td colspan='{len(keys)}' class='bs-skip' style='padding:3px 6px;line-height:18px;{RULE}'>⚠ пропущен: нет лица или речи</td></tr>")
             continue
-        cells = "".join(f"<td style='text-align:center;padding:3px 6px'>{seg['scores'].get(k, float('nan')):.2f}</td>" for k in keys)
+        cells = "".join(f"<td style='{TD}'>{seg['scores'].get(k, float('nan')):.2f}</td>" for k in keys)
         mark = " ★" if seg["segment"] == rep_i else ""
-        rows += f"<tr><td style='padding:3px 6px;white-space:nowrap'>{label}{mark}</td>{cells}</tr>"
+        rows += f"<tr><td style='{TD_FIRST}'>{label}{mark}</td>{cells}</tr>"
     std = rep.get("scores_std_across_segments") or {}
-    std_cells = "".join(f"<td style='text-align:center;padding:3px 6px;color:#666'>±{std.get(k, 0):.2f}</td>" for k in keys)
-    rows += f"<tr><td style='padding:3px 6px;color:#666'>разброс</td>{std_cells}</tr>"
-    return (f"<table style='border-collapse:collapse;font-size:13px'><tr><th></th>{head}</tr>{rows}</table>"
-            f"<div style='font-size:12px;color:#666'>Ролик {fmt_secs(rep.get('duration_sec', 0))} разбит на {len(tl)} сегментов; "
-            "итоговые оценки — среднее по сегментам с весом по длительности. ★ — сегмент, по которому построены объяснения.</div>")
+    # dimmed through an inner span: opacity on the cell itself would also dim its rule
+    std_cells = "".join(f"<td style='{TD}'><span style='font-style:italic;opacity:{MUTED_OPACITY}'>±{std.get(k, 0):.2f}</span></td>"
+                        for k in keys)
+    rows += (f"<tr><td style='{TD_FIRST}'><span style='font-style:italic;opacity:{MUTED_OPACITY}'>разброс</span></td>"
+             f"{std_cells}</tr>")
+    n = len(tl)
+    table = f"<table style='{TABLE}'><tr><th style='{TH_FIRST};{STICKY_HEAD};z-index:3'>Отрезок</th>{head}</tr>{rows}</table>"
+    return (SKIP_STYLE
+            + "<div style='font-weight:600;font-size:14px;margin:14px 0 4px'>Оценки по отрезкам ролика (★ — отрезок объяснений)</div>"
+            + _scroll(table, max_height=560)
+            + f"<div style='{NOTE};margin-top:4px'>Ролик {fmt_secs(rep.get('duration_sec', 0))} разбит на {n} "
+              f"{_plural(n, 'отрезок', 'отрезка', 'отрезков')}; итоговые оценки — среднее по отрезкам с весом по длительности. "
+              "★ — отрезок, по которому построены объяснения; «разброс» — стандартное отклонение оценки между отрезками.</div>")
 
 
 def _contrib_html(expl: dict | None) -> str:
@@ -212,13 +278,16 @@ def _contrib_html(expl: dict | None) -> str:
         return ""
     ixg = expl["modalities"]["input_x_gradient"]
     mods = list(next(iter(ixg.values())).keys())
-    head = "".join(f"<th style='padding:4px 8px'>{MEMBER_TITLES.get(m, m)}</th>" for m in mods)
+    # header cells get the same side padding as the body cells, so names and values line up
+    head = "".join(f"<th style='{TH};padding:3px 8px'>{MEMBER_TITLES.get(m, m)[:1].upper() + MEMBER_TITLES.get(m, m)[1:]}</th>"
+                   for m in mods)
     body = ""
     for k, row in ixg.items():
-        cells = "".join(f"<td style='text-align:center;padding:4px 8px'>{_pct(row[m]['share'])}</td>" for m in mods)
-        body += f"<tr><td style='padding:4px 8px'>{TRAIT_TITLES.get(k, k)}</td>{cells}</tr>"
-    return (f"<table style='border-collapse:collapse;font-size:13px'><tr><th></th>{head}</tr>{body}</table>"
-            "<div style='font-size:12px;color:#666'>Доля вклада модальности в оценку своей модели (Input×Gradient). "
+        cells = "".join(f"<td style='{TD};padding:4px 8px'>{html.escape(_pct(row[m]['share']))}</td>" for m in mods)
+        body += f"<tr><td style='{TD_FIRST_WRAP};padding:4px 8px'>{TRAIT_TITLES.get(k, k)}</td>{cells}</tr>"
+    return (_scroll(f"<table style='{TABLE}'><tr><th style='{TH_FIRST};text-align:left;padding:3px 8px'>Черта</th>{head}</tr>"
+                    f"{body}</table>")
+            + f"<div style='{NOTE};margin-top:4px'>Доля вклада модальности в оценку своей модели (Input×Gradient). "
             "«&lt;1%» — модальность почти не влияет на оценку этого ролика: модель, обученная на FIV2, опирается в основном "
             "на лицо и голос; речь и описание поведения слабо меняют результат.</div>")
 
@@ -296,7 +365,7 @@ def run_analysis(engine: Engine, work_dir: Path, video_path: str, lang: str = "e
     (job / "result.json").write_text(json.dumps(rep, ensure_ascii=False, indent=2), encoding="utf-8")
     members = rep.get("variant_scores", {})
     member_txt = "\n".join(f"{MEMBER_TITLES.get(m, m)}{' — основная оценка' if m == primary else (' — второе мнение' if primary else '')}: "
-                           + ", ".join(f"{TRAIT_TITLES[k][:12]} {v[k]:.2f}" for k in TRAIT_KEYS)
+                           + ", ".join(f"{TRAIT_SHORT[k]} {v[k]:.2f}" for k in TRAIT_KEYS)
                            for m, v in members.items())
     if primary:
         member_txt += ("\nШкалы разные: OCEAN-AI (MuPTA) обучена на русскоязычных испытуемых, своя модель — на английских "
@@ -318,8 +387,10 @@ def run_analysis(engine: Engine, work_dir: Path, video_path: str, lang: str = "e
         log.warning("narrative failed: %s", str(e).splitlines()[0][:120])
         words = ""
     transcript_txt = rep.get("transcript", "")      # the English translation used by the text branch stays in result.json
+    n_seg = int(rep.get("segments", 1) or 1)
     return {
-        "bars_html": _bar_html(rep["traits"], rep.get("interview")) + _members_html(rep) + _timeline_html(rep),
+        "bars_html": (_bar_html(rep["traits"], rep.get("interview"), with_chart=_has_chart(rep))
+                      + _members_html(rep) + _timeline_html(rep)),
         "description": rep.get("behavior_description_ru") or rep.get("behavior_description", "") or "(описание не получено)",
         "transcript": transcript_txt,
         "frames": frames,
@@ -330,7 +401,7 @@ def run_analysis(engine: Engine, work_dir: Path, video_path: str, lang: str = "e
         "words_detail": words_detail.strip(),
         "members": member_txt,
         "timing": f"{fmt_secs(rep['timings_sec']['total_wall'])} (ролик {fmt_secs(rep.get('duration_sec') or 0)}, "
-                  f"{rep.get('segments', 1)} сегм.; модели: {be.cfg.corpus})",
+                  f"{n_seg} {_plural(n_seg, 'отрезок', 'отрезка', 'отрезков')}; модели: {be.cfg.corpus})",
         "json": json.dumps(rep, ensure_ascii=False, indent=2),
         "path": str(job / "result.json"),
         "report": rep,
@@ -367,21 +438,45 @@ def export_pdf(job_dir: str | Path) -> str:
     return build_pdf(rep, out, explanation=expl, media=media, key_frames=frames)
 
 
+STATUS_LABELS = {"running": "Идёт обработка", "done": "Готово", "stopped": "Остановлено", "error": "Ошибка"}
+
+
+def _status_html(frac: float, desc: str, kind: str = "running", label: str | None = None) -> str:
+    """The progress / result bar above the page (gr.HTML without a container, i.e. on the page background).
+    kind: running (orange, width = progress), done (green), stopped / error (red); the last three fill the bar."""
+    pct = max(0, min(100, int(round(frac * 100))))
+    width = max(2, pct) if kind == "running" else 100      # the bar stays visible even at 0%
+    color = STATUS.get(kind, STATUS["running"])
+    label = label or STATUS_LABELS.get(kind, "")
+    # the analyzer reports «Сегмент 3/29 (0:40–1:00)»; the page calls these parts «отрезки» everywhere
+    desc = html.escape(re.sub(r"\bСегмент\b", "Отрезок", str(desc)))
+    text = f"{pct}% · {desc}" if kind == "running" else desc       # «34% · [1 мин 21 с] Отрезок 3/29 (0:40–1:00)»
+    return (f"<div style='margin:4px 0 8px'><div style='display:flex;justify-content:space-between;gap:12px;"
+            f"font-size:14px;margin-bottom:4px'><b>{label}</b><span style='text-align:right'>{text}</span></div>"
+            f"<div role='progressbar' aria-valuemin='0' aria-valuemax='100' aria-valuenow='{pct if kind == 'running' else 100}' "
+            f"style='{TRACK};border-radius:6px;height:10px'><div style='width:{width}%;height:100%;background:{color};"
+            f"transition:width .5s'></div></div></div>")
+
+
+def _theme():
+    """Gradio Default theme with readable buttons and hints: white labels on orange-700 / red-700 (the Default
+    orange-500 gives 2.8:1, red-500 3.8:1) and zinc-600 hint text on white (zinc-400 gives 1.9:1)."""
+    import gradio as gr
+    return gr.themes.Default().set(
+        button_primary_background_fill=BUTTON_PRIMARY, button_primary_background_fill_dark=BUTTON_PRIMARY,
+        button_primary_background_fill_hover=BUTTON_PRIMARY_HOVER, button_primary_background_fill_hover_dark=BUTTON_PRIMARY_HOVER,
+        button_cancel_background_fill=BUTTON_STOP, button_cancel_background_fill_dark=BUTTON_STOP,
+        button_cancel_background_fill_hover=BUTTON_STOP_HOVER, button_cancel_background_fill_hover_dark=BUTTON_STOP_HOVER,
+        body_text_color_subdued=SUBDUED_TEXT_LIGHT, body_text_color_subdued_dark="*neutral_400",
+        # placeholders have their own variable (light zinc-400 1.9:1 on white, dark zinc-500 2.9:1 on the block)
+        input_placeholder_color=SUBDUED_TEXT_LIGHT, input_placeholder_color_dark="*neutral_400",
+    )
+
+
 def build_app(engine: Engine, work_dir: Path):
     import gradio as gr
 
     from .longvideo import AnalysisCancelled
-
-    def _status_html(frac: float, desc: str, done: bool = False, label: str | None = None) -> str:
-        pct = max(0, min(100, int(round(frac * 100))))
-        width = max(2, pct)                      # the bar stays visible even at 0%
-        color = "#2e8b57" if done else "#e8731a"
-        label = label or ("Готово" if done else "Идёт обработка")
-        text = desc if done else f"{pct}% · {desc}"          # «34% · [1 мин 21 с] Сегмент 3/29 (0:40–1:00)»
-        return (f"<div style='margin:4px 0 8px'><div style='display:flex;justify-content:space-between;gap:12px;"
-                f"font-size:14px;margin-bottom:4px'><b>{label}</b><span style='text-align:right'>{text}</span></div>"
-                f"<div style='background:#e8e8e8;border-radius:6px;height:10px'><div style='width:{width}%;background:{color};"
-                f"height:10px;border-radius:6px;transition:width .5s'></div></div></div>")
 
     # outputs after the status block: bars, traits_plot, desc, transcript, gallery, contrib, words, words_detail,
     # members, raw, path, job_state, pdf_btn — must match the `outputs=[...]` list of btn.click below
@@ -413,22 +508,26 @@ def build_app(engine: Engine, work_dir: Path):
             yield (_status_html(state["frac"], state["desc"]),) + (gr.update(),) * N_REST
         if "e" in result:
             e = result["e"]
+            # the status bar must not stay on the orange «Идёт обработка» after a failure: show the outcome first
             if isinstance(e, AnalysisCancelled):
+                yield (_status_html(state["frac"], "по запросу пользователя", kind="stopped"),) + (gr.update(),) * N_REST
                 raise gr.Error("Обработка остановлена. Проверьте язык речи и запустите заново.")
+            reason = (str(e).strip().splitlines() or [type(e).__name__])[0][:120]
+            yield (_status_html(state["frac"], f"обработка прервана: {reason}", kind="error"),) + (gr.update(),) * N_REST
             raise e
         r = result["r"]
         job_dir = str(Path(r["path"]).parent)
-        # the run time («6 мин 05 с (ролик 6 мин 10 с, 19 сегм.; модели: …)») is shown on the «Готово» line and kept
+        # the run time («6 мин 05 с (ролик 6 мин 10 с, 19 отрезков; модели: …)») is shown on the «Готово» line and kept
         # in the members textbox inside the accordion
         members_txt = (r["members"] + "\n\n" if r["members"] else "") + f"Время обработки: {r['timing']}"
-        yield (_status_html(1.0, f"обработано за {r['timing']}", done=True),
+        yield (_status_html(1.0, f"обработано за {r['timing']}", kind="done"),
                r["bars_html"], r["traits_plot"], r["description"], r["transcript"], r["frames_html"], r["contrib_html"],
                r["words"], r["words_detail"], members_txt, r["json"], r["path"], job_dir, gr.update(interactive=True))
 
     def stop():
         engine.stop_event.set()
-        return _status_html(0.0, "остановлено пользователем: текущий сегмент дорабатывается, затем обработка "
-                                 "прерывается (до ~20 с)", done=True, label="Остановлено")
+        return _status_html(0.0, "по запросу пользователя: текущий отрезок дорабатывается в фоне, затем обработка "
+                                 "прервётся (до ~20 с)", kind="stopped")
 
     def make_pdf(job_dir):
         if not job_dir:
@@ -438,7 +537,7 @@ def build_app(engine: Engine, work_dir: Path):
         except Exception as e:  # noqa: BLE001
             raise gr.Error(f"Не удалось собрать PDF: {e}")
 
-    with gr.Blocks(title="BS — Big Five по видео") as demo:
+    with gr.Blocks(title="BS — Big Five по видео", theme=_theme()) as demo:
         job_state = gr.State("")
         with gr.Row():
             with gr.Column(scale=4):
