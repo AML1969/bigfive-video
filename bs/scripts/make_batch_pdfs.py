@@ -80,20 +80,18 @@ for d in sorted(out.iterdir()):
             rep["transcript_en"] = mm_backend().to_english(rep["transcript"])
         except Exception as e:  # noqa: BLE001
             print(f"  {d.name}: translation failed: {str(e).splitlines()[0][:160]}")
-    if a.lang != "en" and rep.get("behavior_description") and (a.force or not rep.get("behavior_description_ru")):
-        try:    # interface language: the description is shown in Russian (original kept in result.json)
-            from bs_bigfive.translate import translate_text
-            rep["behavior_description_ru"] = translate_text(rep["behavior_description"], "en", a.lang)
-        except Exception as e:  # noqa: BLE001
-            print(f"  {d.name}: display translation failed: {str(e).splitlines()[0][:160]}")
-    if expl and (a.retranslate or "readable_words" not in expl):
-        from bs_bigfive.words import readable_words
-        expl["readable_words"] = {}
-        for key in ("transcript_words", "behavior_words"):
-            if key in expl:
-                ctx = rep.get("transcript_en") if key == "transcript_words" else rep.get("behavior_description")
-                src = rep.get("transcript") if (key == "transcript_words" and a.lang != "en") else None
-                expl["readable_words"][key] = readable_words(expl, key, a.lang, transcript_ru=src, context_en=ctx)
+    # interface language: the description (and the transcript of English speech) is shown in Russian, the
+    # originals stay in result.json; the same translations as the web page (webapp._display_translations)
+    if a.force:
+        rep.pop("behavior_description_ru", None)
+        rep.pop("transcript_ru", None)
+        rep.pop("translated_by", None)
+    from bs_bigfive.webapp import _display_translations
+    _display_translations(rep)
+    # the same word lists as the web page: words looked up in the Russian texts the PDF shows (words.word_lists)
+    from bs_bigfive.words import lists_outdated, word_lists
+    if expl and (a.retranslate or lists_outdated(expl, rep)):
+        expl["readable_words"] = word_lists(expl, rep)
         ej.write_text(json.dumps(expl, ensure_ascii=False, indent=2), encoding="utf-8")
     rj.write_text(json.dumps(rep, ensure_ascii=False, indent=2), encoding="utf-8")
     # only the frames of the current explanation (stale files from an earlier run are ignored and removed)

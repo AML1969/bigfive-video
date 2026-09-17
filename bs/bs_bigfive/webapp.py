@@ -20,7 +20,8 @@ from .norms import RU_NAMES, TRAIT_KEYS, percentile
 from .charts import frames_html as _charts_frames_html, traits_timeline_html as _charts_traits_html
 from .palette import (BUTTON_PRIMARY, BUTTON_PRIMARY_HOVER, BUTTON_STOP, BUTTON_STOP_HOVER, MUTED_OPACITY, OUTLINE,
                       SECOND_OPINION, SKIP_TEXT, STATUS, SUBDUED_TEXT_LIGHT, TABLE_RULE, TRAIT_COLORS)
-from .report import DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU, build_report, clean_word, fmt_secs, mmss_labels, seg_label
+from .report import (DESCRIPTION_UNTRANSLATED_RU, DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU, TRANSCRIPT_TRANSLATED_RU,
+                     TRANSCRIPT_UNTRANSLATED_RU, build_report, clean_word, fmt_secs, mmss_labels, seg_label, speech_end)
 
 log = logging.getLogger("bs.web")
 
@@ -248,29 +249,25 @@ def _members_html(rep: dict) -> str:
 
 def _words_text(expl: dict, rep: dict, lang: str, expl_path: Path | None = None) -> str:
     """Readable word attributions (content words, Russian, grouped by direction); computed once and stored in
-    explanation.json under "readable_words" so the PDF shows the same lists."""
-    from .words import WORDS_NOTE, format_words, readable_words
+    explanation.json under "readable_words" so the PDF shows the same lists. Lists of an older version, left
+    incomplete by a failed translation, or matched against a Russian text translated again since are computed again
+    (the translations of `rep` must be made first, see _display_translations)."""
+    from .words import lists_outdated, word_lists, words_missing_note, words_note
+    if lists_outdated(expl, rep):
+        try:
+            expl["readable_words"] = word_lists(expl, rep)
+            if expl_path is not None:
+                try:
+                    expl_path.write_text(json.dumps(expl, ensure_ascii=False, indent=2), encoding="utf-8")
+                except Exception:  # noqa: BLE001
+                    pass
+        except Exception as e:  # noqa: BLE001
+            log.warning("readable words failed: %s", str(e).splitlines()[0][:120])
     rw_all = expl.get("readable_words") or {}
-    changed = False
-    for key in ("transcript_words", "behavior_words"):
-        if key in expl and key not in rw_all:
-            ctx = rep.get("transcript_en") if key == "transcript_words" else rep.get("behavior_description")
-            src = rep.get("transcript") if (key == "transcript_words" and lang != "en") else None
-            try:
-                rw_all[key] = readable_words(expl, key, lang, transcript_ru=src, context_en=ctx)
-                changed = True
-            except Exception as e:  # noqa: BLE001
-                log.warning("readable words failed for %s: %s", key, str(e).splitlines()[0][:120])
-    if changed:
-        expl["readable_words"] = rw_all
-        if expl_path is not None:
-            try:
-                expl_path.write_text(json.dumps(expl, ensure_ascii=False, indent=2), encoding="utf-8")
-            except Exception:  # noqa: BLE001
-                pass
     from .narrative import words_sentences
     lines = words_sentences(rw_all, TRAIT_TITLES, lang)
-    return ("\n".join(lines).strip() + "\n\n" + WORDS_NOTE) if lines else ""
+    # no lists although the model pointed at content words: say why instead of leaving the box empty
+    return ("\n".join(lines).strip() + "\n\n" + words_note(lang)) if lines else words_missing_note(rw_all)
 
 
 def _timeline_html(rep: dict) -> str:
@@ -320,7 +317,8 @@ def _contrib_html(expl: dict | None) -> str:
         body += f"<tr><td style='{TD_FIRST_WRAP};padding:4px 8px'>{TRAIT_TITLES.get(k, k)}</td>{cells}</tr>"
     return (_scroll(f"<table style='{TABLE}'><tr><th style='{TH_FIRST};text-align:left;padding:3px 8px'>Черта</th>{head}</tr>"
                     f"{body}</table>")
-            + f"<div style='{NOTE};margin-top:4px'>Доля вклада модальности в оценку своей модели (Input×Gradient). "
+            + f"<div style='{NOTE};margin-top:4px'>Доля вклада модальности в оценку своей модели; вклад считается как "
+            "произведение признаков модальности на чувствительность оценки к ним. "
             "«&lt;1%» — модальность почти не влияет на оценку этого ролика: модель, обученная на FIV2, опирается в основном "
             "на лицо и голос; речь и описание поведения слабо меняют результат.</div>")
 
@@ -395,7 +393,60 @@ def run_analysis(engine: Engine, work_dir: Path, video_path: str, lang: str = "e
         rep["media"]["file_name"] = src.name
     except Exception as e:  # noqa: BLE001
         rep["media"] = {"error": str(e)[:200]}
+    _display_translations(rep)          # before result.json is written, so the job keeps the translations
     (job / "result.json").write_text(json.dumps(rep, ensure_ascii=False, indent=2), encoding="utf-8")
+    return _render(job, rep, expl, frames)
+
+
+def _display_translations(rep: dict, job: Path | None = None) -> None:
+    """The page and the PDF are Russian whatever the speech language. The models work in English (the VLM writes
+    the behaviour description in English; the text branch reads English), so the description is always translated,
+    and for English speech the transcript too; the English originals stay in result.json. The translation comes from
+    the local LLM ("translated_by": "llm"); a Marian translation (made while Ollama was unreachable, or by an older
+    version, word for word) is kept until the LLM answers and then replaced. Jobs analysed before a translation
+    existed get it on their first render or PDF export, and keep it (`job`: result.json is rewritten)."""
+    lang = (rep.get("model") or {}).get("lang", "en")
+    by = dict(rep.get("translated_by") or {})
+    changed = False
+    todo = [("behavior_description", "behavior_description_ru", "description")]
+    if lang == "en":
+        todo.append(("transcript", "transcript_ru", "transcript"))
+    for key, key_ru, kind in todo:
+        if not rep.get(key) or (rep.get(key_ru) and by.get(key_ru) == "llm"):
+            continue
+        try:
+            from .translate import translate_prose
+            # with a translation already there, Marian is not run again when the LLM cannot be reached
+            text, engine = translate_prose(rep[key], kind, fallback=not rep.get(key_ru))
+        except Exception as e:  # noqa: BLE001
+            log.warning("translation of %s for display failed: %s", key, str(e).splitlines()[0][:160])
+            continue
+        if text:
+            rep[key_ru], by[key_ru] = text, engine
+            changed = True
+    if changed:
+        rep["translated_by"] = by
+        if job is not None:
+            try:
+                (job / "result.json").write_text(json.dumps(rep, ensure_ascii=False, indent=2), encoding="utf-8")
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def _transcript_text(rep: dict) -> str:
+    """«Транскрипт речи»: Russian speech as recognised; English speech as its Russian translation under a short note
+    (the English original and the translation used by the text branch stay in result.json)."""
+    if (rep.get("model") or {}).get("lang", "en") != "en":
+        return speech_end(rep.get("transcript", ""))
+    if rep.get("transcript_ru"):
+        return f"{TRANSCRIPT_TRANSLATED_RU}\n\n{speech_end(rep['transcript_ru'])}"
+    return TRANSCRIPT_UNTRANSLATED_RU if rep.get("transcript") else ""
+
+
+def _render(job: Path, rep: dict, expl: dict | None, frames: list) -> dict:
+    """Everything the page shows for a finished job (fresh analysis or an existing job folder, see render_job)."""
+    model = rep.get("model") or {}
+    lang, primary = model.get("lang", "en"), model.get("primary")
     members = rep.get("variant_scores", {})
     member_txt = "\n".join(f"{MEMBER_TITLES.get(m, m)}{' — основная оценка' if m == primary else (' — второе мнение' if primary else '')}: "
                            + ", ".join(f"{TRAIT_SHORT[k]} {v[k]:.2f}" for k in TRAIT_KEYS)
@@ -403,15 +454,6 @@ def run_analysis(engine: Engine, work_dir: Path, video_path: str, lang: str = "e
     if primary:
         member_txt += ("\nШкалы разные: OCEAN-AI (MuPTA) обучена на русскоязычных испытуемых, своя модель — на английских "
                        "влогерах FIV2, поэтому её оценки на русских роликах систематически ниже.")
-    # interface language: the models work in English (text branch, VLM description, word attribution); for other
-    # languages the description and the top words are translated back for display, originals stay in the JSON
-    if lang != "en":
-        try:
-            from .translate import translate_text
-            if rep.get("behavior_description"):
-                rep["behavior_description_ru"] = translate_text(rep["behavior_description"], "en", lang)
-        except Exception as e:  # noqa: BLE001
-            log.warning("translation for display failed: %s", str(e).splitlines()[0][:160])
     words_detail = _words_text(expl, rep, lang, job / "explain" / "explanation.json") if expl else ""
     from .narrative import build_narrative
     try:
@@ -419,14 +461,16 @@ def run_analysis(engine: Engine, work_dir: Path, video_path: str, lang: str = "e
     except Exception as e:  # noqa: BLE001
         log.warning("narrative failed: %s", str(e).splitlines()[0][:120])
         words = ""
-    transcript_txt = rep.get("transcript", "")      # the English translation used by the text branch stays in result.json
+    if rep.get("behavior_description_ru"):
+        description = mmss_labels(rep["behavior_description_ru"])
+    else:       # never the English original on the page
+        description = DESCRIPTION_UNTRANSLATED_RU if rep.get("behavior_description") else "(описание не получено)"
     n_seg = int(rep.get("segments", 1) or 1)
     return {
         "bars_html": (_bar_html(rep["traits"], rep.get("interview"), with_chart=_has_chart(rep))
                       + _members_html(rep) + _timeline_html(rep)),
-        "description": mmss_labels(rep.get("behavior_description_ru") or rep.get("behavior_description", ""))
-                       or "(описание не получено)",
-        "transcript": transcript_txt,
+        "description": description,
+        "transcript": _transcript_text(rep),
         "frames": frames,
         "traits_plot": _charts_traits_html(rep),      # full-width Big Five timeline chart (as in BS 2.0)
         "frames_html": _charts_frames_html(rep, frames),
@@ -443,6 +487,21 @@ def run_analysis(engine: Engine, work_dir: Path, video_path: str, lang: str = "e
     }
 
 
+def render_job(job_dir: str | Path) -> dict:
+    """The page outputs for an existing job folder (result.json + explain/); translations missing from older jobs
+    are made now and stored back into the job."""
+    job = Path(job_dir)
+    rep = json.loads((job / "result.json").read_text(encoding="utf-8"))
+    expl_path = job / "explain" / "explanation.json"
+    expl = json.loads(expl_path.read_text(encoding="utf-8")) if expl_path.exists() else None
+    _display_translations(rep, job)
+    files = [p for p in ((expl or {}).get("frames") or {}).get("key_frame_files", []) if Path(p).exists()]
+    if not files and (job / "explain").exists():        # the job folder was moved: frames next to explanation.json
+        files = sorted(str(p) for p in (job / "explain").glob("key_*.jpg"))
+    frames = [(p, f"кадр {Path(p).stem.split('_frame')[-1]}") for p in files]
+    return _render(job, rep, expl, frames)
+
+
 def export_pdf(job_dir: str | Path) -> str:
     """Build the PDF report for a finished job folder (result.json + explain/ + key frames)."""
     from .pdf_report import build_pdf
@@ -451,13 +510,7 @@ def export_pdf(job_dir: str | Path) -> str:
     expl_path = job / "explain" / "explanation.json"
     expl = json.loads(expl_path.read_text(encoding="utf-8")) if expl_path.exists() else None
     lang = (rep.get("model") or {}).get("lang", "en")
-    if lang != "en" and rep.get("behavior_description") and not rep.get("behavior_description_ru"):
-        try:    # jobs analysed before display translation existed: translate now, keep it in the job
-            from .translate import translate_text
-            rep["behavior_description_ru"] = translate_text(rep["behavior_description"], "en", lang)
-            (job / "result.json").write_text(json.dumps(rep, ensure_ascii=False, indent=2), encoding="utf-8")
-        except Exception as e:  # noqa: BLE001
-            log.warning("display translation for PDF failed: %s", str(e).splitlines()[0][:160])
+    _display_translations(rep, job)     # jobs analysed before a translation existed: translate now, keep it in the job
     if expl:
         _words_text(expl, rep, lang, expl_path)     # makes sure explanation.json carries the readable word lists
     frames = sorted(str(p) for p in (job / "explain").glob("key_*.jpg")) if (job / "explain").exists() else []
@@ -474,6 +527,29 @@ def export_pdf(job_dir: str | Path) -> str:
 
 
 STATUS_LABELS = {"running": "Идёт обработка", "done": "Готово", "stopped": "Остановлено", "error": "Ошибка"}
+# part of an English exception message -> the reason shown on the page (library and backend messages are English);
+# anything else gets a general wording, the full message goes to the server log. Checked in this order: the specific
+# causes first, since the general ones quote them ('all ensemble members failed: …; mm: CUDA out of memory')
+ERROR_REASONS = {"CUDA out of memory": "не хватило памяти видеокарты, попробуйте ещё раз через минуту",
+                 "no Unicode TTF font": "не найден шрифт с кириллицей",
+                 "no frames decoded": "не удалось прочитать кадры видео", "no frames": "не удалось прочитать кадры видео",
+                 "empty audio": "в ролике нет звука",
+                 "no segment could be analysed": "ни в одном отрезке ролика не нашлось лица или речи",
+                 "all ensemble members failed": "ни одна из моделей не дала оценки (нет лица или речи)",
+                 "OCEAN-AI returned no predictions": "OCEAN-AI не дала оценки (нет лица или речи)"}
+
+
+def _reason_ru(e: BaseException) -> str:
+    """One line in Russian for the status bar and the error window, to follow «Обработка прервана: »: starts with
+    a small letter (names such as OCEAN-AI stay as they are) and has no full stop at the end."""
+    first = (str(e).strip().splitlines() or [""])[0]
+    if re.search(r"[А-Яа-яЁё]", first):          # our own messages are already Russian
+        reason = first[:160].rstrip(" .")
+        return reason[:1].lower() + reason[1:] if reason[1:2].islower() else reason
+    for en, ru in ERROR_REASONS.items():
+        if en.lower() in str(e).lower():
+            return ru
+    return "внутренняя ошибка (подробности — в журнале сервера)"
 
 
 def _live_desc(state: dict) -> str:
@@ -555,9 +631,10 @@ def build_app(engine: Engine, work_dir: Path):
             if isinstance(e, AnalysisCancelled):
                 yield (_status_html(state["frac"], "по запросу пользователя", kind="stopped"),) + (gr.update(),) * N_REST
                 raise gr.Error("Обработка остановлена. Проверьте язык речи и запустите заново.")
-            reason = (str(e).strip().splitlines() or [type(e).__name__])[0][:120]
+            reason = _reason_ru(e)
+            log.error("analysis failed", exc_info=e)
             yield (_status_html(state["frac"], f"обработка прервана: {reason}", kind="error"),) + (gr.update(),) * N_REST
-            raise e
+            raise gr.Error(f"Обработка прервана: {reason}.")
         r = result["r"]
         job_dir = str(Path(r["path"]).parent)
         # the run time («6 мин 05 с (ролик 6 мин 10 с, 19 отрезков; веса …)») is shown on the «Готово» line and kept
@@ -578,7 +655,8 @@ def build_app(engine: Engine, work_dir: Path):
         try:
             return export_pdf(job_dir)
         except Exception as e:  # noqa: BLE001
-            raise gr.Error(f"Не удалось собрать PDF: {e}")
+            log.error("PDF export failed", exc_info=e)
+            raise gr.Error(f"Не удалось собрать PDF: {_reason_ru(e)}.")
 
     with gr.Blocks(title="BS — Big Five по видео", theme=_theme()) as demo:
         job_state = gr.State("")
@@ -621,10 +699,10 @@ def build_app(engine: Engine, work_dir: Path):
                 contrib = gr.HTML(label="Вклад модальностей", show_label=True, container=True)
             with gr.Column(scale=1, min_width=320):
                 words_detail = gr.Textbox(label="Слова, повлиявшие на каждую черту (своя модель)", lines=6, max_lines=10)
-        with gr.Accordion("Оценки участников ансамбля и полный JSON", open=False):
+        with gr.Accordion("Оценки участников ансамбля и все данные результата", open=False):
             members = gr.Textbox(label="Участники ансамбля и время обработки", lines=4, max_lines=8)
             # gr.JSON is avoided: gradio 5.8 / gradio_client fail to build its API schema (additionalProperties=True)
-            raw = gr.Code(label="result.json", language="json", lines=20)
+            raw = gr.Code(label="Все данные результата (файл result.json)", language="json", lines=20)
             path = gr.Textbox(label="Сохранено в", interactive=False)
         gr.Markdown(f"<small>{DISCLAIMER_RU}<br>{INTERVIEW_DISCLAIMER_RU}</small>")
         run_ev = btn.click(analyze, inputs=[video, lang, explain],
@@ -636,6 +714,45 @@ def build_app(engine: Engine, work_dir: Path):
         stop_btn.click(stop, inputs=None, outputs=[status], cancels=[run_ev], show_progress="hidden", api_name=False)
         pdf_btn.click(make_pdf, inputs=[job_state], outputs=[pdf_btn], api_name=False)
     return demo
+
+
+class RussianLocale:
+    """ASGI middleware. Gradio takes the language of its own texts (upload area, footer, error window) from the
+    browser, so an English browser showed them in English. The page is Russian in any browser: the HTML page gets
+    lang="ru" and a script that makes navigator.language read 'ru' before the Gradio bundle starts (Gradio's `head`
+    option is applied only after the bundle has already chosen the language)."""
+    SCRIPT = (b"<script>try{Object.defineProperty(navigator,'language',{get:function(){return 'ru'}});"
+              b"Object.defineProperty(navigator,'languages',{get:function(){return ['ru']}})}catch(e){}</script>")
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope.get("method") != "GET":
+            await self.app(scope, receive, send)
+            return
+        start, chunks = None, []
+
+        async def send_ru(message):
+            nonlocal start
+            if message["type"] == "http.response.start":
+                if dict(message.get("headers") or []).get(b"content-type", b"").startswith(b"text/html"):
+                    start = message             # an HTML page: held back until its body is complete
+                    return
+                await send(message)
+            elif start is not None and message["type"] == "http.response.body":
+                chunks.append(message.get("body", b""))
+                if message.get("more_body"):
+                    return
+                page = b"".join(chunks).replace(b"<head>", b"<head>" + self.SCRIPT, 1)
+                page = re.sub(rb'(<html\s+)lang="en"', rb'\1lang="ru"', page, count=1)
+                headers = [(k, v) for k, v in start["headers"] if k.lower() != b"content-length"]
+                await send({**start, "headers": headers + [(b"content-length", str(len(page)).encode())]})
+                await send({"type": "http.response.body", "body": page})
+            else:
+                await send(message)
+
+        await self.app(scope, receive, send_ru)
 
 
 def main(port: int = 7860, members: str = "oceanai,mm", work_dir: str | None = None, share: bool = False,
@@ -652,5 +769,7 @@ def main(port: int = 7860, members: str = "oceanai,mm", work_dir: str | None = N
     engine = Engine(members=tuple(m.strip() for m in members.split(",") if m.strip()), asr_model=asr_model,
                     ollama_model=ollama_model, mm_ckpt=mm_ckpt)
     demo = build_app(engine, wd)
+    from starlette.middleware import Middleware
     demo.queue(default_concurrency_limit=1).launch(server_name=host, server_port=port, share=share,
-                                                   allowed_paths=[str(wd)], show_error=True, show_api=False)
+                                                   allowed_paths=[str(wd)], show_error=True, show_api=False,
+                                                   app_kwargs={"middleware": [Middleware(RussianLocale)]})

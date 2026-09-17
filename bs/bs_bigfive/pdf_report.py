@@ -14,7 +14,8 @@ from pathlib import Path
 from fpdf import FPDF
 
 from .norms import TRAIT_KEYS
-from .report import DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU, clean_word, fmt_secs, seg_label
+from .report import (DESCRIPTION_UNTRANSLATED_RU, DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU, TRANSCRIPT_TRANSLATED_RU,
+                     TRANSCRIPT_UNTRANSLATED_RU, fmt_secs, seg_label, speech_end)
 
 TITLES = {
     "openness": "Открытость опыту", "conscientiousness": "Добросовестность", "extraversion": "Экстраверсия",
@@ -147,6 +148,34 @@ def _scale_title(scale: str) -> str:
     if s.startswith("FIV2") or "First Impressions" in s:
         return "шкала First Impressions V2"
     return f"шкала {s}"
+
+
+# codec names as ffprobe reports them ('h264', 'aac') -> as they are usually written
+CODEC_TITLES = {"h264": "H.264", "hevc": "H.265", "av1": "AV1", "vp8": "VP8", "vp9": "VP9", "mpeg4": "MPEG-4",
+                "prores": "ProRes", "aac": "AAC", "mp3": "MP3", "opus": "Opus", "vorbis": "Vorbis", "flac": "FLAC"}
+WHISPER_SIZES = {"tiny": "самая маленькая", "base": "базовая", "small": "малая", "medium": "средняя", "large": "большая"}
+
+
+def _codec(name) -> str:
+    if not name:
+        return ""
+    return "PCM" if str(name).lower().startswith("pcm_") else CODEC_TITLES.get(str(name).lower(), str(name).upper())
+
+
+def _encoder_title(value) -> str:
+    """'Lavf60.16.100' (the FFmpeg library that wrote the file) -> 'FFmpeg, версия библиотеки 60.16.100'."""
+    mt = re.match(r"^Lavf(\d[\d.]*)$", str(value or "").strip())
+    return f"FFmpeg, версия библиотеки {mt.group(1)}" if mt else str(value)
+
+
+def _asr_title(name) -> str:
+    """'openai/whisper-large-v3-turbo' -> 'Whisper, большая модель версии 3, ускоренная'; other names unchanged."""
+    s = str(name or "")
+    mt = re.match(r"^(?:.*/)?whisper-(tiny|base|small|medium|large)(?:-v(\d+))?(-turbo)?", s, re.I)
+    if not mt:
+        return s
+    return (f"Whisper, {WHISPER_SIZES[mt.group(1).lower()]} модель" + (f" версии {mt.group(2)}" if mt.group(2) else "")
+            + (", ускоренная" if mt.group(3) else ""))
 
 
 FONT_CANDIDATES = [
@@ -453,7 +482,7 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
     pdf.h2(section("Файл"))
     rows = []
     if media and "error" not in media:
-        video = ", ".join(str(x) for x in (media.get("video_codec"),
+        video = ", ".join(str(x) for x in (_codec(media.get("video_codec")),
                                            f"{media.get('width')}×{media.get('height')}" if media.get("width") else None,
                                            f"{media.get('fps')} кадр/с" if media.get("fps") else None) if x)
         if media.get("rotation"):
@@ -463,16 +492,17 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
                  ("Длительность", f"{fmt_secs(media.get('duration_sec'))} ({media.get('duration_sec')} с)"),
                  ("Контейнер", media.get("container")),
                  ("Видео", video),
-                 ("Аудио", f"{media.get('audio_codec')}, {_thousands(media.get('sample_rate'))} Гц, каналов: {media.get('channels')}"
+                 ("Аудио", f"{_codec(media.get('audio_codec'))}, {_thousands(media.get('sample_rate'))} Гц, каналов: {media.get('channels')}"
                   if media.get("audio_codec") else "нет звуковой дорожки"),
                  ("Битрейт", f"{_thousands(media.get('bitrate_kbps'))} кбит/с"),
                  ("Изменён", _fmt_dt(media.get("modified")))]
         for k, v in media.items():
             if k.startswith("tag_"):
                 tag = k[4:]
-                rows.append((TAG_TITLES.get(tag, tag), _fmt_dt(v) if tag == "creation_time" else v))
+                rows.append((TAG_TITLES.get(tag, tag), _fmt_dt(v) if tag == "creation_time"
+                             else _encoder_title(v) if tag == "encoder" else v))
         if media.get("sha256"):
-            rows.append(("SHA-256", media["sha256"]))
+            rows.append(("Хеш-сумма SHA-256", media["sha256"]))
     else:
         rows.append(("Путь", report.get("input")))
     pdf.kv_table(rows)
@@ -501,12 +531,14 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
         if all(parts):
             trained_on = "; ".join(parts)
     rows = [("Система", system), ("Язык речи", {"ru": "русский", "en": "английский"}.get(m.get("lang"), m.get("lang"))),
-            ("Распознавание речи", m.get("asr_model") or "готовый транскрипт"),
+            ("Распознавание речи", _asr_title(m.get("asr_model")) or "готовый транскрипт"),
             ("Обучающие данные", trained_on),
             ("Участники" if used and len(members) == len(used) else "Модальности",
              ", ".join(MODALITY_TITLES.get(x, x) for x in used)),
             ("Версия", m.get("version"))]
-    if report.get("segments"):
+    if report.get("segments") == 1:          # a short video is analysed as one piece (as the web page says)
+        rows.append(("Отрезки", "один: ролик анализируется целиком"))
+    elif report.get("segments"):
         rows.append(("Отрезки", f"{report['segments']} по ~20 с; итог — среднее с весом по длительности"))
     t = report.get("timings_sec", {})
     if t:
@@ -683,8 +715,9 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
         share = {x: sum(float(row[x]["share"]) for row in ixg.values()) / len(ixg) for x in mods}
         main = [MEMBERS.get(x, x).replace("\n", " ") for x in sorted(mods, key=lambda x: -share[x]) if share[x] >= 0.1]
         main_txt = " и ".join([", ".join(main[:-1]), main[-1]]) if len(main) > 1 else "".join(main)
-        pdf.note("Доля каждой модальности в оценке своей модели (метод Input×Gradient). «<1%» — модальность почти не "
-                 "влияет на оценку." + (f" Здесь модель опиралась в основном на {main_txt}." if main else ""))
+        pdf.note("Доля каждой модальности в оценке своей модели; вклад считается как произведение признаков модальности "
+                 "на чувствительность оценки к ним. «<1%» — модальность почти не влияет на оценку."
+                 + (f" Здесь модель опиралась в основном на {main_txt}." if main else ""))
         loo = explanation["modalities"].get("leave_one_out_delta") or {}
         if loo:
             keys_l = [k for k in list(TRAIT_KEYS) + ["interview"] if any(k in v for v in loo.values())]
@@ -692,14 +725,24 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
             header = ["Без модальности"] + [TITLES_2L.get(k, TITLES.get(k, k)) for k in keys_l]
             rows = [[MEMBERS.get(x, x).replace("\n", " ")] + [signed(v.get(k, 0)) for k in keys_l] for x, v in loo.items()]
             pdf.table(header, rows, [36] + [154 / len(keys_l)] * len(keys_l), size=8)
-            pdf.note(f"Своя модель заново оценивает {'отрезок' if rep_seg is not None else 'ролик'} без этой модальности "
-                     "(метод leave-one-out). Плюс — без неё оценка была бы выше, минус — ниже; 0.00 — оценка не меняется.")
+            pdf.note(f"Своя модель заново оценивает {'отрезок' if rep_seg is not None else 'ролик'} без этой модальности, "
+                     "остальные остаются как были. Плюс — без неё оценка была бы выше, минус — ниже; 0.00 — оценка не "
+                     "меняется.")
         from .narrative import words_sentences
+        from .words import words_missing_note, words_note
         rw_all = explanation.get("readable_words") or {}
         lang = m.get("lang", "en")
-        if rw_all:
+        # only the readable lists (Russian words for any speech language); an explanation without them (a run
+        # where they could not be built) gets no word section rather than the model's English tokens, or a note
+        # when the model did point at content words
+        lines = words_sentences(rw_all, TITLES, lang) if rw_all else []
+        missing = "" if lines else words_missing_note(rw_all)
+        if missing:
+            pdf.h3("Слова, повлиявшие на каждую черту", need=12)
+            pdf.note(missing)
+        if lines:
             pdf.h3("Слова, повлиявшие на каждую черту", need=20)
-            for line in words_sentences(rw_all, TITLES, lang):
+            for line in lines:
                 if line.endswith(":"):
                     pdf.keep(12)
                     pdf.set_font("ui", "B", 9); pdf.cell(0, 6, line, new_x="LMARGIN", new_y="NEXT")
@@ -708,34 +751,25 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
                     pdf.labelled_line(title, rest)
                 elif line:
                     pdf.para(line, 8.5)
-            pdf.note("Слова из речи и из описания поведения, сильнее всего сдвинувшие оценку своей модели: «повышали» — "
-                     "сдвигали оценку черты вверх, «понижали» — вниз. Служебные слова отброшены"
-                     + ("; для русской речи слово показано так, как оно прозвучало." if lang == "ru" else "."))
-        old = [(key, title) for key, title in (("transcript_words", "Слова речи, повлиявшие на оценку"),
-                                               ("behavior_words", "Слова описания поведения, повлиявшие на оценку"))
-               if key not in rw_all and key in explanation]
-        for key, title in old:          # explanation without the readable lists (old run): English tokens
-            pdf.h3(title, need=15)
-            for k, d in explanation[key]["per_output"].items():
-                pdf.labelled_line(TITLES.get(k, k), ", ".join(clean_word(w["word"]) for w in d["top_words"][:6]))
-        if old:
-            pdf.note("Слова в том виде, в каком их видит модель (на английском), в порядке силы влияния на оценку своей "
-                     "модели; в какую сторону слово сдвигало оценку, здесь не показано.")
+            pdf.note(words_note(lang))
 
-    # ---- texts
+    # ---- texts (Russian only: the English originals stay in result.json)
     if report.get("behavior_description"):
-        vlm_note = f"Описание строит видеоязыковая модель по кадрам {'каждого отрезка' if tl else 'ролика'}."
+        pdf.h2(section("Описание поведения"))
+        pdf.note(f"Описание строит видеоязыковая модель по кадрам {'каждого отрезка' if tl else 'ролика'}.")
         if report.get("behavior_description_ru"):
-            pdf.h2(section("Описание поведения"))
-            pdf.note(vlm_note)
             pdf.text_blocks(report["behavior_description_ru"], 9)
         else:
-            pdf.h2(section("Описание поведения (на английском — перевод не получен)"))
-            pdf.note(vlm_note)
-            pdf.text_blocks(report["behavior_description"], 9)
+            pdf.para(DESCRIPTION_UNTRANSLATED_RU, 9)
     if report.get("transcript"):
         pdf.h2(section("Транскрипт речи"))
-        pdf.para(report["transcript"], 9)
+        if m.get("lang", "en") != "en":
+            pdf.para(speech_end(report["transcript"]), 9)
+        elif report.get("transcript_ru"):
+            pdf.note(TRANSCRIPT_TRANSLATED_RU)
+            pdf.para(speech_end(report["transcript_ru"]), 9)
+        else:
+            pdf.para(TRANSCRIPT_UNTRANSLATED_RU, 9)
 
     pdf.h2("Ограничения")
     pdf.para(DISCLAIMER_RU, 8)

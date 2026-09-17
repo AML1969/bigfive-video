@@ -8,6 +8,7 @@ import numpy as np
 
 from .norms import RU_TITLES, TRAIT_KEYS
 from .report import seg_label
+from .words import shown_word
 
 MOD_RU = {"face": "лицо", "audio": "голос", "audio_whisper": "голос", "audio_xlsr": "голос", "audio_w2v_emo": "голос",
           "text": "содержание речи", "behavior": "описание поведения"}
@@ -118,27 +119,41 @@ def build_narrative(rep: dict, expl: dict | None = None) -> str:
         ixg = expl["modalities"]["input_x_gradient"]
         mods = list(next(iter(ixg.values())).keys())
         share = {m: float(np.mean([row[m]["share"] for row in ixg.values()])) for m in mods}
-        main = [m for m in sorted(mods, key=lambda m: -share[m]) if share[m] >= 0.01]
+        order = sorted(mods, key=lambda m: -share[m])
+        # «в основном» from 10%, as the note under the PDF contribution table; 1–10% «повлияли слабо», <1% «почти не»
+        main = [m for m in order if share[m] >= 0.10]
+        minor = [m for m in order if 0.01 <= share[m] < 0.10]
         weak = [m for m in mods if share[m] < 0.01]
-        s = "Своя модель опиралась в основном на " + " и ".join(f"{MOD_RU.get(m, m)} ({share[m] * 100:.0f}%)" for m in main)
+
+        def listed(items):
+            # «лицо (62%), голос (35%) и содержание речи (2%)», not «… и … и …»
+            return ", ".join(items[:-1]) + " и " + items[-1] if len(items) > 1 else "".join(items)
+
+        def verb(names, what):          # «повлияли» / «повлиял» (голос) / «повлияло» (лицо, описание поведения)
+            return (f"{what}и" if len(names) > 1 else
+                    f"{what}" if MOD_GENDER.get(names[0]) == "m" else f"{what}о")
+        s = "Своя модель опиралась в основном на " + listed([f"{MOD_RU.get(m, m)} ({share[m] * 100:.0f}%)" for m in main])
+        if minor:
+            s += ("; " + listed([f"{MOD_RU.get(m, m)} ({share[m] * 100:.0f}%)" for m in minor]) + " "
+                  + verb([MOD_RU.get(m, m) for m in minor], "повлиял") + " слабо")
         if weak:
             names = list(dict.fromkeys(MOD_RU.get(m, m) for m in weak))
-            verb = "почти не повлияли" if len(names) > 1 else (
-                "почти не повлиял" if MOD_GENDER.get(names[0]) == "m" else "почти не повлияло")
-            s += "; " + " и ".join(names) + f" {verb} (меньше 1%)"
+            s += "; " + " и ".join(names) + f" {verb(names, 'почти не повлиял')} (меньше 1%)"
         parts.append(s + ".")
 
     # 6. words (union over traits, largest effects)
     rw = (expl or {}).get("readable_words", {}).get("transcript_words")
     if rw:
-        up, down = {}, {}
-        for d in rw.values():
-            for i in d["up"]:
-                w = i.get("source") or i.get("ru") or i["en"]; up[w] = max(up.get(w, 0), abs(i["signed"]))
-            for i in d["down"]:
-                w = i.get("source") or i.get("ru") or i["en"]; down[w] = max(down.get(w, 0), abs(i["signed"]))
-        ups = [w for w, _ in sorted(up.items(), key=lambda x: -x[1])[:4]]
-        downs = [w for w, _ in sorted(down.items(), key=lambda x: -x[1])[:4]]
+        # one direction per word, from its effect summed over the traits: a word raising one trait and lowering
+        # another must not be named on both sides
+        net = {}
+        for d in rw.values():           # Russian forms only, whatever the speech language (words.shown_word)
+            for i in d["up"] + d["down"]:
+                w = shown_word(i)
+                if w:
+                    net[w] = net.get(w, 0.0) + float(i["signed"])
+        ups = [w for w, v in sorted(net.items(), key=lambda x: -x[1]) if v > 0][:4]
+        downs = [w for w, v in sorted(net.items(), key=lambda x: x[1]) if v < 0][:4]
         if ups or downs:
             s = "Отдельные слова речи сдвигали оценки лишь незначительно"
             if ups:
@@ -163,15 +178,13 @@ def words_sentences(rw_all: Dict[str, dict], titles: Dict[str, str], lang: str) 
         rw = rw_all.get(key)
         if not rw:
             continue
-        out.append(f"Слова {what}:")
+        lines = []
         for trait in list(TRAIT_KEYS) + [k for k in rw if k not in TRAIT_KEYS]:
             if trait not in rw:
                 continue
-
-            def lab(i):
-                return "«" + (i.get("source") or i.get("ru") or i["en"] if lang != "en" else i["en"]) + "»"
-            ups = [lab(i) for i in rw[trait]["up"]]
-            downs = [lab(i) for i in rw[trait]["down"]]
+            # the Russian form for any speech language; a word without one is left out (words.shown_word)
+            ups = [f"«{shown_word(i)}»" for i in rw[trait]["up"] if shown_word(i)]
+            downs = [f"«{shown_word(i)}»" for i in rw[trait]["down"] if shown_word(i)]
             if not ups and not downs:
                 continue
             s = f"{titles.get(trait, trait)}: "
@@ -179,6 +192,7 @@ def words_sentences(rw_all: Dict[str, dict], titles: Dict[str, str], lang: str) 
                 s += "повышали " + ", ".join(ups)
             if downs:
                 s += ("; понижали " if ups else "понижали ") + ", ".join(downs)
-            out.append(s + ".")
-        out.append("")
+            lines.append(s + ".")
+        if lines:                       # no heading over an empty list
+            out += [f"Слова {what}:"] + lines + [""]
     return out

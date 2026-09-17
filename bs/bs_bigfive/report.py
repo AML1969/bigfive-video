@@ -20,6 +20,12 @@ INTERVIEW_DISCLAIMER_RU = ("Метка «собеседование» ChaLearn: 
                            "собеседование после 15-секундного первого впечатления. Не рекомендация о найме; авторы датасета "
                            "просят не использовать её для решений, влияющих на людей.")
 FIV2_REF = "train First Impressions V2 (6000 клипов)"
+# English speech: the web page and the PDF show the transcript in Russian, under this note
+TRANSCRIPT_TRANSLATED_RU = "Речь в ролике на английском; ниже — её автоматический перевод на русский."
+TRANSCRIPT_UNTRANSLATED_RU = ("Речь в ролике на английском, а перевести транскрипт на русский не удалось; "
+                              "английский текст сохранён в файле результата.")
+DESCRIPTION_UNTRANSLATED_RU = ("Описание поведения получено на английском, а перевести его на русский не удалось; "
+                               "английский текст сохранён в файле результата.")
 
 
 def fmt_secs(x) -> str:
@@ -35,6 +41,12 @@ def fmt_secs(x) -> str:
         return f"{m} мин {s:02d} с"
     h, m = divmod(m, 60)
     return f"{h} ч {m:02d} мин"
+
+
+def speech_end(text) -> str:
+    """Recognised speech for display: a text cut off mid-sentence (the recording ends on a comma) ends with «…»."""
+    text = str(text or "").rstrip()
+    return re.sub(r"\s*[,;:–—-]+$", "…", text)
 
 
 def clean_word(w: str) -> str:
