@@ -137,7 +137,7 @@ _PAGE = r"""<!DOCTYPE html>
     var dark = isDark(), narrow = st.narrow ? w < NARROW + 20 : w < NARROW;
     if (!window.Plotly) {                     // plotly.js did not load (no connection to the CDN)
       gd.className = 'bs-fail'; gd.style.color = (dark ? THEME.dark : THEME.light).text;
-      gd.textContent = 'График не загрузился: нет связи с cdn.plot.ly. Оценки по отрезкам есть в таблице выше.';
+      gd.textContent = 'График не загрузился: нет связи с сервером, откуда загружается библиотека графиков. Оценки по отрезкам есть в таблице выше.';
       fitFrame(48); gd.style.height = 'auto';
       return;
     }
@@ -357,4 +357,4 @@ def frames_html(rep: dict, frames: List[Tuple[str, str]], max_side: int = 1280) 
             f".bs-kf:focus-visible{{outline:2px solid {OUTLINE};outline-offset:2px}}</style>"
             f"<div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px'>{''.join(cells)}</div>"
             f"<p style='font-size:13px;opacity:.85;margin-top:8px'>Кадры, сильнее всего повлиявшие на оценку своей модели{where}; "
-            f"рамкой отмечено найденное лицо, {what}. Щелчок или Enter увеличивает кадр, повторный щелчок или Esc закрывает.</p>")
+            f"рамкой отмечено найденное лицо, {what}. Щелчок увеличивает кадр, повторный щелчок закрывает.</p>")
