@@ -62,6 +62,30 @@ def _name(k: str) -> str:
     return RU_TITLES[k].lower()
 
 
+def word_effects(rw: Dict[str, dict]) -> tuple:
+    """({word: largest |effect|} of the words that raised a score, {…} of those that lowered one) over all traits of
+    a readable_words list; Russian words only (an item without a translation is left out)."""
+    from .words import shown_word
+    ups: Dict[str, float] = {}
+    downs: Dict[str, float] = {}
+    for d in rw.values():
+        for items, acc in ((d["up"], ups), (d["down"], downs)):
+            for i in items:
+                w = shown_word(i)
+                if w:
+                    acc[w] = max(acc.get(w, 0.0), abs(i["signed"]))
+    return ups, downs
+
+
+def top_directions(ups: Dict[str, float], downs: Dict[str, float], k: int = 4) -> tuple:
+    """The k strongest words of each direction. A word that raised some scores and lowered others names no direction
+    and is left out of both lists («в сторону повышения — «продукт»; понижения — «продукт»» is no information)."""
+    both = set(ups) & set(downs)
+    top_up = [w for w, _ in sorted(ups.items(), key=lambda kv: -kv[1]) if w not in both][:k]
+    top_down = [w for w, _ in sorted(downs.items(), key=lambda kv: -kv[1]) if w not in both][:k]
+    return top_up, top_down
+
+
 def build_narrative(rep: dict, expl: dict | None = None) -> str:
     traits = rep["traits"]
     model = rep.get("model") or {}
@@ -120,7 +144,10 @@ def build_narrative(rep: dict, expl: dict | None = None) -> str:
         share = {m: float(np.mean([row[m]["share"] for row in ixg.values()])) for m in mods}
         main = [m for m in sorted(mods, key=lambda m: -share[m]) if share[m] >= 0.01]
         weak = [m for m in mods if share[m] < 0.01]
-        s = "Своя модель опиралась в основном на " + " и ".join(f"{MOD_RU.get(m, m)} ({share[m] * 100:.0f}%)" for m in main)
+        named = [f"{MOD_RU.get(m, m)} ({share[m] * 100:.0f}%)" for m in main]
+        # «на лицо (57%), голос (37%) и описание поведения (4%)», not «… и … и …»
+        s = "Своя модель опиралась в основном на " + (", ".join(named[:-1]) + " и " + named[-1] if len(named) > 1
+                                                      else "".join(named))
         if weak:
             names = list(dict.fromkeys(MOD_RU.get(m, m) for m in weak))
             verb = "почти не повлияли" if len(names) > 1 else (
@@ -128,17 +155,11 @@ def build_narrative(rep: dict, expl: dict | None = None) -> str:
             s += "; " + " и ".join(names) + f" {verb} (меньше 1%)"
         parts.append(s + ".")
 
-    # 6. words (union over traits, largest effects)
+    # 6. words (union over traits, largest effects), Russian only whatever the speech language; the same lists as the
+    # block «Слова, на которые откликнулась модель» (words_summary)
     rw = (expl or {}).get("readable_words", {}).get("transcript_words")
     if rw:
-        up, down = {}, {}
-        for d in rw.values():
-            for i in d["up"]:
-                w = i.get("source") or i.get("ru") or i["en"]; up[w] = max(up.get(w, 0), abs(i["signed"]))
-            for i in d["down"]:
-                w = i.get("source") or i.get("ru") or i["en"]; down[w] = max(down.get(w, 0), abs(i["signed"]))
-        ups = [w for w, _ in sorted(up.items(), key=lambda x: -x[1])[:4]]
-        downs = [w for w, _ in sorted(down.items(), key=lambda x: -x[1])[:4]]
+        ups, downs = top_directions(*word_effects(rw))
         if ups or downs:
             s = "Отдельные слова речи сдвигали оценки лишь незначительно"
             if ups:
@@ -158,6 +179,7 @@ def build_narrative(rep: dict, expl: dict | None = None) -> str:
 
 def words_sentences(rw_all: Dict[str, dict], titles: Dict[str, str], lang: str) -> List[str]:
     """Per-trait sentences: 'Открытость опыту: повышали слова «простой»; понижали — «явление», «работе».'"""
+    from .words import shown_word
     out = []
     for key, what in (("transcript_words", "речи"), ("behavior_words", "описания поведения")):
         rw = rw_all.get(key)
@@ -168,10 +190,8 @@ def words_sentences(rw_all: Dict[str, dict], titles: Dict[str, str], lang: str) 
             if trait not in rw:
                 continue
 
-            def lab(i):
-                return "«" + (i.get("source") or i.get("ru") or i["en"] if lang != "en" else i["en"]) + "»"
-            ups = [lab(i) for i in rw[trait]["up"]]
-            downs = [lab(i) for i in rw[trait]["down"]]
+            ups = [f"«{w}»" for w in map(shown_word, rw[trait]["up"]) if w]
+            downs = [f"«{w}»" for w in map(shown_word, rw[trait]["down"]) if w]
             if not ups and not downs:
                 continue
             s = f"{titles.get(trait, trait)}: "
@@ -195,8 +215,7 @@ def words_summary(rw_all: Dict[str, dict], expl: dict | None, titles: Dict[str, 
         for m in mods:
             shares[m] = float(np.mean([row[m]["share"] for row in ixg.values()]))
 
-    def lab(i):
-        return (i.get("source") or i.get("ru") or i["en"]) if lang != "en" else i["en"]
+    from .words import shown_word
 
     def q(ws):
         return ", ".join(f"«{w}»" for w in ws)
@@ -208,17 +227,13 @@ def words_summary(rw_all: Dict[str, dict], expl: dict | None, titles: Dict[str, 
         if not rw:
             continue
         share = shares.get(node)
-        ups, downs, per_trait = {}, {}, {}
+        per_trait = {}
         for trait, d in rw.items():
-            u = [lab(i) for i in d["up"]]; dn = [lab(i) for i in d["down"]]
+            # Russian words only: an item without a translation is left out
+            u = [w for w in map(shown_word, d["up"]) if w]
+            dn = [w for w in map(shown_word, d["down"]) if w]
             per_trait[trait] = (u[:3], dn[:3])
-            for i in d["up"]:
-                ups[lab(i)] = max(ups.get(lab(i), 0.0), abs(i["signed"]))
-            for i in d["down"]:
-                downs[lab(i)] = max(downs.get(lab(i), 0.0), abs(i["signed"]))
-        ambiguous = set(ups) & set(downs)
-        top_up = [w for w, _ in sorted(ups.items(), key=lambda kv: -kv[1]) if w not in ambiguous][:4]
-        top_down = [w for w, _ in sorted(downs.items(), key=lambda kv: -kv[1]) if w not in ambiguous][:4]
+        top_up, top_down = top_directions(*word_effects(rw))       # the same lists as the plain-language paragraph
         agree = [1.0 if (set(u) <= set(top_up) and set(dn) <= set(top_down)) else 0.0 for u, dn in per_trait.values()]
         uniform = (sum(agree) / max(1, len(agree))) >= 0.7
         weak = share is not None and share < 0.02

@@ -23,6 +23,7 @@ from .norms import TRAIT_KEYS
 from .palette import HTML as PAL
 from .pipeline import Studio, run_analysis
 from .report import DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU, fmt_secs, mmss_labels, seg_label
+from .ru_texts import ensure_russian_job, transcript_shown, vocabulary_shown
 from .webparts import (MEMBER_TITLES, NOTE, TRAIT_TITLES, _bar_html, _contrib_html, _members_html, _words_text,
                        table_html, th_text)
 
@@ -111,7 +112,7 @@ def _speech_html(rep: dict) -> str:
              ("Слов во фразе", whole(sp.get("mean_sentence")), "в среднем"),
              ("Разнообразие словаря", f"{float(sp['ttr']):.0%}" if sp.get("ttr") is not None else "—",
               "доля разных слов среди всех; зависит от длины текста")]
-    vocab = ", ".join(f"{w} ({n})" for w, n in sp.get("vocabulary", [])[:15])
+    vocab = ", ".join(f"{w} ({n})" for w, n in vocabulary_shown(rep)[:15])       # in Russian for any speech language
     return (_cards(items) + "<p style='font-size:15px;line-height:1.5;margin:12px 0 6px'>"
             f"{fix_counts(sp.get('description', ''))}</p>"
             + (f"<p style='font-size:14px;line-height:1.5;margin:0'><b>Частые слова</b> "
@@ -174,10 +175,12 @@ def _frames_html(rep: dict, max_side: int = 640) -> str:
     paths = [p for p in rep.get("key_frames") or [] if Path(p).exists()]
     if not paths:
         return "<p style='font-size:14px'>Ключевые кадры не построены (объяснения отключены или лицо не найдено).</p>"
-    seg = None
-    if rep.get("timeline") and rep.get("representative_segment"):
-        seg = next((t for t in rep["timeline"] if t.get("segment") == rep["representative_segment"]), None)
+    # frames come from the representative segment of a long video, otherwise from the whole video (no timeline): the
+    # moment is then counted from 0, the same rule as in the PDF
+    tl_all = rep.get("timeline") or []
+    seg = next((t for t in tl_all if t.get("segment") == rep.get("representative_segment")), None) if tl_all else None
     fps = float((rep.get("media") or {}).get("fps") or 0) or None
+    seg_start = float(seg["start"]) if seg else 0.0
     cells = []
     for p in paths:
         try:
@@ -189,10 +192,10 @@ def _frames_html(rep: dict, max_side: int = 640) -> str:
         except Exception:  # noqa: BLE001
             continue
         m = re.search(r"_frame(\d+)", Path(p).stem)
-        t = seg["start"] + int(m.group(1)) / fps if m and seg and fps else None
-        cells.append((b64, t, f"кадр {m.group(1)}" if m else "кадр"))
+        t = seg_start + int(m.group(1)) / fps if (m and fps and (seg or not tl_all)) else None
+        cells.append((b64, t))
     # frames a fraction of a second apart would get the same «0:37» twice: then show tenths («0:37,2»)
-    whole = [f"{int(t) // 60}:{int(t) % 60:02d}" for _, t, _ in cells if t is not None]
+    whole = [f"{int(t) // 60}:{int(t) % 60:02d}" for _, t in cells if t is not None]
     tenths = len(set(whole)) < len(whole)
 
     def _moment(t):
@@ -201,23 +204,64 @@ def _frames_html(rep: dict, max_side: int = 640) -> str:
         d = int(t * 10)
         return f"{d // 600}:{d // 10 % 60:02d},{d % 10}"
 
-    cells = [(b64, _moment(t) if t is not None else fallback) for b64, t, fallback in cells]
     total = len(cells)
-    figs = "".join(
-        f"<figure role='button' tabindex='0' title='Щёлкните, чтобы увеличить' onclick=\"this.classList.toggle('bs2-kf-big')\" "
-        "onkeydown=\"if(event.key==='Enter'||event.key===' '){event.preventDefault();this.classList.toggle('bs2-kf-big')}"
-        "else if(event.key==='Escape'){this.classList.remove('bs2-kf-big')}\">"
-        f"<img src='data:image/jpeg;base64,{b64}' alt='Ключевой кадр, момент {caption}'>"
-        f"<figcaption><span class='bs2-kf-more'>Кадр {i} из {total} · момент </span>{caption}"
-        "<span class='bs2-kf-more'> · щелчок закрывает</span></figcaption></figure>"
-        for i, (b64, caption) in enumerate(cells, 1))
+    figs = []
+    for i, (b64, t) in enumerate(cells, 1):
+        # with a moment: «0:37» under the frame; without one (no frame rate in the file): the frame's number in the row
+        if t is not None:
+            caption, more, tail, alt = _moment(t), f"Кадр {i} из {total} · момент ", "", f"Ключевой кадр, момент {_moment(t)}"
+        else:
+            caption, more, tail, alt = f"кадр {i}", "", f" из {total}", f"Ключевой кадр {i} из {total}"
+        figs.append(
+            f"<figure role='button' tabindex='0' title='Щёлкните, чтобы увеличить' onclick=\"this.classList.toggle('bs2-kf-big')\" "
+            "onkeydown=\"if(event.key==='Enter'||event.key===' '){event.preventDefault();this.classList.toggle('bs2-kf-big')}"
+            "else if(event.key==='Escape'){this.classList.remove('bs2-kf-big')}\">"
+            f"<img src='data:image/jpeg;base64,{b64}' alt='{alt}'>"
+            f"<figcaption><span class='bs2-kf-more'>{more}</span>{caption}"
+            f"<span class='bs2-kf-more'>{tail} · щелчок закрывает</span></figcaption></figure>")
+    timed = any(t is not None for _, t in cells)
     where = f" (отрезок {seg_label(seg['start'], seg['end'])})" if seg else ""
     return (FRAMES_CSS + "<div class='bs2-kf' style='display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));"
-            f"gap:12px'>{figs}</div>"
+            f"gap:12px'>{''.join(figs)}</div>"
             f"<p style='{NOTE};margin-top:10px'>Кадры, сильнее всего повлиявшие на оценку своей модели{where}. "
-            "Рамкой на кадре отмечено найденное лицо, подпись под кадром — момент ролика (минуты:секунды"
-            + (", после запятой — десятые доли секунды" if tenths else "") + "). "
-            "Щелчок по кадру увеличивает его, повторный щелчок закрывает.</p>")
+            + ("Рамкой на кадре отмечено найденное лицо, подпись под кадром — момент ролика (минуты:секунды"
+               + (", после запятой — десятые доли секунды" if tenths else "") + "). " if timed else
+               "Рамкой на кадре отмечено найденное лицо, подпись под кадром — его номер. ")
+            + "Щелчок по кадру увеличивает его, повторный щелчок закрывает.</p>")
+
+
+def page_outputs(rep: dict) -> tuple:
+    """Everything the result page shows for a finished job, in the order of the output blocks after the status line
+    (without the PDF button). Jobs processed before the Russian texts existed get them here, stored back."""
+    job = Path(rep["job_dir"])
+    expl_path = job / "explain" / "explanation.json"
+    expl = json.loads(expl_path.read_text(encoding="utf-8")) if expl_path.exists() else None
+    ensure_russian_job(job, rep, expl)
+    lang = (rep.get("model") or {}).get("lang", "ru")
+    narrative = fix_counts(rep.get("narrative") or "") + " " + analyses_sentences(rep)
+    members = rep.get("variant_scores") or {}
+    primary = (rep.get("model") or {}).get("primary")
+    role = lambda m: " — основная оценка" if m == primary else (" — второе мнение" if primary else "")
+    member_txt = "\n".join(f"{MEMBER_TITLES.get(m, m)}{role(m)}: "
+                           + ", ".join(f"{TRAIT_TITLES[k].lower()} {v[k]:.2f}" for k in TRAIT_KEYS if k in v) + "."
+                           for m, v in members.items())
+    # model.corpus of an ensemble is a technical descriptor; the OCEAN-AI weights follow the language
+    weights = CORPUS_RU["mupta" if (rep.get("model") or {}).get("lang") == "ru" else "fi"] if "oceanai" in members else ""
+    member_txt += (f"\nОбработка заняла {fmt_secs(rep['timings_sec'].get('total_wall', 0))}"
+                   + (f"; {weights}." if weights else "."))
+    # English speech: the Russian translation with a one-line note (the original stays in result.json)
+    note, transcript = transcript_shown(rep)
+    # fill=True: charts in a row of two windows grow to the height of the window next to them (see APP_CSS)
+    return (_plot_html(fig_radar, rep, fill=True), _bar_html(rep["traits"], rep.get("interview")) + _members_html(rep),
+            _facts_html(rep), narrative.strip(), _plot_html(fig_traits_timeline, rep),
+            _plot_html(fig_emotions_timeline, rep), _plot_html(fig_voice_timeline, rep, fill=True),
+            _plot_html(fig_speech_timeline, rep, fill=True), _plot_html(fig_emotion_bars, rep),
+            _segments_table(rep), _speech_html(rep),
+            "\n\n".join(t for t in (note, transcript) if t), _face_html(rep), _plot_html(fig_face_expr, rep),
+            _frames_html(rep), _contrib_html(expl),
+            _words_text(expl, rep, lang, expl_path) if expl else "",
+            mmss_labels(rep.get("behavior_description_ru") or ""), member_txt,
+            json.dumps(rep, ensure_ascii=False, indent=2), str(job / "result.json"), str(job))
 
 
 def export_pdf(job_dir: str | Path) -> str:
@@ -228,6 +272,7 @@ def export_pdf(job_dir: str | Path) -> str:
     rep = json.loads((job / "result.json").read_text(encoding="utf-8"))
     expl_path = job / "explain" / "explanation.json"
     expl = json.loads(expl_path.read_text(encoding="utf-8")) if expl_path.exists() else None
+    ensure_russian_job(job, rep, expl)          # jobs processed before the Russian texts: translate once, store back
     rep["chart_files"] = save_pdf_charts(rep, job / "charts")
     frames = sorted(str(p) for p in (job / "explain").glob("key_*.jpg")) if (job / "explain").exists() else []
     media = rep.get("media")
@@ -236,6 +281,26 @@ def export_pdf(job_dir: str | Path) -> str:
         media = probe_media(inp) if inp else None
     stem = re.sub(r"[^A-Za-z0-9А-Яа-яЁё._-]+", "_", Path(rep.get("original_file_name") or "video").stem)[:60]
     return build_pdf(rep, job / f"BS2_report_{stem}.pdf", explanation=expl, media=media, key_frames=frames)
+
+
+def analysis_error_ru(e: BaseException) -> str:
+    """A failed analysis in words for the error dialog: the exceptions of the models are English (and show_error=True
+    would print them as they are); the original goes to the server log."""
+    import subprocess
+    msg = str(e)
+    low = msg.lower()
+    if "out of memory" in low:
+        return "Не хватило памяти видеокарты. Подождите минуту и запустите анализ заново."
+    if "no segment could be analysed" in low or "no predictions for any file" in low or "no frames decoded" in low:
+        return "В ролике не найдено ни лица, ни речи, поэтому оценить его нельзя. Проверьте файл и выбранный язык речи."
+    if "all ensemble members failed" in low:
+        return ("Ни одна из систем оценки не смогла обработать ролик: чаще всего в кадре не найдено лицо или не слышна "
+                "речь. Проверьте файл и выбранный язык речи.")
+    if isinstance(e, subprocess.CalledProcessError):
+        return "Не удалось прочитать видеофайл: возможно, он повреждён или записан в неподдерживаемом формате."
+    if re.search(r"[А-Яа-яЁё]", msg) and not re.search(r"[A-Za-z]", msg):
+        return msg                                  # messages of this package are already Russian
+    return "Не удалось обработать ролик из-за внутренней ошибки. Подробности записаны в журнал сервера."
 
 
 STATUS_LABELS = {"running": "Идёт обработка", "done": "Готово", "stopped": "Остановлено"}
@@ -279,6 +344,65 @@ def _status_html(frac: float, desc: str, state: str = "running", label: str | No
 # already shows the same title, so the bold title line is hidden there and the subtitle (units, scale) stays.
 APP_CSS = (".bs2-block > label[data-testid='block-label'] > span{display:none}"
            ".prose.bs2-chart > div:first-child[style*='font-weight:600']{display:none}")
+VIDEO_H = 300          # height of the video window before it is stretched (gr.Video height)
+# Two framed windows side by side (gr.Row with class bs2-pair): both columns get the height of the taller one, and in
+# each column the window marked bs2-grow takes the extra height, so the two frames start and end on one line with no
+# page background under the shorter one. A text box stretches its text area (the text fills the frame instead of
+# scrolling in a small box), a chart block stretches its iframe (charts.plot_html fill=True redraws the figure at that
+# height), the video window stretches its drop zone or player, a plain HTML block extends its frame under the content.
+# Gradio's own equal_height grows every block of a column; here only the marked one grows. On a narrow screen the
+# columns wrap onto separate lines, and a line is as tall as its only column, so nothing is stretched there.
+APP_CSS += (
+    ".gradio-container .row.bs2-pair{align-items:stretch}"
+    ".row.bs2-pair>.column>.bs2-grow,.row.bs2-pair>.column>.form>.bs2-grow{flex-grow:1}"
+    # a text box sits in a .form wrapper whose inline style (flex-grow:0, from scale) only !important overrides
+    ".row.bs2-pair>.column>.form:has(>.bs2-grow){flex-grow:1!important;flex-wrap:nowrap}"
+    # text box: block > label.container > title chip + .input-container > textarea
+    ".row.bs2-pair .bs2-grow.block:has(textarea),.row.bs2-pair .bs2-grow>label.container,"
+    ".row.bs2-pair .bs2-grow .input-container{display:flex;flex-direction:column;flex-grow:1}"
+    ".row.bs2-pair .bs2-grow>label.container>[data-testid='block-info']{align-self:flex-start}"
+    ".row.bs2-pair .bs2-grow textarea{flex-grow:1}"
+    # chart: block > title chip + .html-container > .prose > subtitle + iframe (flex:1 0 auto from plot_html); a chart
+    # that stops growing (the radar, max-height from the iframe script) is centred together with its subtitle
+    ".row.bs2-pair>.column>.bs2-grow.bs2-chart,.row.bs2-pair .bs2-grow.bs2-chart>.html-container,"
+    ".row.bs2-pair .prose.bs2-grow.bs2-chart{display:flex;flex-direction:column;flex-grow:1}"
+    ".row.bs2-pair .prose.bs2-grow.bs2-chart{justify-content:center}"
+    ".row.bs2-pair>.column>.bs2-grow.bs2-chart>label{align-self:flex-start}"
+    # video: Gradio fixes the block height inline (height=VIDEO_H)
+    f".row.bs2-pair>.column>.bs2-grow:has(.video-container){{height:auto!important;min-height:{VIDEO_H}px;"
+    "display:flex;flex-direction:column}"
+    ".row.bs2-pair .bs2-grow .video-container{flex-grow:1}")
+
+
+ERROR_TITLE = "Ошибка"          # title of Gradio's error dialog (its default is the English "Error")
+# Gradio's own texts (upload area «Перетащите видео сюда», buttons, footer) come from its translations and follow the
+# browser language, so an English browser showed them in English. The page reports a Russian browser before the
+# Gradio bundle reads navigator.language; this has to run before that bundle, which the `head` of gr.Blocks does not
+# (Gradio inserts it later, after its translations are set up).
+RU_LOCALE_JS = ("<script>try{['language','languages'].forEach(function(k){Object.defineProperty(Navigator.prototype,k,"
+                "{configurable:true,get:function(){return k==='language'?'ru-RU':['ru-RU','ru'];}});});}catch(e){}</script>")
+
+
+def force_russian_gradio() -> None:
+    """Serve Gradio's index page with RU_LOCALE_JS at the top of <head> and lang="ru" (Gradio 5 renders the page
+    from a Jinja template; its loader is wrapped once per process)."""
+    import jinja2
+    from gradio import routes
+    env = routes.templates.env
+    if getattr(env.loader, "bs2_russian", False):
+        return
+    base = env.loader
+
+    class RussianIndexLoader(jinja2.BaseLoader):
+        bs2_russian = True
+
+        def get_source(self, environment, template):
+            source, filename, uptodate = base.get_source(environment, template)
+            if template.endswith("index.html") and RU_LOCALE_JS not in source:
+                source = source.replace("<head>", "<head>" + RU_LOCALE_JS, 1).replace('lang="en"', 'lang="ru"', 1)
+            return source, filename, uptodate
+
+    env.loader = RussianIndexLoader()
 
 
 def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
@@ -289,33 +413,11 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
     N_REST = 23
 
     def render(rep: dict) -> tuple:
-        job = Path(rep["job_dir"])
-        expl_path = job / "explain" / "explanation.json"
-        expl = json.loads(expl_path.read_text(encoding="utf-8")) if expl_path.exists() else None
-        lang = (rep.get("model") or {}).get("lang", "ru")
-        narrative = fix_counts(rep.get("narrative") or "") + " " + analyses_sentences(rep)
-        members = rep.get("variant_scores") or {}
-        primary = (rep.get("model") or {}).get("primary")
-        role = lambda m: " — основная оценка" if m == primary else (" — второе мнение" if primary else "")
-        member_txt = "\n".join(f"{MEMBER_TITLES.get(m, m)}{role(m)}: "
-                               + ", ".join(f"{TRAIT_TITLES[k].lower()} {v[k]:.2f}" for k in TRAIT_KEYS if k in v) + "."
-                               for m, v in members.items())
-        # model.corpus of an ensemble is a technical descriptor; the OCEAN-AI weights follow the language
-        weights = CORPUS_RU["mupta" if (rep.get("model") or {}).get("lang") == "ru" else "fi"] if "oceanai" in members else ""
-        member_txt += (f"\nОбработка заняла {fmt_secs(rep['timings_sec'].get('total_wall', 0))}"
-                       + (f"; {weights}." if weights else "."))
-        return (_plot_html(fig_radar, rep), _bar_html(rep["traits"], rep.get("interview")) + _members_html(rep), _facts_html(rep),
-                narrative.strip(), _plot_html(fig_traits_timeline, rep), _plot_html(fig_emotions_timeline, rep),
-                _plot_html(fig_voice_timeline, rep), _plot_html(fig_speech_timeline, rep), _plot_html(fig_emotion_bars, rep),
-                _segments_table(rep), _speech_html(rep),
-                rep.get("transcript", ""), _face_html(rep), _plot_html(fig_face_expr, rep), _frames_html(rep), _contrib_html(expl),
-                _words_text(expl, rep, lang, expl_path) if expl else "",
-                mmss_labels(rep.get("behavior_description_ru") or rep.get("behavior_description", "")), member_txt,
-                json.dumps(rep, ensure_ascii=False, indent=2), str(job / "result.json"), str(job), gr.update(interactive=True))
+        return page_outputs(rep) + (gr.update(interactive=True),)
 
     def analyze(video, lang, explain):
         if not video:
-            raise gr.Error("Загрузите видео")
+            raise gr.Error("Загрузите видео", title=ERROR_TITLE)
         state = {"frac": 0.0, "desc": "запуск", "t0": time.time()}
 
         def cb(frac, desc=None, **kw):
@@ -338,8 +440,9 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
         if "e" in result:
             e = result["e"]
             if isinstance(e, AnalysisCancelled):
-                raise gr.Error("Обработка остановлена. Проверьте язык речи и запустите заново.")
-            raise e
+                raise gr.Error("Обработка остановлена. Проверьте язык речи и запустите заново.", title="Остановлено")
+            log.error("analysis failed", exc_info=(type(e), e, e.__traceback__))
+            raise gr.Error(analysis_error_ru(e), title=ERROR_TITLE)
         rep = result["r"]
         yield (_status_html(1.0, f"обработано за {fmt_secs(time.time() - state['t0'])}", state="done"),) + render(rep)
 
@@ -349,23 +452,26 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
 
     def make_pdf(job_dir):
         if not job_dir:
-            raise gr.Error("Сначала проанализируйте видео")
+            raise gr.Error("Сначала проанализируйте видео", title=ERROR_TITLE)
         try:
             return export_pdf(job_dir)
-        except Exception as e:  # noqa: BLE001
-            raise gr.Error(f"Не удалось собрать PDF: {e}")
+        except Exception:  # noqa: BLE001
+            log.exception("PDF export failed for %s", job_dir)
+            raise gr.Error("Не удалось собрать PDF. Подробности записаны в журнал сервера.", title=ERROR_TITLE)
 
-    def block(label: str, chart: bool = False):
+    def block(label: str, chart: bool = False, grow: bool = False):
         """Result block with a visible title chip (gr.HTML hides its label and frame by default). Chart blocks
-        (chart=True) use the chart's own title as the label; units and scales are in the chart subtitle under it."""
+        (chart=True) use the chart's own title as the label; units and scales are in the chart subtitle under it.
+        grow=True: the window of a bs2-pair row that takes the extra height (APP_CSS)."""
         return gr.HTML(label=label, show_label=True, container=True,
-                       elem_classes=["bs2-block", "bs2-chart"] if chart else ["bs2-block"])
+                       elem_classes=["bs2-block"] + (["bs2-chart"] if chart else []) + (["bs2-grow"] if grow else []))
 
     # Soft theme with readable titles: label chips and block titles in primary-700 (6.4:1 on the light chip; the dark
     # theme keeps white on primary-600), the Radio/Checkbox info line in neutral-600 (7.6:1 on white; dark unchanged)
     theme = gr.themes.Soft(font=["system-ui", "Segoe UI", "Roboto", "Arial", "sans-serif"],
                            font_mono=["ui-monospace", "Consolas", "monospace"]).set(block_label_text_color="*primary_700", block_title_text_color="*primary_700",
                                  block_info_text_color="*neutral_600")
+    force_russian_gradio()
     with gr.Blocks(title="BS 2.0 — Big Five, эмоции, голос, речь", theme=theme, css=APP_CSS) as demo:
         job_state = gr.State("")
         with gr.Row():
@@ -375,9 +481,9 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
             with gr.Column(scale=1, min_width=220):
                 pdf_btn = gr.DownloadButton("Экспорт в PDF", variant="primary", interactive=False)
         status = gr.HTML(value="")
-        with gr.Row():
+        with gr.Row(elem_classes=["bs2-pair"]):
             with gr.Column(scale=1, min_width=320):
-                video = gr.Video(label="Видео", sources=["upload"], height=300)
+                video = gr.Video(label="Видео", sources=["upload"], height=VIDEO_H, elem_classes=["bs2-grow"])
                 lang = gr.Radio(choices=[("русский", "ru"), ("английский", "en")], value="ru", label="Язык речи",
                                 info="Русский: основную оценку даёт OCEAN-AI (веса MuPTA), своя модель — второе мнение. "
                                      "Английский: среднее двух систем.")
@@ -387,22 +493,25 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
                     stop_btn = gr.Button("Остановить обработку", variant="stop")
             with gr.Column(scale=2, min_width=480):
                 facts = block("Ключевые факты")
-                narrative = gr.Textbox(label="Пояснение простыми словами", lines=9, max_lines=12, autoscroll=False)
+                narrative = gr.Textbox(label="Пояснение простыми словами", lines=9, max_lines=20, autoscroll=False,
+                                       elem_classes=["bs2-grow"])
         with gr.Tabs():
             with gr.Tab("Обзор"):
-                with gr.Row():
+                # the radar window takes the height of the bars and the second opinion: the circle grows as far as the
+                # column width allows and is centred with its subtitle
+                with gr.Row(elem_classes=["bs2-pair"]):
                     with gr.Column(scale=1, min_width=360):
-                        radar = block("Профиль Big Five", chart=True)
+                        radar = block("Профиль Big Five", chart=True, grow=True)
                     with gr.Column(scale=1, min_width=360):
-                        bars = block("Оценки по чертам и второе мнение")
+                        bars = block("Оценки по чертам и второе мнение", grow=True)
             with gr.Tab("Таймлайн"):
                 traits_plot = block("Big Five по ходу ролика", chart=True)
                 emo_plot = block("Эмоции по ходу ролика", chart=True)
-                with gr.Row():
+                with gr.Row(elem_classes=["bs2-pair"]):
                     with gr.Column(scale=1, min_width=360):
-                        voice_plot = block("Голос по ходу ролика", chart=True)
+                        voice_plot = block("Голос по ходу ролика", chart=True, grow=True)
                     with gr.Column(scale=1, min_width=360):
-                        speech_plot = block("Речь по ходу ролика", chart=True)
+                        speech_plot = block("Речь по ходу ролика", chart=True, grow=True)
             with gr.Tab("Эмоции и голос"):
                 emo_bars = block("Средний профиль эмоций за ролик", chart=True)
                 seg_table = block("Эмоции, голос и темп по отрезкам")
@@ -414,12 +523,12 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
                 face_plot = block("Выражение лица за ролик", chart=True)
                 gallery = block("Ключевые кадры")
             with gr.Tab("Объяснения"):
-                with gr.Row():
+                with gr.Row(elem_classes=["bs2-pair"]):
                     with gr.Column(scale=1, min_width=360):
-                        contrib = block("Вклад модальностей в оценку своей модели")
+                        contrib = block("Вклад модальностей в оценку своей модели", grow=True)
                     with gr.Column(scale=1, min_width=360):
-                        words_detail = gr.Textbox(label="Слова, на которые откликнулась модель", lines=8, max_lines=12,
-                                                  autoscroll=False)
+                        words_detail = gr.Textbox(label="Слова, на которые откликнулась модель", lines=8, max_lines=16,
+                                                  autoscroll=False, elem_classes=["bs2-grow"])
                 desc = gr.Textbox(label="Описание поведения по отрезкам", lines=8, max_lines=12, autoscroll=False)
             with gr.Tab("Данные"):
                 members = gr.Textbox(label="Участники ансамбля и время обработки", lines=4, max_lines=8, autoscroll=False)
@@ -437,11 +546,14 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
         stop_btn.click(stop, inputs=None, outputs=[status], cancels=[run_ev], show_progress="hidden", api_name=False)
         pdf_btn.click(make_pdf, inputs=[job_state], outputs=[pdf_btn], api_name=False)
         if preview_job:
-            def _preview():
-                rep = json.loads((Path(preview_job) / "result.json").read_text(encoding="utf-8"))
-                rep["job_dir"] = str(preview_job)
-                return (_status_html(1.0, "предпросмотр готового результата", state="done"),) + render(rep)
-            demo.load(_preview, inputs=None, outputs=outputs, show_progress="hidden", api_name=False)
+            # the finished job becomes the initial value of every output (set before the page config is built), so
+            # the page arrives filled; a demo.load event did not always reach the browser
+            rep = json.loads((Path(preview_job) / "result.json").read_text(encoding="utf-8"))
+            rep["job_dir"] = str(preview_job)
+            filled = (_status_html(1.0, "предпросмотр готового результата", state="done"),) + page_outputs(rep)
+            for comp, value in zip(outputs, filled):
+                comp.value = value
+            pdf_btn.interactive = True
     return demo
 
 

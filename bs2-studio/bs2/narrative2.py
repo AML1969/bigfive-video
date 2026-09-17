@@ -7,6 +7,7 @@ from typing import List
 
 from .charts import EMO_RU
 from .report import fmt_secs
+from .ru_texts import vocabulary_shown
 
 
 def plural_ru(n, one: str, few: str, many: str) -> str:
@@ -93,8 +94,9 @@ def analyses_sentences(rep: dict) -> str:
     sp = an.get("speech")
     if sp and sp.get("description"):
         parts.append(fix_counts(sp["description"]))
-        if sp.get("vocabulary"):
-            parts.append("Чаще всего звучат слова: " + ", ".join(f"«{w}»" for w, _ in sp["vocabulary"][:6]) + ".")
+        vocab = vocabulary_shown(rep)          # Russian words; for English speech their translations
+        if vocab:
+            parts.append("Чаще всего звучат слова: " + ", ".join(f"«{w}»" for w, _ in vocab[:6]) + ".")
     return " ".join(parts)
 
 

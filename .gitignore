@@ -3,6 +3,7 @@ data/
 video_ru/
 bs/results/video_ru/
 web_jobs/
+Скриншоты паттернов/
 *.mp4
 *.MP4
 *.mov

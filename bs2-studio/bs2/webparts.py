@@ -8,7 +8,6 @@ CSS variables such as --block-background-fill switch with the theme by themselve
 """
 from __future__ import annotations
 
-import json
 import logging
 import re
 from pathlib import Path
@@ -277,29 +276,13 @@ def _members_html(rep: dict) -> str:
 
 
 def _words_text(expl: dict, rep: dict, lang: str, expl_path: Path | None = None) -> str:
-    """Readable word attributions (content words, Russian, grouped by direction); computed once and stored in
-    explanation.json under "readable_words" so the PDF shows the same lists."""
-    from .words import WORDS_NOTE, format_words, readable_words
-    rw_all = expl.get("readable_words") or {}
-    changed = False
-    for key in ("transcript_words", "behavior_words"):
-        if key in expl and key not in rw_all:
-            ctx = rep.get("transcript_en") if key == "transcript_words" else rep.get("behavior_description")
-            src = rep.get("transcript") if (key == "transcript_words" and lang != "en") else None
-            try:
-                rw_all[key] = readable_words(expl, key, lang, transcript_ru=src, context_en=ctx)
-                changed = True
-            except Exception as e:  # noqa: BLE001
-                log.warning("readable words failed for %s: %s", key, str(e).splitlines()[0][:120])
-    if changed:
-        expl["readable_words"] = rw_all
-        if expl_path is not None:
-            try:
-                expl_path.write_text(json.dumps(expl, ensure_ascii=False, indent=2), encoding="utf-8")
-            except Exception:  # noqa: BLE001
-                pass
+    """Readable word attributions (content words in Russian for any speech language, grouped by direction); computed
+    once and stored in explanation.json under "readable_words" so the PDF shows the same lists."""
     from .narrative import words_summary
-    return "\n\n".join(words_summary(rw_all, expl, TRAIT_TITLES, lang))
+    from .ru_texts import ensure_words, write_json
+    if ensure_words(rep, expl) and expl_path is not None:
+        write_json(expl_path, expl)
+    return "\n\n".join(words_summary(expl.get("readable_words") or {}, expl, TRAIT_TITLES, lang))
 
 
 # ---------------------------------------------------------------- modality contributions
@@ -334,7 +317,8 @@ def _contrib_html(expl: dict | None) -> str:
         top = max(shares) if shares else 0.0
         rows.append([ROW_TITLES.get(k, k)] + [_share_cell(s, s == top) for s in shares])
     return (f"<div style='{NOTE};margin-bottom:8px'>Какая доля оценки своей модели пришлась на каждую модальность "
-            "(метод Input×Gradient). В каждой строке доли в сумме дают 100%; самая большая выделена жирным.</div>"
+            "(по градиенту оценки: насколько признаки каждой модальности сдвигают результат). В каждой строке доли в "
+            "сумме дают 100%; самая большая выделена жирным.</div>"
             + table_html(head, rows, wrap_first=True) +
             f"<div style='{NOTE};margin-top:8px'>«&lt;1%» — модальность почти не влияет на оценку этого ролика: модель, "
             "обученная на FIV2, опирается в основном на лицо и голос; речь и описание поведения слабо меняют результат.</div>")

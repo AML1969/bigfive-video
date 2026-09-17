@@ -93,14 +93,46 @@ def describe(st: Dict, lang: str = "ru") -> str:
     return "; ".join(parts).capitalize() + "."
 
 
+# English speech: function words beyond the attribution stop list (words.STOP_EN) that reach the top of a transcript
+STOP_EN_SPEECH = set("""
+also another around away back cause could does doing done down each else even ever every from gonna gotta have here
+into itself just kinda like maybe mean might much must never okay once only other ours over quite really should since
+some something sure than that them then there these they thing things this those though through till today unless
+until upon very wanna were what whatever when where whether which while whom whose will with within would yeah your
+yours about above after again against almost because before being below between during either enough further
+""".split())
+
+
+def _en_content(w: str) -> str | None:
+    """English token -> content word or None: contractions (it's, don't, we're) are function words, a possessive 's
+    is cut off (company's -> company)."""
+    from ..words import STOP_EN
+    w = w.replace("’", "'").strip("'-")
+    if "n't" in w:
+        return None
+    if w.endswith("'s"):
+        w = w[:-2]
+    if "'" in w:
+        return None
+    return None if (len(w) <= 3 or w in STOP_EN or w in STOP_EN_SPEECH) else w
+
+
 def vocabulary(text: str, top: int = 12, lang: str = "ru") -> List[Tuple[str, int]]:
     """Most frequent content words (short/function words and fillers removed)."""
+    if lang == "en":
+        return Counter(c for c in map(_en_content, _words(text)) if c).most_common(top)
     stop = set("""и в во не что он на я с со как а то все она так его но да ты к у же вы за бы по только ее мне было вот от меня
     еще нет о из ему теперь когда даже ну вдруг ли если уже или ни быть был него до вас нибудь опять уж вам ведь там потом себя
     ничего ей может они тут где есть надо ней для мы тебя их чем была сам чтоб без будто чего раз тоже себе под будет ж тогда
     кто этот того потому этого какой совсем ним здесь этом один почти мой тем чтобы нее сейчас были куда зачем всех никогда
     можно при наконец два об другой хоть после над больше тот через эти нас про всего них какая много разве три эту моя
     впрочем хорошо свою этой перед иногда лучше чуть том нельзя такой им более всегда конечно всю между это которые который
-    очень the a an and or of to in on at for with is are was were be it this that i you he she we they my your""".split())
+    очень the a an and or of to in on at for with is are was were be it this that i you he she we they my your
+    самый самая самое самые самого самой самому самым самом самых самыми свой своя своё свое свои своего своей своему
+    своим своём своем своих своими числе включая также которая которое которого которой которому котором которым
+    которых которыми которую этот этих этим этими этому такая такое такие такого таких таким такими какие каких какое
+    каким какую всех всем всеми весь вся всё просто именно лишь нужно будут буду будем была были было могу может могут
+    можем хотя тоже ещё чтобы между вообще сейчас потому поэтому где-то что-то кто-то наш наша наше наши нашего нашей
+    наших нашим мои моих моей моего ваш ваша ваши него неё нему ними""".split())
     words = [w for w in _words(text) if len(w) > 3 and w not in stop]
     return Counter(words).most_common(top)

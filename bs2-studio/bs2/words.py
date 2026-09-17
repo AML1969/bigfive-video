@@ -1,9 +1,10 @@
 """Human-readable version of the word attributions.
 
 The text branch works on the English translation, so the raw attribution is a list of English tokens dominated by
-function words ('to', 'your', 'on'). For the interface we keep content words only, translate them as dictionary
-entries (context-aware), and for the transcript map each one back to the word actually spoken in the Russian
-transcript (prefix match on the stem), grouped by the direction of the effect."""
+function words ('to', 'your', 'on'). For the interface we keep content words only, translate them into Russian as
+dictionary entries (context-aware) whatever the speech language, and for a Russian transcript map each one back to the
+word actually spoken (prefix match on the stem), grouped by the direction of the effect. The page and the PDF show
+Russian words only; a word without a translation is left out."""
 from __future__ import annotations
 
 import re
@@ -24,6 +25,7 @@ because while although though even still already yet ever never always often som
 really actually basically literally something anything nothing everything someone anyone everyone one ones thing
 things way lot lots much many little less least going get got gets getting go goes went come comes came make makes
 made say says said tell told know knew think thought want wanted need let us gonna wanna kind sort bit
+almost seem seems seemed seeming appear appears appeared appearing show shows showed shown showing inaudible
 """.split())
 _RU_WORD = re.compile(r"[А-Яа-яЁё]{3,}")
 
@@ -48,17 +50,22 @@ def _source_word(ru_lemma: str, transcript_ru: str, counts: Counter) -> str | No
 
 
 def readable_words(expl: dict, key: str, lang: str, transcript_ru: str | None = None, context_en: str | None = None,
-                   top_k: int = 5) -> Dict[str, dict]:
-    """{trait: {"up": [{"ru","en","source"}...], "down": [...]}} for expl[key]; content words only."""
+                   top_k: int = 5, info: dict | None = None) -> Dict[str, dict]:
+    """{trait: {"up": [{"ru","en","source"}...], "down": [...]}} for expl[key]; content words with a Russian
+    translation only (for English speech too: the page is in Russian). `transcript_ru` is the Russian transcript as
+    spoken (lang=ru), used to show the word in the form it was said; a word that matches nothing in it is left out
+    (its dictionary translation was never said). `info` receives the translator ("by", see translate_words)."""
     per = expl.get(key, {}).get("per_output", {})
     vocab = sorted({clean_word(w["word"]) for d in per.values() for w in d["top_words"] if _content_word(w["word"])})
     ru_map: Dict[str, str] = {}
-    if lang != "en" and vocab:
+    info = info if info is not None else {}
+    info.setdefault("by", "ollama")          # nothing to translate counts as done
+    if vocab:
         try:
             from .translate import translate_words
-            ru_map = translate_words(vocab, "en", lang, context=context_en)
+            ru_map = translate_words(vocab, "en", "ru", context=context_en, info=info)
         except Exception:  # noqa: BLE001
-            ru_map = {}
+            ru_map, info["by"] = {}, "marian"
     counts = Counter(m.group(0).lower() for m in _RU_WORD.finditer(transcript_ru or ""))
     out: Dict[str, dict] = {}
     for trait, d in per.items():
@@ -68,8 +75,12 @@ def readable_words(expl: dict, key: str, lang: str, transcript_ru: str | None = 
             if not _content_word(en):
                 continue
             ru = ru_map.get(en)
-            src = _source_word(ru, transcript_ru, counts) if (ru and transcript_ru) else None
-            shown = (src or ru or en).lower()
+            if not ru:                      # an English word is never shown: no translation, no entry
+                continue
+            src = _source_word(ru, transcript_ru, counts) if transcript_ru else None
+            if transcript_ru and not src:   # Russian speech: only words that were actually said
+                continue
+            shown = (src or ru).lower()
             item = {"en": en, "ru": ru, "source": src, "signed": float(w.get("signed", 0.0))}
             if shown not in best or abs(item["signed"]) > abs(best[shown]["signed"]):
                 best[shown] = item
@@ -80,11 +91,16 @@ def readable_words(expl: dict, key: str, lang: str, transcript_ru: str | None = 
     return out
 
 
-def _label(item: dict, lang: str, show_en: bool) -> str:
-    if lang == "en":
-        return item["en"]
-    word = item.get("source") or item.get("ru") or item["en"]
-    return f"{word} ({item['en']})" if show_en and item.get("ru") else word
+def shown_word(item: dict) -> str | None:
+    """The Russian word for the page and the PDF: as spoken (Russian speech) or the dictionary translation; None
+    when there is no translation (lists made before translations were stored for English speech)."""
+    word = item.get("source") or item.get("ru")
+    return word if word and re.search(r"[A-Za-z]", word) is None else None
+
+
+def _label(item: dict, lang: str, show_en: bool) -> str | None:
+    word = shown_word(item)
+    return f"{word} ({item['en']})" if (word and show_en) else word
 
 
 def format_words(rw: Dict[str, dict], titles: Dict[str, str], lang: str, show_en: bool = False) -> List[str]:
@@ -94,10 +110,12 @@ def format_words(rw: Dict[str, dict], titles: Dict[str, str], lang: str, show_en
         if trait not in rw:
             continue
         parts = []
-        if rw[trait]["up"]:
-            parts.append("выше: " + ", ".join(_label(i, lang, show_en) for i in rw[trait]["up"]))
-        if rw[trait]["down"]:
-            parts.append("ниже: " + ", ".join(_label(i, lang, show_en) for i in rw[trait]["down"]))
+        up = [w for w in (_label(i, lang, show_en) for i in rw[trait]["up"]) if w]
+        down = [w for w in (_label(i, lang, show_en) for i in rw[trait]["down"]) if w]
+        if up:
+            parts.append("выше: " + ", ".join(up))
+        if down:
+            parts.append("ниже: " + ", ".join(down))
         lines.append(f"{titles.get(trait, trait)} — " + ("; ".join(parts) if parts else "значимых слов нет"))
     return lines
 

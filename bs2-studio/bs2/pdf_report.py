@@ -12,7 +12,8 @@ from fpdf import FPDF
 
 from .norms import RU_SHORT, TRAIT_KEYS
 from .palette import SCORE_BAR_PDF, TRAIT_BAR_PDF, emo_pdf
-from .report import DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU, clean_word, fmt_secs, mmss_labels, seg_label
+from .report import DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU, fmt_secs, mmss_labels, seg_label
+from .ru_texts import transcript_shown, vocabulary_shown
 
 TITLES = {
     "openness": "Открытость опыту", "conscientiousness": "Добросовестность", "extraversion": "Экстраверсия",
@@ -37,13 +38,32 @@ MEDIA_TAGS = {"creation_time": "Записан (метка в файле)", "enc
 
 
 def _when(v) -> str:
-    """'2026-08-13T15:37:12.000000Z' -> '2026-08-13 15:37:12 UTC'; anything that is not an ISO time stays as it is."""
+    """'2026-08-13T15:37:12.000000Z' -> '2026-08-13 15:37:12 по всемирному времени'; anything that is not an ISO time
+    stays as it is."""
     s = str(v or "")
     m = re.match(r"^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(?:\.\d+)?(Z|[+-]\d{2}:?\d{2})?$", s)
     if not m:
         return s
     tz = m.group(3)
-    return f"{m.group(1)} {m.group(2)}" + (" UTC" if tz == "Z" else (f" (UTC{tz})" if tz else ""))
+    return f"{m.group(1)} {m.group(2)}" + (" по всемирному времени" if tz == "Z" else (f" (часовой пояс {tz})" if tz else ""))
+
+
+# ffprobe codec names -> the usual names of the formats
+CODEC_NAMES = {"h264": "H.264", "hevc": "H.265 (HEVC)", "h265": "H.265", "vp8": "VP8", "vp9": "VP9", "av1": "AV1",
+               "mpeg4": "MPEG-4", "mjpeg": "Motion JPEG", "prores": "ProRes", "aac": "AAC", "mp3": "MP3", "opus": "Opus",
+               "vorbis": "Vorbis", "flac": "FLAC", "ac3": "AC-3", "eac3": "E-AC-3", "alac": "ALAC"}
+
+
+def _codec(v) -> str:
+    s = str(v or "")
+    return CODEC_NAMES.get(s.lower(), "PCM" if s.lower().startswith("pcm_") else s or "—")
+
+
+def _encoder(v) -> str:
+    """'Lavf60.16.100' (the container writer of FFmpeg) -> 'FFmpeg (libavformat 60.16.100)'."""
+    s = str(v or "")
+    m = re.match(r"^Lav([fc])(\d[\d.]*)$", s)
+    return f"FFmpeg (libav{'format' if m.group(1) == 'f' else 'codec'} {m.group(2)})" if m else s
 
 
 SMALL_POOL = 20      # below this many processed videos a percentage only looks precise (same rule as the web page)
@@ -97,8 +117,31 @@ def pct_phrase(pct, ref: str = "") -> str:
 def _ref_ru(ref: str) -> str:
     """percentile_ref from result.json (genitive, reads after «относительно») without technical English words."""
     r = re.sub(r",\s*своя модель\s*$", "", ref or "")
+    r = re.sub(r"\(N\s*=\s*(\d+)\)", r"(сейчас их \1)", r)          # pool size, as on the web page
     return r.replace("train First Impressions V2", "обучающей выборки First Impressions V2").replace(
         "train FIV2", "обучающей выборки FIV2")
+
+
+def _where_ru(ref: str) -> str:
+    """The reference group as on the web page: «среди обработанных русских роликов (сейчас их 5)» for the pool of
+    processed videos, «относительно обучающей выборки First Impressions V2 (6000 клипов)» otherwise."""
+    r = _ref_ru(ref)
+    m = re.match(r"^пула\s+(обработанных\s.+)$", r)
+    return f"среди {m.group(1)}" if m else f"относительно {r}"
+
+
+def _asr_ru(name) -> str:
+    """'openai/whisper-large-v3-turbo' -> 'Whisper large-v3-turbo': the model name without the hub prefix."""
+    m = re.match(r"^(?:[\w.-]+/)?whisper-(.+)$", str(name or ""), re.I)
+    return f"Whisper {m.group(1)}" if m else str(name or "")
+
+
+def _version_ru(v) -> str:
+    """'2.0.0a1' -> '2.0.0, альфа-версия 1' (PEP 440 pre-release suffixes a/b/rc in words)."""
+    m = re.match(r"^(\d+(?:\.\d+)*)(a|b|rc)(\d+)$", str(v or ""))
+    if not m:
+        return str(v or "—")
+    return f"{m.group(1)}, {({'a': 'альфа', 'b': 'бета', 'rc': 'предрелизная'})[m.group(2)]}-версия {m.group(3)}"
 
 
 def _group_name(keys: list[str]) -> str:
@@ -107,6 +150,9 @@ def _group_name(keys: list[str]) -> str:
         return "пять черт"
     return ", ".join("«собеседование»" if k == "interview" else TITLES[k].lower() for k in keys)
 
+
+MARGIN_MM = 10                      # left, right and top page margin (the fpdf default, made explicit)
+TEXT_W_MM = 210 - 2 * MARGIN_MM     # A4 text width: every chart (pdf_charts draws them this wide), table and row of frames
 
 FONT_CANDIDATES = [
     ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
@@ -118,6 +164,7 @@ FONT_CANDIDATES = [
 class Report(FPDF):
     def __init__(self):
         super().__init__(orientation="P", unit="mm", format="A4")
+        self.set_margins(MARGIN_MM, MARGIN_MM, MARGIN_MM)
         self.set_auto_page_break(auto=True, margin=15)
         for reg, bold in FONT_CANDIDATES:
             if os.path.exists(reg):
@@ -127,6 +174,8 @@ class Report(FPDF):
         else:
             raise RuntimeError("no Unicode TTF font found for the PDF (DejaVu or Arial)")
         self.set_font("ui", "", 10)
+        self.sections = 0                        # numbered sections so far: a section without data takes no number
+        self.section_no: dict = {}               # section key -> its number, for references («★ в таблице раздела 4»)
 
     def footer(self):
         self.set_y(-10)
@@ -136,13 +185,28 @@ class Report(FPDF):
         self.set_text_color(0)
 
     def h1(self, text):
-        self.set_font("ui", "B", 16); self.cell(0, 10, text, new_x="LMARGIN", new_y="NEXT"); self.ln(1)
+        # a title longer than the line wraps instead of running past the right edge of the page
+        self.set_font("ui", "B", 16); self.multi_cell(0, 8, text, new_x="LMARGIN", new_y="NEXT", align="L"); self.ln(2)
 
     def h2(self, text):
         if self.get_y() > self.h - self.b_margin - 25:      # never leave a heading alone at the bottom of a page
             self.add_page()
         self.ln(2); self.set_font("ui", "B", 12); self.cell(0, 8, text, new_x="LMARGIN", new_y="NEXT")
         self.set_font("ui", "", 10)
+
+    def section(self, title: str, key: str | None = None) -> int:
+        """Numbered section heading «4. Таймлайн по отрезкам»; numbers follow the sections actually printed."""
+        self.sections += 1
+        if key:
+            self.section_no[key] = self.sections
+        self.h2(f"{self.sections}. {title}")
+        return self.sections
+
+    def para_height(self, text, size=10) -> float:
+        """Height in mm that para(text, size) takes, without printing it."""
+        self.set_font("ui", "", size)
+        lines = self.multi_cell(self.epw, max(3.6, size * 0.5), str(text), align="L", dry_run=True, output="LINES")
+        return len(lines) * max(3.6, size * 0.5)
 
     def h3(self, text, keep_mm: float = 20):
         """Bold sub-heading kept on the same page as at least `keep_mm` of what follows it."""
@@ -161,6 +225,19 @@ class Report(FPDF):
         self.multi_cell(0, max(3.6, size * 0.5), text, align="L")
         self.ln(1)
 
+    def chart(self, path, keep_mm: float = 0):
+        """Chart PNG across the full text width, at the size pdf_charts drew it (1 pt of the figure = 1 pt on paper).
+        A chart that does not fit on the rest of the page, together with `keep_mm` of the caption under it, starts a
+        new page: charts are never cut and a caption never ends up on the page after its chart."""
+        from PIL import Image
+        with Image.open(path) as im:
+            w_px, h_px = im.size
+        h = self.epw * h_px / w_px
+        if self.get_y() + h + keep_mm > self.page_break_trigger:
+            self.add_page()
+        self.set_x(self.l_margin)
+        self.image(path, w=self.epw, h=h)
+
     def kv_table(self, rows, w1=55):
         self.set_font("ui", "", 9)
         for k, v in rows:
@@ -176,14 +253,17 @@ class Report(FPDF):
         """One row per trait: the bar is the score itself (0…1, what a reader expects to see filled), the text
         gives the score and the position relative to the reference population in words."""
         items = [(k, traits[k]) for k in TRAIT_KEYS] + ([("interview", interview)] if interview else [])
-        label_w, bar_w, bar_h = 58, 52, 3.6
+        bar_w, bar_h = 52, 3.6
         c = SCORE_BAR_PDF
-        groups: dict[str, list[str]] = {}          # reference group (Russian, genitive) -> item keys
+        # the label column is as wide as the longest title; the phrase after the bar must end at the right margin
+        self.set_font("ui", "", 8.5)
+        label_w = max(self.get_string_width(TITLES[k]) for k, _ in items) + 3
+        groups: dict[str, list[str]] = {}          # reference group in words («среди …», «относительно …») -> item keys
         x = self.l_margin + label_w
         for k, t in items:
             pct = t.get("percentile", t.get("percentile_vs_fiv2")); score = float(t["score"])
             ref = t.get("percentile_ref", "train First Impressions V2 (6000 клипов)")
-            groups.setdefault(_ref_ru(ref), []).append(k)
+            groups.setdefault(_where_ru(ref), []).append(k)
             self.set_font("ui", "", 8.5)
             self.cell(label_w, 6, TITLES[k])
             x, y = self.get_x(), self.get_y() + 1.2
@@ -204,8 +284,11 @@ class Report(FPDF):
             self.line(xm, y, xm, y + bar_h)
             self.set_draw_color(0)
             self.set_x(x + bar_w + 2)
+            text = f"{score:.2f}   {pct_phrase(pct, ref)}"
             self.set_font("ui", "", 8)
-            self.cell(0, 6, f"{score:.2f}   {pct_phrase(pct, ref)}", new_x="LMARGIN", new_y="NEXT")
+            if self.get_string_width(text) > self.l_margin + self.epw - self.get_x():
+                self.set_font("ui", "", 7.5)
+            self.cell(0, 6, text, new_x="LMARGIN", new_y="NEXT")
         # scale under the bars: 0, 0.5, 1, each label centred on its point of the bar
         self.set_font("ui", "", 7.5); self.set_text_color(85)
         y = self.get_y()
@@ -213,9 +296,9 @@ class Report(FPDF):
             self.set_xy(pos - 5, y); self.cell(10, 3.6, val, align="C")
         self.set_xy(self.l_margin, y + 4.2)
         if len(groups) == 1:
-            where = "относительно " + next(iter(groups))
+            where = next(iter(groups))
         else:
-            where = "; ".join(f"{_group_name(keys)} — относительно {ref}" for ref, keys in groups.items())
+            where = "; ".join(f"{_group_name(keys)} — {ref}" for ref, keys in groups.items())
         note = (f"Полоска — оценка от 0 до 1, цвет — как у линии этой черты на графиках, чёрточка — середина шкалы (0.5). "
                 f"Рядом — положение: {where}.")
         pool_ref = traits[TRAIT_KEYS[0]].get("percentile_ref", "")
@@ -258,9 +341,9 @@ class Report(FPDF):
     def table(self, header, rows, widths, size=8, chips=None, zebra=True, first_left=False):
         """zebra: every second row on a very light grey (#f5f5f5, decorative) so long rows are easy to follow.
         first_left: left-align the first column (row names) even when it is narrow."""
-        if sum(widths) > self.w - self.l_margin - self.r_margin + 0.1:      # never run past the right margin
-            k = (self.w - self.l_margin - self.r_margin) / sum(widths)
-            widths = [w * k for w in widths]
+        # every table spans the text width, as the charts and the rows of key frames do (and never runs past the margin)
+        k = self.epw / sum(widths)
+        widths = [w * k for w in widths]
         if self.get_y() > 255:                # header + at least two rows must fit on this page
             self.add_page()
         self._table_header(header, widths, size, chips)
@@ -295,15 +378,16 @@ def _analyses_sections(pdf, report: dict) -> None:
     if not an:
         return
     from .charts import EMO_RU, VOICE_RU
-    from .narrative2 import analyses_sentences
+    from .narrative2 import analyses_sentences, plural_ru
     charts = report.get("chart_files") or {}
-    if pdf.get_y() > 200:
+    intro = analyses_sentences(report)
+    # the heading, the intro and the table of averages start on this page when they fit above the table's own
+    # page-break line (255 mm); a fixed «below 200 mm -> new page» left up to 60 mm empty at the bottom of a page
+    if pdf.get_y() + 12 + pdf.para_height(intro, 9) > 255:
         pdf.add_page()
-    pdf.h2("5. Эмоции, голос и мимика")
-    pdf.para(analyses_sentences(report), 9)
+    pdf.section("Эмоции, голос и мимика", "emotions")
+    pdf.para(intro, 9)
     per = an.get("per_segment") or []
-    if charts.get("emotions"):
-        pdf.image(charts["emotions"], w=180)
     te, fa, vo = an.get("emotions_text") or {}, an.get("face") or {}, an.get("voice") or {}
     # hatched gaps on the emotions chart. A segment with an empty transcript is not always silent: its own recognition
     # may return nothing while the whole-video transcript still has words in that window (tempo and pauses come
@@ -328,16 +412,34 @@ def _analyses_sections(pdf, report: dict) -> None:
         if fa.get("mean"):
             rows.append(["по лицу"] + [f"{fa['mean'].get(face_map.get(k, k), 0):.0%}" for k in order])
         pdf.ln(1); pdf.table(header, rows, [40] + [20] * 7, size=8, chips=[None] + [emo_pdf(k) for k in order])
-        pdf.para("Средние доли за ролик; цветная полоска над названием — цвет этой эмоции на графике. Речь — модель эмоций текста "
-                 "по переводу транскрипта; лицо — модель выражений по кадрам (обучена на фотографиях, завышает «грусть» и «страх» "
-                 "у спокойного лица)." + gap_note, 7)
-    if charts.get("voice_speech"):
-        if pdf.get_y() > 200:
-            pdf.add_page()
-        pdf.image(charts["voice_speech"], w=180)
-    if vo.get("mean"):
-        pdf.para("Голос (модель эмоций в речи, 0…1): " + ", ".join(f"{VOICE_RU[d]} {vo['mean'].get(d, 0):.2f} (±{vo.get('std', {}).get(d, 0):.2f})"
-                                                            for d in VOICE_RU) + ".", 8)
+        # the text-emotion model reads English: the transcript itself for English speech, its translation otherwise
+        text_src = "по транскрипту" if (report.get("model") or {}).get("lang") == "en" else "по переводу транскрипта на английский"
+        pdf.para("Средние доли за ролик; цветная полоска над названием — цвет этой эмоции на графике «Эмоции по ходу ролика». "
+                 f"Речь — модель эмоций текста {text_src}; лицо — модель выражений по кадрам (обучена на фотографиях, завышает "
+                 "«грусть» и «страх» у спокойного лица)." + gap_note, 7)
+    # the averages come first and the full-width chart after them: the short table fills the page under the text
+    # instead of being pushed after a chart that has to start a new page
+    if charts.get("emotions"):
+        pdf.ln(1)
+        pdf.chart(charts["emotions"])
+    # a chart without any data is not drawn; when the other one is there, one line says why this one is missing
+    voice_caption = ("Голос (модель эмоций в речи, 0…1): " + ", ".join(
+        f"{VOICE_RU[d]} {vo['mean'].get(d, 0):.2f} (±{vo.get('std', {}).get(d, 0):.2f})" for d in VOICE_RU) + "."
+        if vo.get("mean") else "")
+    if charts.get("voice"):
+        pdf.ln(1)
+        # the averages below are its caption: exactly their height is kept with the chart (a fixed 6 mm pushed a chart
+        # that fitted onto the next page)
+        pdf.chart(charts["voice"], keep_mm=pdf.para_height(voice_caption, 8) if voice_caption else 0)
+    elif charts.get("speech"):
+        pdf.para("График голоса не построен: данных о голосе нет.", 8)
+    if voice_caption:
+        pdf.para(voice_caption, 8)
+    if charts.get("speech"):
+        pdf.ln(1)
+        pdf.chart(charts["speech"])
+    elif charts.get("voice"):
+        pdf.para("График речи не построен: данных о темпе и паузах нет.", 8)
     # filler words (hover text of the web speech chart) are not drawn on the PDF chart: they are the last column of the
     # per-segment table below, explained in its note
     if per:
@@ -372,16 +474,23 @@ def _analyses_sections(pdf, report: dict) -> None:
     if sp:
         if pdf.get_y() > 240:
             pdf.add_page()
-        pdf.h2("6. Речь")
+        pdf.section("Речь", "speech")
         wpm = sp.get("words_per_min_speech")
+
+        def words(n) -> str:          # «274 слова», «91 слово», «25 слов»
+            n = int(round(float(n or 0)))
+            return f"{n} {plural_ru(n, 'слово', 'слова', 'слов')}"
+        long_p = int(sp.get("long_pauses") or 0)
         pdf.kv_table([("Слов всего / уникальных", f"{sp.get('words')} / {sp.get('unique_words')}"),
-                      ("Темп", (f"{wpm:.0f} слов в минуту речи" if wpm is not None else "не посчитан (речи меньше секунды)")
-                               + f"; {sp.get('words_per_min_wall', 0):.0f} по времени ролика"),
-                      ("Паузы", f"{sp.get('pause_share', 0):.0%} времени; длинных пауз (более 2 с): {sp.get('long_pauses', 0)}"),
+                      ("Темп", (f"{words(wpm)} в минуту речи" if wpm is not None else "не посчитан (речи меньше секунды)")
+                               + f"; с учётом пауз — {sp.get('words_per_min_wall', 0):.0f} в минуту"),
+                      ("Паузы", f"{sp.get('pause_share', 0):.0%} времени; "
+                                + (f"длинных пауз (дольше 2 с) — {long_p}" if long_p else "длинных пауз (дольше 2 с) нет")),
                       ("Слова-заполнители", f"{sp.get('fillers', 0)} ({sp.get('fillers_per_100', 0):.1f} на 100 слов)"),
-                      ("Средняя фраза", f"{sp.get('mean_sentence') or 0:.0f} слов"), ("Разнообразие словаря", f"{sp.get('ttr') or 0:.2f}")])
-        if sp.get("vocabulary"):
-            pdf.para("Частые слова: " + ", ".join(f"{w} ({n})" for w, n in sp["vocabulary"][:15]), 8)
+                      ("Средняя фраза", words(sp.get("mean_sentence"))), ("Разнообразие словаря", f"{sp.get('ttr') or 0:.2f}")])
+        vocab = vocabulary_shown(report)          # Russian words; for English speech their translations
+        if vocab:
+            pdf.para("Частые слова: " + ", ".join(f"{w} ({n})" for w, n in vocab[:15]), 8)
 
 
 def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = None, media: dict | None = None,
@@ -393,27 +502,30 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
     pdf.para(f"Создан: {_dt.datetime.now().strftime('%Y-%m-%d %H:%M')}   ·   Файл: {fname}", 9)
 
     # ---- file metadata
-    pdf.h2("1. Файл")
+    pdf.section("Файл")
     rows = []
     if media:
+        ch = media.get("channels")
         rows += [("Имя файла", media.get("file_name")), ("Размер", f"{media.get('size_mb')} МБ ({media.get('size_bytes')} байт)"),
-                 ("Длительность", f"{fmt_secs(media.get('duration_sec'))} ({media.get('duration_sec')} с)"),
+                 ("Длительность", fmt_secs(media.get("duration_sec"))),
                  ("Контейнер", media.get("container")),
-                 ("Видео", f"{media.get('video_codec')}, {media.get('width')}×{media.get('height')}, {media.get('fps')} кадра/с"
-                           + (f", поворот {media.get('rotation')}°" if media.get("rotation") else "")),
-                 ("Аудио", f"{media.get('audio_codec')} {media.get('sample_rate')} Гц, каналов: {media.get('channels')}"),
+                 ("Видео", f"кодек {_codec(media.get('video_codec'))}, {media.get('width')}×{media.get('height')}, "
+                           f"{media.get('fps')} кадра/с" + (f", поворот {media.get('rotation')}°" if media.get("rotation") else "")),
+                 ("Аудио", f"кодек {_codec(media.get('audio_codec'))}, {media.get('sample_rate')} Гц, "
+                           + ("моно" if ch == 1 else "стерео" if ch == 2 else f"каналов: {ch}")),
                  ("Битрейт", f"{media.get('bitrate_kbps')} кбит/с"), ("Файл изменён", _when(media.get("modified")))]
         for k, v in media.items():
             if k.startswith("tag_"):
-                rows.append((MEDIA_TAGS.get(k[4:], k[4:]), _when(v) if k == "tag_creation_time" else v))
+                rows.append((MEDIA_TAGS.get(k[4:], k[4:]), _when(v) if k == "tag_creation_time" else
+                             _encoder(v) if k == "tag_encoder" else v))
         if media.get("sha256"):
-            rows.append(("SHA-256", media["sha256"]))
+            rows.append(("Контрольная сумма SHA-256", media["sha256"]))
     else:
         rows.append(("Путь", report.get("input")))
     pdf.kv_table(rows)
 
     # ---- analysis settings
-    pdf.h2("2. Параметры анализа")
+    pdf.section("Параметры анализа")
     m = report.get("model", {})
     members = [x for x in report.get("modalities_used", []) if x in SYSTEM_TITLES]
     if m.get("backend") == "ensemble" and members:
@@ -428,11 +540,13 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
     else:
         system = f"{SYSTEM_TITLES.get(m.get('backend'), m.get('backend'))} ({m.get('corpus')})"
     rows = [("Система", system), ("Язык речи", {"ru": "русский", "en": "английский"}.get(m.get("lang"), m.get("lang"))),
-            ("Распознавание речи", m.get("asr_model") or "готовый транскрипт"),
+            ("Распознавание речи", _asr_ru(m.get("asr_model")) if m.get("asr_model") else "готовый транскрипт"),
             ("Обучающие данные", _trained_on(m, members)), ("Модальности", ", ".join(MODALITY_TITLES.get(x, x) for x in report.get("modalities_used", []))),
-            ("Версия", m.get("version"))]
+            ("Версия", _version_ru(m.get("version")))]
     if report.get("segments"):
-        rows.append(("Отрезки", f"{report['segments']} по ~20 с; итог — среднее с весом по длительности"))
+        n_seg = int(report["segments"])
+        rows.append(("Отрезки", f"{n_seg} по ~20 с; итог — среднее с весом по длительности" if n_seg > 1
+                     else "один отрезок (весь ролик)"))
     t = report.get("timings_sec", {})
     if t:
         rows.append(("Время обработки", fmt_secs(t.get("total_wall", t.get("total")))))
@@ -448,7 +562,7 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
         pdf.h2("Пояснение простыми словами")
         pdf.para(narrative, 9)
 
-    pdf.h2("3. Оценки")
+    pdf.section("Оценки")
     pdf.score_bars(report["traits"], report.get("interview"))
     std = report.get("scores_std_across_segments") or {}
     if std:
@@ -468,7 +582,7 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
     # ---- timeline
     tl = report.get("timeline") or []
     if tl:
-        pdf.h2("4. Таймлайн по отрезкам")
+        pdf.section("Таймлайн по отрезкам", "timeline")
         keys = TRAIT_KEYS + (["interview"] if any(s.get("scores") and "interview" in s["scores"] for s in tl) else [])
         header = ["Отрезок"] + [TITLES_2L.get(k, TITLES.get(k, k)) for k in keys]
         rows = []
@@ -483,7 +597,7 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
     charts = report.get("chart_files") or {}
     if charts.get("traits"):
         pdf.ln(2)
-        pdf.image(charts["traits"], w=180)
+        pdf.chart(charts["traits"])
     _analyses_sections(pdf, report)
 
     # ---- key frames
@@ -492,7 +606,7 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
         from PIL import Image
         if pdf.get_y() > pdf.h - pdf.b_margin - 60:        # keep the heading together with the first row of frames
             pdf.add_page()
-        pdf.h2("7. Ключевые кадры")
+        pdf.section("Ключевые кадры")
         # frames come from the clip the explanations were computed on: the representative segment of a long video,
         # otherwise the whole video; file names carry the frame index inside that clip (key_<i>_frame<N>.jpg)
         tl_all = report.get("timeline") or []
@@ -552,14 +666,16 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
             y0 += row_h + 8
             pdf.set_y(y0)
             row = []
-        where = f" (отрезок {seg_label(seg['start'], seg['end'])}, ★ в таблице раздела 4)" if seg else ""
+        tl_no = pdf.section_no.get("timeline")
+        where = (f" (отрезок {seg_label(seg['start'], seg['end'])}" + (f", ★ в таблице раздела {tl_no})" if tl_no else ")")
+                 if seg else "")
         pdf.para(f"Кадры, сильнее всего повлиявшие на оценку своей модели{where}. Рамкой отмечено найденное лицо; "
                  + (("под кадром — его номер и момент ролика (мин:с, после запятой — десятые доли секунды)." if tenths
                      else "под кадром — его номер и момент ролика (мин:с).") if timed else "под кадром — его номер."), 8)
 
     # ---- explanations
     if explanation:
-        pdf.h2("8. Вклад модальностей в оценку своей модели")
+        pdf.section("Вклад модальностей в оценку своей модели")
         ixg = explanation["modalities"]["input_x_gradient"]
         mods = list(next(iter(ixg.values())).keys())
         header = ["Черта"] + [MEMBERS.get(x, x) for x in mods]
@@ -568,7 +684,8 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
             return "<1%" if v < 0.95 else f"{v:.0f}%"
         rows = [[TITLES.get(k, k)] + [pct(row[x]["share"]) for x in mods] for k, row in ixg.items()]
         pdf.table(header, rows, [60] + [int(120 / len(mods))] * len(mods))
-        pdf.para("Доля вклада каждой модальности в оценку своей модели (метод Input×Gradient). «<1%» — модальность почти не влияет на "
+        pdf.para("Доля вклада каждой модальности в оценку своей модели (по градиенту оценки: насколько признаки модальности "
+                 "сдвигают результат). «<1%» — модальность почти не влияет на "
                  "оценку этого ролика: модель, обученная на FIV2, опирается в основном на лицо и голос.", 7)
         loo = explanation["modalities"].get("leave_one_out_delta") or {}
         if loo:
@@ -583,10 +700,8 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
             # at 8 pt «Добросовест-» / «стабильность» need 24.2 mm and «описание поведения» 33 mm
             pdf.table(header, rows, [34] + [146 / len(keys_l)] * len(keys_l), size=8, first_left=True)
             pdf.para("Положительное число — без этой модальности оценка была бы выше, отрицательное — ниже.", 7)
-        from .words import WORDS_NOTE
         rw_all = explanation.get("readable_words") or {}
         lang = (report.get("model") or {}).get("lang", "en")
-        shown = False
         if rw_all:
             pdf.ln(1)
             pdf.h3("Слова, на которые откликнулась модель", keep_mm=14)
@@ -597,30 +712,20 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
                 paras = [f"Список слов недоступен: {str(e)[:120]}"]
             for para in paras:
                 pdf.para(para, 8)
-        for key, title in (("transcript_words", "Слова речи, повлиявшие на оценку"),
-                           ("behavior_words", "Слова описания поведения, повлиявшие на оценку")):
-            if key in rw_all:
-                continue
-            elif key in explanation:        # explanation without the readable lists (old run): English tokens
-                pdf.h3(title, keep_mm=14)
-                for k, d in explanation[key]["per_output"].items():
-                    pdf.para(f"{TITLES.get(k, k)}: " + ", ".join(clean_word(w["word"]) for w in d["top_words"][:6]), 8)
-                shown = True
-        if shown:
-            pdf.para(WORDS_NOTE, 7)
+        # lists without Russian words (translation failed) are not printed: the raw English tokens stay in the JSON
 
-    # ---- texts
-    if report.get("behavior_description"):
-        if report.get("behavior_description_ru"):
-            pdf.h2("9. Описание поведения")
-            pdf.para("Описание строит видеоязыковая модель по кадрам каждого отрезка.", 7)
-            pdf.para(mmss_labels(report["behavior_description_ru"]), 9)
-        else:
-            pdf.h2("9. Описание поведения (видеоязыковая модель)")
-            pdf.para(report["behavior_description"], 9)
-    if report.get("transcript"):
-        pdf.h2("10. Транскрипт речи")
-        pdf.para(report["transcript"], 9)
+    # ---- texts: Russian only (export_pdf fills the translations of older jobs before building the PDF)
+    if report.get("behavior_description_ru"):
+        pdf.section("Описание поведения")
+        pdf.para("Описание строит видеоязыковая модель по кадрам каждого отрезка.", 7)
+        pdf.para(mmss_labels(report["behavior_description_ru"]), 9)
+    note, transcript = transcript_shown(report)
+    if note or transcript:
+        pdf.section("Транскрипт речи")
+        if note:
+            pdf.para(note, 7)
+        if transcript:
+            pdf.para(transcript, 9)
 
     pdf.h2("Ограничения")
     pdf.para(DISCLAIMER_RU, 8)

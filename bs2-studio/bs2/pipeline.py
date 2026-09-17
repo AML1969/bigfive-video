@@ -173,7 +173,7 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, lang: str = "r
     from .longvideo import AnalysisCancelled
     from .media import probe_media
     from .narrative import build_narrative
-    from .words import readable_words
+    from .ru_texts import ensure_russian
 
     def step(frac, desc=None, **kw):
         if progress is not None:
@@ -226,25 +226,10 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, lang: str = "r
             frames = list(expl.get("frames", {}).get("key_frame_files", []))
         except Exception as e:  # noqa: BLE001
             log.warning("explanation failed: %s", str(e).splitlines()[0][:160])
-    # ---- texts for people
+    # ---- texts for people: Russian versions of the English model texts for any speech language (ru_texts.py)
     step(0.97, "Тексты и перевод")
-    if lang != "en":
-        try:
-            from .translate import translate_text
-            if rep.get("behavior_description"):
-                rep["behavior_description_ru"] = translate_text(rep["behavior_description"], "en", lang)
-        except Exception as e:  # noqa: BLE001
-            log.warning("description translation failed: %s", str(e)[:120])
+    ensure_russian(rep, expl)
     if expl:
-        expl["readable_words"] = {}
-        for key in ("transcript_words", "behavior_words"):
-            if key in expl:
-                ctx = rep.get("transcript_en") if key == "transcript_words" else rep.get("behavior_description")
-                srcru = rep.get("transcript") if (key == "transcript_words" and lang != "en") else None
-                try:
-                    expl["readable_words"][key] = readable_words(expl, key, lang, transcript_ru=srcru, context_en=ctx)
-                except Exception as e:  # noqa: BLE001
-                    log.warning("readable words failed: %s", str(e)[:120])
         (job / "explain" / "explanation.json").write_text(json.dumps(expl, ensure_ascii=False, indent=2), encoding="utf-8")
     try:
         rep["media"] = probe_media(local)

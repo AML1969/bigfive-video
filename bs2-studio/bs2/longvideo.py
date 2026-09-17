@@ -132,7 +132,7 @@ class LongVideoAnalyzer:
         for i, (s, e) in enumerate(segs, 1):
             check()
             if progress:
-                progress(0.15 + 0.7 * (i - 1) / len(segs), f"Сегмент {i}/{len(segs)} ({seg_label(s, e)})")
+                progress(0.15 + 0.7 * (i - 1) / len(segs), f"Отрезок {i}/{len(segs)} ({seg_label(s, e)})")
             seg_path = work_dir / f"seg{i:02d}_{int(s)}-{int(e)}s.mp4"
             if not seg_path.exists():
                 cut_segment(video, s, e, seg_path)

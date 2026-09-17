@@ -291,7 +291,7 @@ def fig_voice_timeline(rep: dict, theme: str = "dark"):
     labels = [seg_label(r["start"], r["end"]) for r in rows]
     colors = VOICE_WEB[theme]
     for d, ru in VOICE_RU.items():
-        name = f"{ru} ({d})"
+        name = ru
         fig.add_trace(go.Scatter(x=x, y=[r["voice"].get(d) for r in rows], mode="lines+markers", name=name,
                                  line=dict(color=colors[d], width=2.5),
                                  marker=dict(symbol=VOICE_SYMBOL[d], size=8, color=colors[d], line=dict(width=0)),
@@ -413,11 +413,25 @@ def fig_face_expr(rep: dict, theme: str = "dark"):
 # ---------------------------------------------------------------- iframe embedding
 _FRAME_JS = r"""
 (function(){
-var SPEC=__SPEC__, EXTRA=__EXTRA__;
+var SPEC=__SPEC__, EXTRA=__EXTRA__, FILL=__FILL__;
 var gd=document.getElementById('g'), cur=null, curK=0, fitTimer=null, fitRuns=0, lastW=-1;
-var CFG={responsive:true, displaylogo:false,
+var lastH=-1, natH=null, maxH=null;         // FILL only: last viewport height, natural and largest figure height
+var CFG={responsive:true, displaylogo:false, locale:'ru',
   modeBarButtonsToRemove:['select2d','lasso2d','autoScale2d','zoomIn2d','zoomOut2d','toggleSpikelines',
     'hoverClosestCartesian','hoverCompareCartesian','toImage']};
+// plotly's own texts (toolbar tooltips, the zoom hint) in Russian; no number format here, so 0.25 stays 0.25
+if(typeof Plotly!=='undefined'){ try{ Plotly.register({moduleType:'locale', name:'ru', dictionary:{
+  'Zoom':'Увеличить область', 'Pan':'Сдвигать', 'Reset axes':'Вернуть исходный масштаб', 'Reset views':'Вернуть исходный вид',
+  'Reset view':'Вернуть исходный вид', 'Reset':'Сбросить', 'Autoscale':'Масштаб по данным', 'Zoom in':'Приблизить',
+  'Zoom out':'Отдалить', 'Box Select':'Выделить прямоугольником', 'Lasso Select':'Выделить лассо',
+  'Toggle Spike Lines':'Линии к осям', 'Show closest data on hover':'Подсказка по ближайшей точке',
+  'Compare data on hover':'Подсказка по всем линиям', 'Toggle show closest data on hover':'Подсказка по ближайшей точке',
+  'Download plot as a PNG':'Сохранить как картинку', 'Download plot':'Сохранить график',
+  'Double-click to zoom back out':'Двойной щелчок — вернуть исходный масштаб',
+  'Double-click on legend to isolate one trace':'Двойной щелчок по легенде — оставить только эту линию',
+  'Taking snapshot - this may take a few seconds':'Сохраняю картинку, это может занять несколько секунд',
+  'Snapshot succeeded':'Картинка сохранена', 'Sorry, there was a problem downloading your image!':'Не удалось сохранить картинку',
+  'Produced with Plotly.js':'Построено библиотекой графиков', 'Share chart...':'Поделиться графиком'}}); }catch(e){} }
 function isDark(){
   var readable=false;
   try{ for(var n=window.frameElement; n; n=n.parentElement){ readable=true; if(n.classList && n.classList.contains('dark')) return true; } }catch(e){}
@@ -439,9 +453,16 @@ function waitVisible(){
   if(pollTimer) return;
   pollTimer=setInterval(function(){ if(visible()){ clearInterval(pollTimer); pollTimer=null; draw(); } }, 300);
 }
+// FILL: the iframe height is the chart's natural height (its flex basis), never the drawn one, so a window stretched
+// to its neighbour's height can shrink back when the neighbour gets shorter. maxH stops the growth (radar), the page
+// CSS then centres the chart with its subtitle in the window.
 function sizeFrame(){
   try{ var fe=window.frameElement, fl=gd._fullLayout; if(!fe || !fl) return;
-    var h=Math.ceil(fl.height+EXTRA)+'px'; if(fe.style.height!==h) fe.style.height=h; }catch(e){}
+    var h=Math.ceil((FILL && natH ? natH : fl.height)+EXTRA)+'px', mh=FILL && maxH ? Math.ceil(maxH+EXTRA)+'px' : '';
+    if(fe.style.height===h && fe.style.maxHeight===mh) return;
+    fe.style.height=h; fe.style.maxHeight=mh;
+    // FILL: the figure follows the new iframe height; a hidden browser tab fires no resize event until it is shown
+    if(FILL) scheduleFit(); }catch(e){}
 }
 function scheduleFit(){ clearTimeout(fitTimer); fitTimer=setTimeout(fit, 220); }
 // A legend entry wider than the chart is cut off (plotly never wraps it): break such names before their "(…)" part.
@@ -480,19 +501,27 @@ function fit(){
     // radar in a narrow column: the circle is limited by the width, so do not keep empty space above and below it
     var target=L.polar ? Math.max(200, Math.min(m.plot_h, Math.round(fl._size.w)+60)) : m.plot_h;
     var diff=target-fl._size.h;
-    if(Math.abs(diff)>2){ upd.height=Math.round(Math.max(160, fl.height+diff)); fitRuns++; } }
+    if(FILL){
+      // natural height as above; in a window stretched by its row the figure grows with the iframe. The radar grows
+      // only while its circle can grow (plot height up to the width + 60, as above), so no empty band opens between
+      // the legend and the circle
+      natH=Math.round(Math.max(160, fl.height+diff));
+      maxH=L.polar ? Math.max(natH, Math.round(fl.height-fl._size.h+fl._size.w+60)) : null;
+      var want=Math.max(natH, Math.min(window.innerHeight-EXTRA, maxH || Infinity));
+      if(Math.abs(want-fl.height)>2){ upd.height=want; fitRuns++; }
+    } else if(Math.abs(diff)>2){ upd.height=Math.round(Math.max(160, fl.height+diff)); fitRuns++; } }
   if(Object.keys(upd).length){ Plotly.relayout(gd, upd).then(function(){ sizeFrame(); if('height' in upd) scheduleFit(); }); }
   else sizeFrame();
 }
 function draw(){
   if(typeof Plotly==='undefined'){
-    gd.textContent='График не загрузился: нет доступа к cdn.plot.ly';
+    gd.textContent='График не загрузился: библиотека графиков загружается из интернета, а доступа к нему нет';
     gd.style.cssText='font:14px system-ui,sans-serif;padding:8px;color:'+(isDark()?'#e5e7eb':'#1f2937'); return; }
   var mode=isDark()?'dark':'light';
   // hidden tab: plotly would measure text as 0x0 (overlapping legend items, lost bar labels), so wait until shown
   if(!visible()){ if(mode!==cur) waitVisible(); return; }
-  var w=document.documentElement.clientWidth;
-  if(w!==lastW){ lastW=w; fitRuns=0; }
+  var w=document.documentElement.clientWidth, h=window.innerHeight;
+  if(w!==lastW || (FILL && h!==lastH)){ lastW=w; lastH=h; fitRuns=0; }
   if(mode===cur){ scheduleFit(); return; }
   cur=mode; curK=0; fitRuns=0;
   document.documentElement.setAttribute('data-theme', mode);
@@ -513,6 +542,8 @@ new MutationObserver(function(){
       if(over>0) bg.setAttribute('width', parseFloat(bg.getAttribute('width'))+over); } }catch(e){}
 }).observe(gd, {childList:true, subtree:true, characterData:true});
 try{ new ResizeObserver(draw).observe(document.documentElement); }catch(e){ window.addEventListener('resize', draw); }
+// the observer sees only width changes (the document is as tall as the chart); stretching the iframe changes its height
+if(FILL) window.addEventListener('resize', draw);
 try{ var pd=window.parent.document; if(pd && pd!==document){
   var mo=new MutationObserver(draw);
   mo.observe(pd.body, {attributes:true, attributeFilter:['class']});
@@ -524,9 +555,12 @@ draw();
 """
 
 
-def plot_html(builder, rep: dict | None = None, extra_height: int = 24) -> str:
+def plot_html(builder, rep: dict | None = None, extra_height: int = 24, fill: bool = False) -> str:
     """builder(rep, theme) -> figure. Both theme variants go into one <iframe srcdoc>; the chart title is rendered as
-    HTML above the iframe (gr.HTML shows no label), so it uses the page text colour of the current Gradio theme."""
+    HTML above the iframe (gr.HTML shows no label), so it uses the page text colour of the current Gradio theme.
+    fill=True: for a chart in one of two windows side by side. The iframe may grow (flex, see webapp.APP_CSS) to the
+    height of the neighbouring window and the figure grows with it instead of leaving an empty band under the chart;
+    a radar grows only while its circle can grow, then the page centres it."""
     import plotly.io as pio
     from plotly.offline import get_plotlyjs_version
 
@@ -544,7 +578,8 @@ def plot_html(builder, rep: dict | None = None, extra_height: int = 24) -> str:
         fig.update_layout(title=None)
         specs.append(f'"{name}":' + pio.to_json(fig, validate=False, remove_uids=True))
     spec = ("{" + ",".join(specs) + "}").replace("</", "<\\/").replace("<!--", "<\\!--")
-    js = _FRAME_JS.replace("__SPEC__", spec).replace("__EXTRA__", str(int(extra_height)))
+    js = (_FRAME_JS.replace("__SPEC__", spec).replace("__EXTRA__", str(int(extra_height)))
+          .replace("__FILL__", "true" if fill else "false"))
     cdn = f"https://cdn.plot.ly/plotly-{get_plotlyjs_version()}.min.js"
     # radar scale labels (0.2 … 1) sit on top of the data lines: a background-coloured outline keeps them legible
     halo = ".radial-axis text{paint-order:stroke;stroke-width:3px;stroke-linejoin:round}" + "".join(
@@ -559,5 +594,6 @@ def plot_html(builder, rep: dict | None = None, extra_height: int = 24) -> str:
         head = f"<div style='font-size:15px;font-weight:600;line-height:1.35;margin:10px 0 2px'>{_html.escape(title)}</div>"
         if subtitle:
             head += f"<div style='font-size:13px;line-height:1.35;opacity:.85;margin:0 0 4px'>{_html.escape(subtitle)}</div>"
-    return (head + f"<iframe style='width:100%;height:{height + int(extra_height)}px;border:0;display:block' "
+    grow = "flex:1 0 auto;" if fill else ""
+    return (head + f"<iframe style='width:100%;height:{height + int(extra_height)}px;{grow}border:0;display:block' "
             f"scrolling='no' srcdoc=\"{srcdoc}\"></iframe>")
