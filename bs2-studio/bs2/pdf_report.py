@@ -830,7 +830,7 @@ def _profile_section(pdf: Report, report: dict, explanation, charts: dict) -> No
         pdf.image(radar, x=pdf.l_margin, y=y0, w=RADAR_W_MM, h=radar_h)
         if narrative:
             pdf.set_xy(text_x, y0)
-            pdf.set_font("ui", "B", 9); pdf.cell(text_w, 6, "Пояснение простыми словами", new_x="LEFT", new_y="NEXT")
+            pdf.set_font("ui", "B", 9); pdf.cell(text_w, 6, "Краткие выводы", new_x="LEFT", new_y="NEXT")
             pdf.set_xy(text_x, y0 + 7)
             pdf.set_font("ui", "", size)
             pdf.multi_cell(text_w, lh, "\n".join(lines[:beside]), align="L", new_x="LEFT", new_y="NEXT")
@@ -838,7 +838,7 @@ def _profile_section(pdf: Report, report: dict, explanation, charts: dict) -> No
         if rest:
             pdf.para(rest, size)
     elif narrative:
-        pdf.h3("Пояснение простыми словами")
+        pdf.h3("Краткие выводы")
         pdf.para(narrative, size)
     # ---- score bars with the second opinion (Russian speech) or the members (English speech: their mean)
     title = "Оценки по чертам и второе мнение" if second else "Оценки по чертам"

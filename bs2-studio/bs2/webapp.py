@@ -533,7 +533,7 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
                     stop_btn = gr.Button("Остановить обработку", variant="stop")
             with gr.Column(scale=2, min_width=480):
                 facts = block("Ключевые факты")
-                narrative = gr.Textbox(label="Пояснение простыми словами", lines=9, max_lines=20, autoscroll=False,
+                narrative = gr.Textbox(label="Краткие выводы", lines=9, max_lines=20, autoscroll=False,
                                        elem_classes=["bs2-grow"])
         with gr.Tabs():
             with gr.Tab("Обзор"):
