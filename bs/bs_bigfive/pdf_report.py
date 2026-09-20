@@ -552,7 +552,7 @@ def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = Non
     except Exception:  # noqa: BLE001
         narrative = ""
     if narrative:
-        pdf.h2("Пояснение простыми словами")
+        pdf.h2("Краткие выводы")
         pdf.para(narrative, 9)
 
     # ---- scores
