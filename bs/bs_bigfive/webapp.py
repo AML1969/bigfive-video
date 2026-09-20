@@ -691,7 +691,7 @@ def build_app(engine: Engine, work_dir: Path):
                 desc = gr.Textbox(label="Описание поведения", lines=8, max_lines=8)
             with gr.Column(scale=1, min_width=320):
                 transcript = gr.Textbox(label="Транскрипт речи", lines=8, max_lines=8)
-        words = gr.Textbox(label="Пояснение простыми словами", lines=6, max_lines=8)
+        words = gr.Textbox(label="Краткие выводы", lines=6, max_lines=8)
         # key frames are embedded as images: gr.Gallery relies on Gradio serving files and showed broken images
         gallery = gr.HTML(label="Ключевые кадры", show_label=True, container=True)
         with gr.Row():
