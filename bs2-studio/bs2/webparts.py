@@ -59,7 +59,8 @@ def table_html(head: list[str], rows: list[list[str]], *, max_height: int | None
 
     Opaque sticky header (theme block colour under a grey tint, so scrolled rows never show through) with a 2 px rule;
     1 px rules between rows; first column = row name, left-aligned and bold; numbers in tabular figures. Rows are told
-    apart by rules only, without zebra stripes: the #6b7280 rule is 3:1 on the plain block but drops below it on a tint.
+    apart by rules only, without zebra stripes: the #808080 rule is 3.8:1 on the dark block and 3.9:1 on white, and a
+    tint under it would take that down.
     `border-collapse:separate` keeps the header rule attached to the sticky header while scrolling; inline `border:0`
     overrides Gradio's prose grid (a full 1 px grid in the text colour)."""
     rule = PAL["table_rule"]
@@ -80,7 +81,7 @@ def table_html(head: list[str], rows: list[list[str]], *, max_height: int | None
 
 # ---------------------------------------------------------------- score bars
 def _track(value: float, fill: str, height: int, radius: int, tick_pct=None, fill_extra: str = "") -> str:
-    """Outlined track (transparent inside, 1 px #6b7280 outline) with the fill = score 0…1 and an optional tick
+    """Outlined track (transparent inside, 1 px palette.HTML track_outline) with the fill = score 0…1 and an optional tick
     (3 px, text colour, sticks out 4 px above and below) at the percentile position 0…100%."""
     width = max(0.0, min(100.0, float(value) * 100))
     tick = ""

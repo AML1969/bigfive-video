@@ -86,6 +86,17 @@ def top_directions(ups: Dict[str, float], downs: Dict[str, float], k: int = 4) -
     return top_up, top_down
 
 
+def odd_segments(rep: dict) -> List[tuple]:
+    """[(timeline entry, z)] of the segments whose mean of the five scores lies more than 2 standard deviations from
+    the other segments (at least 4 scored segments), in time order; z > 0 — the scores are higher."""
+    tl = [t for t in (rep.get("timeline") or []) if t.get("scores")]
+    means = np.array([np.mean([t["scores"][k] for k in TRAIT_KEYS]) for t in tl])
+    if len(means) < 4 or means.std() <= 0:
+        return []
+    z = (means - means.mean()) / means.std()
+    return [(t, float(z_)) for t, z_ in zip(tl, z) if abs(z_) > 2.0]
+
+
 def build_narrative(rep: dict, expl: dict | None = None) -> str:
     traits = rep["traits"]
     model = rep.get("model") or {}
@@ -129,13 +140,9 @@ def build_narrative(rep: dict, expl: dict | None = None) -> str:
             parts.append(f"По ходу ролика ({len(tl)} {plural_ru(len(tl), ('отрезок', 'отрезка', 'отрезков'))}) оценки в целом "
                          f"устойчивы, сильнее всего колеблется "
                          f"{_name(worst)} (±{std[worst]:.2f}).")
-        means = np.array([np.mean([t["scores"][k] for k in TRAIT_KEYS]) for t in tl])
-        if len(means) >= 4 and means.std() > 0:
-            z = (means - means.mean()) / means.std()
-            odd = [(t, z_) for t, z_ in zip(tl, z) if abs(z_) > 2.0]
-            for t, z_ in odd[:2]:
-                parts.append(f"Заметно отличается отрезок {seg_label(t['start'], t['end'])}: оценки "
-                             f"{'выше' if z_ > 0 else 'ниже'} остального ролика.")
+        for t, z_ in odd_segments(rep)[:2]:
+            parts.append(f"Заметно отличается отрезок {seg_label(t['start'], t['end'])}: оценки "
+                         f"{'выше' if z_ > 0 else 'ниже'} остального ролика.")
 
     # 5. what the own model looked at
     if expl and expl.get("modalities", {}).get("input_x_gradient"):

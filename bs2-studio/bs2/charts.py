@@ -4,10 +4,12 @@ anything new. PDF charts live in pdf_charts.py.
 Every figure builder is fig_xxx(rep, theme='dark'|'light') and takes all colours from palette.py. plot_html() builds
 both variants and embeds them in one iframe; a small script picks the variant that matches the Gradio theme, waits
 until the iframe is actually visible before drawing (charts in hidden tabs must not be measured at width 0), and
-re-draws when the theme changes."""
+re-draws when the theme changes. The charts use the page font (Source Sans Pro of the Gradio Default theme): the
+iframe loads it itself and draws once it is there (plotly measures legend and label widths with the font it has)."""
 from __future__ import annotations
 
 import html as _html
+import json
 from typing import List
 
 from .norms import RU_TITLES, TRAIT_KEYS
@@ -32,6 +34,8 @@ _RADAR_LABEL = {"openness": "Открытость<br>опыту", "conscientious
                 "extraversion": "Экстра-<br>версия", "agreeableness": "Доброжела-<br>тельность",
                 "emotional_stability": "Эмоциональная<br>стабильность"}
 _EMO_BAR_ORDER = ["joy", "surprise", "neutral", "sadness", "fear", "anger", "disgust"]
+# the page font for the chart iframes (the same Google Fonts file as the Gradio theme, so it comes from the cache)
+FONT_CSS = "https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600&display=swap"
 
 
 def _segments(rep: dict) -> List[dict]:
@@ -413,8 +417,8 @@ def fig_face_expr(rep: dict, theme: str = "dark"):
 # ---------------------------------------------------------------- iframe embedding
 _FRAME_JS = r"""
 (function(){
-var SPEC=__SPEC__, EXTRA=__EXTRA__, FILL=__FILL__;
-var gd=document.getElementById('g'), cur=null, curK=0, fitTimer=null, fitRuns=0, lastW=-1;
+var SPEC=__SPEC__, EXTRA=__EXTRA__, FILL=__FILL__, FONT=__FONT__, INK=__INK__;
+var gd=document.getElementById('g'), cur=null, curK=0, fitTimer=null, fitRuns=0, lastW=-1, fontReady=false;
 var lastH=-1, natH=null, maxH=null;         // FILL only: last viewport height, natural and largest figure height
 var CFG={responsive:true, displaylogo:false, locale:'ru',
   modeBarButtonsToRemove:['select2d','lasso2d','autoScale2d','zoomIn2d','zoomOut2d','toggleSpikelines',
@@ -514,9 +518,10 @@ function fit(){
   else sizeFrame();
 }
 function draw(){
+  if(!fontReady) return;                // the first draw comes from the font loader at the end of this script
   if(typeof Plotly==='undefined'){
     gd.textContent='График не загрузился: библиотека графиков загружается из интернета, а доступа к нему нет';
-    gd.style.cssText='font:14px system-ui,sans-serif;padding:8px;color:'+(isDark()?'#e5e7eb':'#1f2937'); return; }
+    gd.style.cssText='font:14px '+FONT+';padding:8px;color:'+INK[isDark()?'dark':'light']; return; }
   var mode=isDark()?'dark':'light';
   // hidden tab: plotly would measure text as 0x0 (overlapping legend items, lost bar labels), so wait until shown
   if(!visible()){ if(mode!==cur) waitVisible(); return; }
@@ -550,7 +555,14 @@ try{ var pd=window.parent.document; if(pd && pd!==document){
   mo.observe(pd.documentElement, {attributes:true, attributeFilter:['class']}); } }catch(e){}
 try{ var mq=window.matchMedia('(prefers-color-scheme: dark)');
   if(mq.addEventListener) mq.addEventListener('change', draw); else mq.addListener(draw); }catch(e){}
-draw();
+// draw once the page font is loaded (Cyrillic and Latin faces, regular and semibold), but never wait long: without a
+// connection plotly draws with the fallback font
+var ready=Promise.resolve();
+try{ if(document.fonts && document.fonts.load){
+  var loads=['400 13px "Source Sans Pro"','600 13px "Source Sans Pro"'].map(function(f){ return document.fonts.load(f, 'Жж Aa 0'); });
+  ready=Promise.race([Promise.all(loads), new Promise(function(res){ setTimeout(res, 1500); })]); } }catch(e){}
+function start(){ fontReady=true; draw(); }
+ready.then(start, start);
 })();
 """
 
@@ -579,12 +591,14 @@ def plot_html(builder, rep: dict | None = None, extra_height: int = 24, fill: bo
         specs.append(f'"{name}":' + pio.to_json(fig, validate=False, remove_uids=True))
     spec = ("{" + ",".join(specs) + "}").replace("</", "<\\/").replace("<!--", "<\\!--")
     js = (_FRAME_JS.replace("__SPEC__", spec).replace("__EXTRA__", str(int(extra_height)))
-          .replace("__FILL__", "true" if fill else "false"))
+          .replace("__FILL__", "true" if fill else "false").replace("__FONT__", json.dumps(FONT_FAMILY))
+          .replace("__INK__", json.dumps({t: THEME[t]["text"] for t in ("dark", "light")})))
     cdn = f"https://cdn.plot.ly/plotly-{get_plotlyjs_version()}.min.js"
     # radar scale labels (0.2 … 1) sit on top of the data lines: a background-coloured outline keeps them legible
     halo = ".radial-axis text{paint-order:stroke;stroke-width:3px;stroke-linejoin:round}" + "".join(
         f"html[data-theme={t}] .radial-axis text{{stroke:{THEME[t]['sep']}}}" for t in ("dark", "light"))
     doc = ("<!doctype html><html><head><meta charset='utf-8'>"
+           f"<link rel='stylesheet' href='{FONT_CSS}'>"
            f"<style>html,body{{margin:0;padding:0;background:transparent;overflow:hidden}}#g{{width:100%}}{halo}</style>"
            f"<script src='{cdn}' charset='utf-8'></script></head><body><div id='g'></div><script>{js}</script>"
            "</body></html>")

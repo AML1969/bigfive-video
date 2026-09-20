@@ -49,11 +49,15 @@ def _level(v: float, gender: str = "n", low: float = 0.4, high: float = 0.6) -> 
     return lo if v < low else (hi if v > high else mid)
 
 
-def analyses_sentences(rep: dict) -> str:
+def analyses_parts(rep: dict) -> dict:
+    """The sentences about each analysis, by topic: {text_emotion, voice, face, face_note, speech, vocab} ('' when the
+    analysis is missing). The web page joins them into one paragraph (analyses_sentences); the PDF puts each topic
+    into its own section."""
     an = rep.get("analyses") or {}
-    parts: List[str] = []
+    out = dict.fromkeys(("text_emotion", "voice", "face", "face_note", "speech", "vocab"), "")
     te = an.get("emotions_text")
     if te and te.get("mean"):
+        parts: List[str] = []
         m = te["mean"]
         top = sorted(m.items(), key=lambda kv: -kv[1])[:2]
         if top[0][0] == "neutral" and top[0][1] >= 0.6:
@@ -71,13 +75,14 @@ def analyses_sentences(rep: dict) -> str:
                 "ровный по всему ролику." if changes <= len(dps) // 4 else
                 f"меняется по ходу ролика: преобладающая эмоция сменяется {changes} "
                 f"{plural_ru(changes, 'раз', 'раза', 'раз')}."))
+        out["text_emotion"] = " ".join(parts)
     vo = an.get("voice")
     if vo and vo.get("mean"):
         m = vo["mean"]
         a, d, v = m.get("arousal", 0.5), m.get("dominance", 0.5), m.get("valence", 0.5)
-        parts.append(f"Голос (модель эмоций в речи, шкала 0…1): возбуждение {_level(a)} ({a:.2f}), уверенность "
-                     f"{_level(d, 'f')} ({d:.2f}), позитивность {_level(v, 'f')} ({v:.2f}). Модель обучена на английских "
-                     "записях, поэтому значения относительные: полезнее сравнивать отрезки между собой.")
+        out["voice"] = (f"Голос (модель эмоций в речи, шкала 0…1): возбуждение {_level(a)} ({a:.2f}), уверенность "
+                        f"{_level(d, 'f')} ({d:.2f}), позитивность {_level(v, 'f')} ({v:.2f}). Модель обучена на английских "
+                        "записях, поэтому значения относительные: полезнее сравнивать отрезки между собой.")
     fa = an.get("face")
     if fa and fa.get("mean"):
         m = fa["mean"]
@@ -90,14 +95,19 @@ def analyses_sentences(rep: dict) -> str:
             s += "; голова " + ("почти неподвижна" if hm < 0.05 else ("двигается умеренно" if hm < 0.15 else "двигается активно"))
         if fa.get("face_share") is not None and fa["face_share"] < 0.9:
             s += f"; лицо видно в {fa['face_share']:.0%} кадров"
-        parts.append(s + ". Распознавание выражений обучено на фотографиях и склонно завышать «грусть» и «страх» у спокойного лица.")
+        out["face"] = s + "."
+        out["face_note"] = "Распознавание выражений обучено на фотографиях и склонно завышать «грусть» и «страх» у спокойного лица."
     sp = an.get("speech")
     if sp and sp.get("description"):
-        parts.append(fix_counts(sp["description"]))
+        out["speech"] = fix_counts(sp["description"])
         vocab = vocabulary_shown(rep)          # Russian words; for English speech their translations
         if vocab:
-            parts.append("Чаще всего звучат слова: " + ", ".join(f"«{w}»" for w, _ in vocab[:6]) + ".")
-    return " ".join(parts)
+            out["vocab"] = "Чаще всего звучат слова: " + ", ".join(f"«{w}»" for w, _ in vocab[:6]) + "."
+    return out
+
+
+def analyses_sentences(rep: dict) -> str:
+    return " ".join(p for p in analyses_parts(rep).values() if p)
 
 
 def key_facts(rep: dict) -> List[tuple]:

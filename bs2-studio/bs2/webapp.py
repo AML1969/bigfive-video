@@ -20,7 +20,8 @@ from .charts import (EMO_RU, VOICE_RU, fig_emotion_bars, fig_emotions_timeline, 
                      fig_speech_timeline, fig_traits_timeline, fig_voice_timeline, plot_html as _plot_html)
 from .narrative2 import analyses_sentences, fix_counts, key_facts, plural_ru
 from .norms import TRAIT_KEYS
-from .palette import HTML as PAL
+from .palette import (ACCENT, BUTTON_PRIMARY, BUTTON_PRIMARY_HOVER, BUTTON_STOP, BUTTON_STOP_HOVER, CARD_TINT,
+                      HTML as PAL, PAGE_NOTE_OPACITY, SUBDUED_TEXT_LIGHT)
 from .pipeline import Studio, run_analysis
 from .report import DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU, fmt_secs, mmss_labels, seg_label
 from .ru_texts import ensure_russian_job, transcript_shown, vocabulary_shown
@@ -30,10 +31,11 @@ from .webparts import (MEMBER_TITLES, NOTE, TRAIT_TITLES, _bar_html, _contrib_ht
 log = logging.getLogger("bs2.web")
 # which OCEAN-AI weights were used, for the «Участники ансамбля» box
 CORPUS_RU = {"mupta": "веса OCEAN-AI MuPTA для русской речи", "fi": "веса OCEAN-AI First Impressions V2 для английской речи"}
-# metric cards: 1 px outline 3:1 on every background, light tint so label, value and note read as one card
+# metric cards: 1 px outline 3:1 on every background, light tint (palette.CARD_TINT, the background check_palette.py
+# measures the card text and the outline on) so label, value and note read as one card
 CARDS = "display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px"
-CARD = (f"padding:10px 14px;border:1px solid {PAL['card_border']};background:rgba(128,128,128,.08);border-radius:10px;"
-        "min-width:0")
+CARD = (f"padding:10px 14px;border:1px solid {PAL['card_border']};background:rgba(128,128,128,{CARD_TINT});"
+        "border-radius:8px;min-width:0")
 
 
 def _cards(items) -> str:
@@ -273,7 +275,7 @@ def export_pdf(job_dir: str | Path) -> str:
     expl_path = job / "explain" / "explanation.json"
     expl = json.loads(expl_path.read_text(encoding="utf-8")) if expl_path.exists() else None
     ensure_russian_job(job, rep, expl)          # jobs processed before the Russian texts: translate once, store back
-    rep["chart_files"] = save_pdf_charts(rep, job / "charts")
+    rep["chart_files"] = save_pdf_charts(rep, job / "charts", expl)
     frames = sorted(str(p) for p in (job / "explain").glob("key_*.jpg")) if (job / "explain").exists() else []
     media = rep.get("media")
     if not media or "error" in media:
@@ -303,7 +305,7 @@ def analysis_error_ru(e: BaseException) -> str:
     return "Не удалось обработать ролик из-за внутренней ошибки. Подробности записаны в журнал сервера."
 
 
-STATUS_LABELS = {"running": "Идёт обработка", "done": "Готово", "stopped": "Остановлено"}
+STATUS_LABELS = {"running": "Идёт обработка", "done": "Готово", "stopped": "Остановлено", "error": "Ошибка"}
 
 
 def _live_desc(state: dict) -> str:
@@ -315,9 +317,9 @@ def _live_desc(state: dict) -> str:
 
 
 def _status_html(frac: float, desc: str, state: str = "running", label: str | None = None) -> str:
-    """Progress line above the page. state: running (orange, «34% · …»), done (green) or stopped (red).
+    """Progress line above the page. state: running (orange, «34% · …»), done (green), stopped or error (red).
     The text shows the real percentage (0% at the start); the bar keeps a 2% minimum width so it is visible.
-    Done and stopped fill the whole outlined track in their colour; the label and a colour dot name the state."""
+    The other states fill the whole outlined track in their colour; the label and a colour dot name the state."""
     state = state if state in STATUS_LABELS else "running"
     pct = max(0, min(100, int(round(float(frac) * 100))))
     color = PAL[f"status_{state}"]
@@ -333,7 +335,8 @@ def _status_html(frac: float, desc: str, state: str = "running", label: str | No
             f"border-radius:50%;background:{color};margin-right:7px'></span>{head}</b> "
             f"<span style='text-align:right;font-variant-numeric:tabular-nums'>{txt}</span></div>"
             "<div role='progressbar' aria-valuemin='0' aria-valuemax='100' "
-            + (f"aria-valuenow='{pct}' " if state != "stopped" else "") + f"aria-label='{head}' "
+            # stopped and error fill the track without having got that far: no aria-valuenow, the text says what happened
+            + (f"aria-valuenow='{pct}' " if state not in ("stopped", "error") else "") + f"aria-label='{head}' "
             f"style='height:10px;border-radius:6px;background:{PAL['track']};box-shadow:inset 0 0 0 1px {PAL['track_outline']}'>"
             f"<div style='width:{width}%;height:10px;border-radius:6px;background:{color};transition:width .5s'></div>"
             "</div></div>")
@@ -344,6 +347,21 @@ def _status_html(frac: float, desc: str, state: str = "running", label: str | No
 # already shows the same title, so the bold title line is hidden there and the subtitle (units, scale) stays.
 APP_CSS = (".bs2-block > label[data-testid='block-label'] > span{display:none}"
            ".prose.bs2-chart > div:first-child[style*='font-weight:600']{display:none}")
+COPYRIGHT = "© 2026 AMLAI"
+# the copyright line under the title: 12 px, theme text colour dimmed (8.8:1 on the dark page, 5.6:1 on white), pulled
+# up to the title so it reads as part of the heading, with the usual gap before the description line
+APP_CSS += (f".gradio-container .prose p.bs2-copy{{font-size:12px;line-height:16px;letter-spacing:.03em;"
+            f"opacity:{PAGE_NOTE_OPACITY};margin:-8px 0 12px}}")
+# Gradio paints several marks with the theme accent, orange-500: the name and the underline of the selected tab (and
+# the «…» button of the tabs that do not fit on a narrow screen), the ring of the upload progress and the icons of the
+# video player. On white orange-500 is 2.8:1, so the whole page takes the accent of palette.ACCENT instead (orange-700
+# in the light theme, as the checked boxes in _theme). The theme sets the variable on <html> and on body.dark, so a
+# rule on the container wins for everything inside it in both themes.
+APP_CSS += (f".gradio-container{{--color-accent:{ACCENT['light']}}}"
+            f".dark .gradio-container{{--color-accent:{ACCENT['dark']}}}")
+# result.json: the code viewer colours its tokens with fixed pale hues (2.0-2.8:1 on white), so the file is shown in the
+# theme text colour. Both themes, although the dark hues do reach 4.5:1: one grey page, and the same block either way
+APP_CSS += ".bs2-json .cm-content span{color:inherit!important}"
 VIDEO_H = 300          # height of the video window before it is stretched (gr.Video height)
 # Two framed windows side by side (gr.Row with class bs2-pair): both columns get the height of the taller one, and in
 # each column the window marked bs2-grow takes the extra height, so the two frames start and end on one line with no
@@ -372,6 +390,26 @@ APP_CSS += (
     f".row.bs2-pair>.column>.bs2-grow:has(.video-container){{height:auto!important;min-height:{VIDEO_H}px;"
     "display:flex;flex-direction:column}"
     ".row.bs2-pair .bs2-grow .video-container{flex-grow:1}")
+
+
+def _theme():
+    """The BS 1.0 look: Gradio Default theme (zinc neutrals, Source Sans Pro, block titles in the block corner) with
+    readable buttons and hints: white labels on orange-700 / red-700 (the Default orange-500 gives 2.8:1, red-500 3.8:1),
+    zinc-600 hint text on white (zinc-400 gives 2.6:1), and checked boxes and radios in orange-700 on white, where the
+    Default orange-500 is 2.8:1 (the dark theme keeps orange-500). The selected tab underline follows in APP_CSS."""
+    import gradio as gr
+    return gr.themes.Default().set(
+        button_primary_background_fill=BUTTON_PRIMARY, button_primary_background_fill_dark=BUTTON_PRIMARY,
+        button_primary_background_fill_hover=BUTTON_PRIMARY_HOVER, button_primary_background_fill_hover_dark=BUTTON_PRIMARY_HOVER,
+        button_cancel_background_fill=BUTTON_STOP, button_cancel_background_fill_dark=BUTTON_STOP,
+        button_cancel_background_fill_hover=BUTTON_STOP_HOVER, button_cancel_background_fill_hover_dark=BUTTON_STOP_HOVER,
+        body_text_color_subdued=SUBDUED_TEXT_LIGHT, body_text_color_subdued_dark="*neutral_400",
+        # placeholders have their own variable (light zinc-400 2.6:1 on white, dark zinc-500 3.1:1 on the block)
+        input_placeholder_color=SUBDUED_TEXT_LIGHT, input_placeholder_color_dark="*neutral_400",
+        checkbox_background_color_selected=ACCENT["light"], checkbox_background_color_selected_dark=ACCENT["dark"],
+        checkbox_border_color_selected=ACCENT["light"], checkbox_border_color_selected_dark=ACCENT["dark"],
+        checkbox_border_color_focus=ACCENT["light"], checkbox_border_color_focus_dark=ACCENT["dark"],
+    )
 
 
 ERROR_TITLE = "Ошибка"          # title of Gradio's error dialog (its default is the English "Error")
@@ -439,10 +477,15 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
             yield (_status_html(state["frac"], _live_desc(state)),) + (gr.update(),) * N_REST
         if "e" in result:
             e = result["e"]
+            # the bar must not stay on the orange «Идёт обработка» while the error dialog is shown (as in BS 1.0):
+            # the outcome goes to the bar first, and the dialog on top of it explains what to do
             if isinstance(e, AnalysisCancelled):
+                yield (_status_html(state["frac"], "по запросу пользователя", state="stopped"),) + (gr.update(),) * N_REST
                 raise gr.Error("Обработка остановлена. Проверьте язык речи и запустите заново.", title="Остановлено")
             log.error("analysis failed", exc_info=(type(e), e, e.__traceback__))
-            raise gr.Error(analysis_error_ru(e), title=ERROR_TITLE)
+            msg = analysis_error_ru(e)
+            yield (_status_html(state["frac"], msg, state="error"),) + (gr.update(),) * N_REST
+            raise gr.Error(msg, title=ERROR_TITLE)
         rep = result["r"]
         yield (_status_html(1.0, f"обработано за {fmt_secs(time.time() - state['t0'])}", state="done"),) + render(rep)
 
@@ -460,24 +503,21 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
             raise gr.Error("Не удалось собрать PDF. Подробности записаны в журнал сервера.", title=ERROR_TITLE)
 
     def block(label: str, chart: bool = False, grow: bool = False):
-        """Result block with a visible title chip (gr.HTML hides its label and frame by default). Chart blocks
-        (chart=True) use the chart's own title as the label; units and scales are in the chart subtitle under it.
+        """Result block with a visible title in the block corner (gr.HTML hides its label and frame by default). Chart
+        blocks (chart=True) use the chart's own title as the label; units and scales are in the chart subtitle under it.
         grow=True: the window of a bs2-pair row that takes the extra height (APP_CSS)."""
         return gr.HTML(label=label, show_label=True, container=True,
                        elem_classes=["bs2-block"] + (["bs2-chart"] if chart else []) + (["bs2-grow"] if grow else []))
 
-    # Soft theme with readable titles: label chips and block titles in primary-700 (6.4:1 on the light chip; the dark
-    # theme keeps white on primary-600), the Radio/Checkbox info line in neutral-600 (7.6:1 on white; dark unchanged)
-    theme = gr.themes.Soft(font=["system-ui", "Segoe UI", "Roboto", "Arial", "sans-serif"],
-                           font_mono=["ui-monospace", "Consolas", "monospace"]).set(block_label_text_color="*primary_700", block_title_text_color="*primary_700",
-                                 block_info_text_color="*neutral_600")
     force_russian_gradio()
-    with gr.Blocks(title="BS 2.0 — Big Five, эмоции, голос, речь", theme=theme, css=APP_CSS) as demo:
+    with gr.Blocks(title="BS 2.0 — Big Five, эмоции, голос, речь", theme=_theme(), css=APP_CSS) as demo:
         job_state = gr.State("")
         with gr.Row():
             with gr.Column(scale=4):
-                gr.Markdown("# BS 2.0 — анализ человека по видео\nBig Five (первое впечатление), эмоции по речи и по лицу, "
-                            "характеристики голоса, манера речи, объяснения. Всё считается локально.")
+                # the title stays the first line; the copyright sits right under it in small dimmed type (APP_CSS)
+                gr.Markdown(f"# BS 2.0 — анализ человека по видео\n\n<p class='bs2-copy'>{COPYRIGHT}</p>\n\n"
+                            "Big Five (первое впечатление), эмоции по речи и по лицу, характеристики голоса, манера речи, "
+                            "объяснения. Всё считается локально.")
             with gr.Column(scale=1, min_width=220):
                 pdf_btn = gr.DownloadButton("Экспорт в PDF", variant="primary", interactive=False)
         status = gr.HTML(value="")
@@ -532,7 +572,7 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
                 desc = gr.Textbox(label="Описание поведения по отрезкам", lines=8, max_lines=12, autoscroll=False)
             with gr.Tab("Данные"):
                 members = gr.Textbox(label="Участники ансамбля и время обработки", lines=4, max_lines=8, autoscroll=False)
-                raw = gr.Code(label="result.json", language="json", lines=24)
+                raw = gr.Code(label="result.json", language="json", lines=24, elem_classes=["bs2-json"])
                 path = gr.Textbox(label="Сохранено в", interactive=False)
         # the caveats are the most important small print on the page: 13 px (gr.Markdown <small> gave 11 px)
         gr.HTML(f"<div style='font-size:13px;line-height:1.5;margin-top:6px;padding-top:10px;"
