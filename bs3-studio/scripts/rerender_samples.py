@@ -1,8 +1,8 @@
-"""Re-render finished sample jobs with BS Profiler 3.0 without a new analysis and check the page (design 13.3, items 1-3
-and 5; task T20).
+"""Re-render finished sample jobs with BS Profiler 3.0 without a new analysis and check the page and the PDF (design
+13.3, items 1-5; tasks T20, T22).
 
     ~/bs/venv/bin/python bs3-studio/scripts/rerender_samples.py A=~/bs2_data/web_jobs/<id> B=~/bs2_data/web_jobs/<id>
-                                                                [--html-dir DIR]
+                                                                [--html-dir DIR] [--pdf-dir DIR]
 
 Each argument is a finished job of the old work dir, optionally with the tag of a design sample (A or B, design 13.2):
 tagged jobs are also checked against the golden values of that sample; untagged ones get the general checks only.
@@ -16,17 +16,24 @@ For every job:
    has a letter strip; the own model of an old job gets C18; segments without the main system are gaps on the
    timeline chart and are named by C13 in «Как получены оценки»; «Краткие выводы» appears nowhere; result.json of
    the copy gets no `mbti` section;
+4. webapp.export_pdf runs on the copy: the PDF is built; its text (pdftotext) contains «Характеристика личности»,
+   «Тип MBTI (перевод шкал Big Five)», «Как получены оценки», «BS Profiler 3.0 · стр.», the type of the main system
+   and, in the appendix «Значения по отрезкам», the type of every typed segment; it does not contain «Краткие
+   выводы», «сегмент» (outside the transcript, which is the person's own speech) or the name of the old version; it
+   has at most 2 pages more than the PDF of the old version in the source job (when there is one);
 5. sha256 of the source job is taken again and must not have changed.
-(Item 4, the PDF, is added with the PDF tasks.)
 
 --html-dir DIR: also save the characterization and the «Тип MBTI» tab of every job as page_<tag>_char.html and
-page_<tag>_mbti.html (for reading them in a browser). Exit code 0 when every check passed.
+page_<tag>_mbti.html (for reading them in a browser). --pdf-dir DIR: also copy the PDF of every job there as
+report_<tag>.pdf. Exit code 0 when every check passed.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -68,7 +75,66 @@ def _page(title: str, blocks: list[tuple[str, str]]) -> str:
             f"<style>{PAGE_CSS}</style></head><body>{body}</body></html>")
 
 
-def check_job(src: Path, tag: str | None, html_dir: Path | None) -> Checks:
+PDF_MUST = ("Характеристика личности", "Тип MBTI (перевод шкал Big Five)", "Как получены оценки", "BS Profiler 3.0 · стр.")
+PDF_MUST_NOT = (("Краткие выводы", re.compile(r"Краткие выводы")), ("сегмент", re.compile(r"сегмент", re.I)),
+                ("the name of the old version", re.compile(r"BS\s+2\.0")))
+MAX_EXTRA_PAGES = 2
+
+
+def pdf_text(path: Path) -> str:
+    """Text of a PDF (pdftotext of poppler-utils), whitespace collapsed to single spaces."""
+    r = subprocess.run(["pdftotext", "-enc", "UTF-8", str(path), "-"], capture_output=True, text=True, check=True)
+    return re.sub(r"\s+", " ", r.stdout)
+
+
+def pdf_pages(path: Path) -> int:
+    r = subprocess.run(["pdfinfo", str(path)], capture_output=True, text=True, check=True)
+    m = re.search(r"^Pages:\s+(\d+)", r.stdout, re.M)
+    return int(m.group(1)) if m else 0
+
+
+def check_pdf(c: Checks, src: Path, dest: Path, mb: dict | None, exp: dict | None, pdf_dir: Path | None,
+              label: str) -> None:
+    """Item 4 of design 13.3: build the PDF of the copy and check its text and length."""
+    from bs3.webapp import export_pdf
+    pdf = Path(export_pdf(dest))
+    c.ok(pdf.exists() and pdf.parent == dest, "PDF built inside the copy")
+    if not pdf.exists():
+        return
+    try:
+        text, pages = pdf_text(pdf), pdf_pages(pdf)
+    except (OSError, subprocess.CalledProcessError) as e:
+        c.ok(False, f"pdftotext / pdfinfo (poppler-utils) available: {type(e).__name__}")
+        return
+    for s in PDF_MUST:
+        c.ok(s in text, f"PDF contains «{s}»")
+    # the transcript is the person's own speech: a word there is not a wording of the report
+    body = re.split(r"Приложение [А-Я]\. Транскрипт речи", text)[0]
+    for what, rx in PDF_MUST_NOT:
+        c.ok(not rx.search(body), f"PDF does not contain «{what}»")
+    if mb:
+        c.ok(mb["type_strict"] in text and mb["type"] in text, f"PDF shows the type {mb['type']} / {mb['type_strict']}")
+        # appendix «Значения по отрезкам»: the MBTI column carries the type of every typed segment
+        appx = text.split("Значения по отрезкам")[-1]
+        seg_types = {e["type"] for e in mb.get("timeline") or [] if e.get("type")}
+        c.ok(" MBTI " in appx and all(t in appx for t in seg_types),
+             f"MBTI column in the appendix with {len(seg_types)} segment type(s)")
+    if exp:
+        c.ok(exp["strip"] in text, "PDF strip summary as in design 13.2")
+    old = sorted(p for p in src.glob("*_report_*.pdf"))
+    if old:
+        n_old = pdf_pages(old[0])
+        c.ok(pages <= n_old + MAX_EXTRA_PAGES, f"PDF has {pages} pages, the old one {n_old} (at most +{MAX_EXTRA_PAGES})")
+    else:
+        print(f"  note: no PDF of the old version in the source job, page growth not checked ({pages} pages)")
+    c.ok("mbti" not in json.loads((dest / "result.json").read_text(encoding="utf-8")),
+         "result.json of the copy still has no mbti section after the PDF")
+    if pdf_dir:
+        pdf_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(pdf, pdf_dir / f"report_{label}.pdf")
+
+
+def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path | None = None) -> Checks:
     from bs3 import caveats, mbti
     from bs3.charts import fig_traits_timeline
     from bs3.scores import clean_view
@@ -154,6 +220,8 @@ def check_job(src: Path, tag: str | None, html_dir: Path | None) -> Checks:
             c.ok(h in char[:i_short], f"header shows {h}")
         c.ok(exp["strip"] in strip, "strip summary as in design 13.2")
 
+    check_pdf(c, src, dest, mb, exp, pdf_dir, label)                               # 4
+
     after = tree_sha256(src)                                                   # 5
     c.ok(after == before, f"source job unchanged (sha256 of {len(before)} files)")
 
@@ -174,13 +242,15 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("jobs", nargs="+", help="[A=|B=]<job folder of the old work dir>")
     ap.add_argument("--html-dir", help="save the characterization and the MBTI tab of every job here")
+    ap.add_argument("--pdf-dir", help="copy the PDF of every job here as report_<tag>.pdf")
     args = ap.parse_args(argv)
     html_dir = Path(args.html_dir).expanduser() if args.html_dir else None
+    pdf_dir = Path(args.pdf_dir).expanduser() if args.pdf_dir else None
     failed = 0
     for arg in args.jobs:
         tag, _, path = arg.rpartition("=")
         try:
-            c = check_job(Path(path).expanduser().resolve(), tag or None, html_dir)
+            c = check_job(Path(path).expanduser().resolve(), tag or None, html_dir, pdf_dir)
         except Exception as e:  # noqa: BLE001
             print(f"  FAIL {arg}: {type(e).__name__}: {e}")
             failed += 1

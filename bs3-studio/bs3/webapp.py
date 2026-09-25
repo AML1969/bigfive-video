@@ -304,6 +304,8 @@ def export_pdf(job_dir: str | Path) -> str:
     expl = json.loads(expl_path.read_text(encoding="utf-8")) if expl_path.exists() else None
     ensure_russian_job(job, rep, expl)          # jobs processed before the Russian texts: translate once, store back
     view = clean_view(rep)                      # the PDF shows the same clean numbers as the page (design 6.1)
+    mb = get_mbti(rep, view)                    # saved section or computed now; never written (design 7.2)
+    ch = characterization.build(view, mb)
     view["chart_files"] = save_pdf_charts(view, job / "charts", expl)
     frames = sorted(str(p) for p in (job / "explain").glob("key_*.jpg")) if (job / "explain").exists() else []
     media = view.get("media")
@@ -311,7 +313,8 @@ def export_pdf(job_dir: str | Path) -> str:
         inp = next(job.glob("input.*"), None)
         media = probe_media(inp) if inp else None
     stem = re.sub(r"[^A-Za-z0-9А-Яа-яЁё._-]+", "_", Path(view.get("original_file_name") or "video").stem)[:60]
-    return build_pdf(view, job / f"{PRODUCT_SLUG}_report_{stem}.pdf", explanation=expl, media=media, key_frames=frames)
+    return build_pdf(view, job / f"{PRODUCT_SLUG}_report_{stem}.pdf", explanation=expl, media=media, key_frames=frames,
+                     mbti=mb, character=ch)
 
 
 def analysis_error_ru(e: BaseException) -> str:
