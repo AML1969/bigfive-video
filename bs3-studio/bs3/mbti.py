@@ -8,6 +8,10 @@ Details: the confidence denominator for a threshold other than 0.5 (thr below it
 1); the difference is rounded to 9 digits so that 0.65 − 0.5 is not 0.15000000000000002; a missing trait gives the
 letter X with `missing: true` in both `type` and `type_strict`; a value outside [0, 1] is clipped with `clipped: true`.
 
+The formula is applied to the score as the report prints it (scores.shown: rounded once to two decimals), so the
+letter, the borderline flag, the level word and the printed number of an axis always agree (a printed 0.65 is never
+X on one page and a confident letter on another); the axis `value` is that printed value.
+
 Nothing here writes to disk: `get_mbti(rep, view)` returns the section saved by the pipeline (schema 2) or computes it
 on the fly; the caller never stores the computed one.
 """
@@ -23,7 +27,7 @@ from importlib import resources
 
 from . import PRODUCT, __version__
 from .norms import TRAIT_KEYS
-from .scores import level_phrase, plural_ru
+from .scores import level_phrase, plural_ru, shown
 
 AXES = ("EI", "SN", "TF", "JP")
 AXIS_LABEL = {"EI": "E–I", "SN": "S–N", "TF": "T–F", "JP": "J–P"}
@@ -35,6 +39,8 @@ RELIABILITY_BASIS = ("соответствие шкал MBTI и NEO-PI в сам
                      "не точность оценки по видео")
 NEURO_NOTE = "шкала не имеет соответствия в MBTI, приводится отдельно"
 SIGN = {"agree": "=", "differ": "≠", "border": "≈"}
+BORDER_RU = "на границе хотя бы у одной из систем"      # "border": one system, both, or no score on the axis
+BORDER_NONE = "Уверенных совпадений нет"
 SCHEMA_VERSION = 2            # 1: letters by the position in a reference group of processed videos (before 2026-09-26)
 METHOD = "raw"
 
@@ -144,15 +150,16 @@ def _r(x, nd):
 
 def mbti_for(system: str, raw_scores: dict, lang: str, cfg: dict | None = None) -> dict:
     """Type of one system ('oceanai' | 'mm' | 'mean') from its own Big Five scores, in the format of result.json.
-    `lang` is kept for the callers: the formula is the same for both speech languages."""
+    `lang` is kept for the callers: the formula is the same for both speech languages. The formula works on the
+    printed scores (scores.shown, two decimals)."""
     cfg = cfg or load_config()
     raw_scores = raw_scores if isinstance(raw_scores, dict) else {}
-    scores = {k: _num(raw_scores.get(k)) for k in TRAIT_KEYS}
+    scores = {k: shown(raw_scores.get(k)) for k in TRAIT_KEYS}
     core = bigfive_to_mbti(scores, _thresholds(cfg), borderline=cfg.get("borderline", 0.15), cfg=cfg)
     axes = {}
     for ax in AXES:
         a = dict(core["axes"][ax])
-        a["value"] = _r(a["value"], 3)
+        a["value"] = _r(a["value"], 2)
         a["confidence"] = round(a["confidence"], 2)
         a["word"] = word_for(core["axes"][ax])
         axes[ax] = {k: a[k] for k in ("trait", "value", "threshold", "letter", "confidence", "borderline", "word",
@@ -162,7 +169,7 @@ def mbti_for(system: str, raw_scores: dict, lang: str, cfg: dict | None = None) 
     if core["neuroticism"] is not None:
         nv = core["neuroticism"]["value"]
         lv = level_phrase(nv)
-        neuro = {"value": round(nv, 3), "level": lv, "note": NEURO_NOTE}
+        neuro = {"value": round(nv, 2), "level": lv, "note": NEURO_NOTE}
         neuro_note = f"Шкала нейротизма ({lv}) в MBTI не выражается, приводится отдельно"
     return {
         "source": SOURCE_OF.get(system, system),
@@ -193,7 +200,8 @@ def agreement(main: dict, second: dict) -> dict:
 
 
 def agreement_line(agr: dict | None) -> str:
-    """«Совпадают 0 из 4 осей; расходится E–I; на границе у одной из систем: S–N, T–F, J–P.»"""
+    """«Совпадает 1 из 4 осей; расходится E–I; на границе хотя бы у одной из систем: T–F, J–P.» (no
+    confident match: «Уверенных совпадений нет; …»)."""
     if not agr:
         return ""
     axes = agr.get("axes") or {}
@@ -202,11 +210,11 @@ def agreement_line(agr: dict | None) -> str:
         return "Обе системы дают один и тот же тип."
     differ = [AXIS_LABEL[a] for a in AXES if axes.get(a) == "differ"]
     border = [AXIS_LABEL[a] for a in AXES if axes.get(a) == "border"]
-    parts = [f"{'Совпадает' if n == 1 else 'Совпадают'} {n} из 4 осей"]
+    parts = [BORDER_NONE if n == 0 else f"{'Совпадает' if n == 1 else 'Совпадают'} {n} из 4 осей"]
     if differ:
         parts.append(("расходится " if len(differ) == 1 else "расходятся ") + ", ".join(differ))
     if border:
-        parts.append("на границе у одной из систем: " + ", ".join(border))
+        parts.append(BORDER_RU + ": " + ", ".join(border))
     return "; ".join(parts) + "."
 
 
@@ -261,6 +269,31 @@ def stability(entries: list[dict], type_strict: str, cfg: dict | None = None) ->
     st = {ax: {"same": sum(e["type_strict"][i] == type_strict[i] for e in typed), "of": n}
           for i, ax in enumerate(AXES)}
     return st, modal
+
+
+def border_counts(entries: list[dict]) -> tuple[dict, int]:
+    """({axis: number of typed segments where that axis is on the border (X in `type`)}, number of typed segments).
+    Taken from the saved segment types, so it works for any stored section."""
+    typed = [e for e in entries if e.get("type_strict")]
+    counts = {ax: sum(1 for e in typed if (e.get("type") or "")[i:i + 1] == "X" and e["type_strict"][i] != "X")
+              for i, ax in enumerate(AXES)}
+    return counts, len(typed)
+
+
+def border_text(entries: list[dict]) -> str:
+    """«ось E–I на границе во всех 17 отрезках, S–N — в 8, T–F — в 6, J–P — в 8»; '' when no axis of any typed
+    segment was on the border."""
+    counts, n = border_counts(entries)
+    parts = []
+    for ax in (a for a in AXES if counts[a]):
+        k = counts[ax]
+        if not parts:
+            where = (f"во всех {n} {plural_ru(n, 'отрезке', 'отрезках', 'отрезках')}" if k == n
+                     else f"в {k} из {n} {plural_ru(n, 'отрезка', 'отрезков', 'отрезков')}")
+            parts.append(f"ось {AXIS_LABEL[ax]} на границе {where}")
+        else:
+            parts.append(f"{AXIS_LABEL[ax]} — " + ("во всех" if k == n else f"в {k}"))
+    return ", ".join(parts)
 
 
 def is_stable(item: dict | None, cfg: dict | None = None) -> bool:
@@ -409,8 +442,8 @@ def journal_lines(mb: dict | None) -> list[str]:
     lines = [line]
     agr = mb.get("agreement") or {}
     second = mb.get("second") or []
-    # ru: the other system is a second opinion; en: the main type is the mean, and both systems are listed separately
-    # (design 5.6), as in the characterization («Системы по отдельности»)
+    # ru: the other system is a second opinion; en: the main type is the mean, and both systems are listed separately,
+    # as on the tab «Тип MBTI» (design 5.6)
     per_system = mb.get("source") == "mean"
     for i, s in enumerate(second):
         t = s.get("type")

@@ -25,6 +25,7 @@ from .norms import RU_SHORT, TRAIT_KEYS, percentile
 from .palette import CARD_PDF, SCORE_BAR_PDF, SECOND_BAR_PDF, TRAIT_BAR_PDF
 from .report import _SEC_LABEL, fmt_secs, seg_label
 from .ru_texts import transcript_shown, vocabulary_shown
+from .scores import SECOND_SCALE_RU, gap_sentence
 
 TITLES = {
     "openness": "Открытость опыту", "conscientiousness": "Добросовестность", "extraversion": "Экстраверсия",
@@ -396,7 +397,7 @@ class Report(FPDF):
         # because the chart colour gives only 2.9:1 on the light track of the bar
         items = [("traits", "оценка черты 0…1 (цвет — как на графиках, экстраверсия чуть темнее)")]
         if second:
-            # Russian speech: the note under the bars says which system and group (the legend then fits one line)
+            # Russian speech: the note under the bars names the second system (the legend then fits one line)
             items.append(("second", "второе мнение" if second_ru else "второе мнение: своя модель, FIV2"))
         items.append(("tick", "середина шкалы"))
         return items
@@ -414,7 +415,7 @@ class Report(FPDF):
             lines.append(cur)
         return lines
 
-    def _bars_note(self, traits: dict, interview: dict | None, second: bool, second_ru: bool = False) -> str:
+    def _bars_note(self, traits: dict, interview: dict | None, second: dict | None, second_ru: bool = False) -> str:
         groups: dict[str, list[str]] = {}          # FIV2 reference in words -> item keys (Russian speech: none)
         for k, t in self._bar_rows(traits, interview):
             pct = t.get("percentile", t.get("percentile_vs_fiv2"))
@@ -432,12 +433,12 @@ class Report(FPDF):
                            if keys == ["interview"] else f"{_group_name(keys).capitalize()} — процентиль {ref}.")
                           for ref, keys in groups.items()]
                 interview_named = any(keys == ["interview"] for keys in groups.values())
-        if second and second_ru:
-            parts.append("Второе мнение — своя модель; она обучена на англоязычных влогерах FIV2, и на русской речи её "
-                         "числа ниже: сравнивайте порядок черт, а не сами числа.")
-        elif second:
-            parts.append("Второе мнение — на другой шкале: своя модель обучена на англоязычных влогерах, поэтому на "
-                         "русских роликах её значения ниже; сравнивайте порядок черт, а не сами числа.")
+        if second:
+            # the second opinion is the own model (the PDF passes it only when OCEAN-AI is the main system)
+            parts.append(SECOND_SCALE_RU)
+            gap = gap_sentence(second, traits)
+            if gap:
+                parts.append(gap)
         if interview and not interview_named:
             parts.append("Коричневая полоска — впечатление «собеседование» (своя модель, шкала FIV2).")
         return " ".join(parts)
@@ -448,7 +449,7 @@ class Report(FPDF):
         h = n * (8.6 if second else 6.0) + (8.0 if interview else 0.0) + 4.2
         h += len(self._legend_lines(self._bars_legend(bool(second), second_ru))) * 4.4 + 1
         self.set_font("ui", "", 8)
-        h += len(self.multi_cell(self.epw, 4.0, self._bars_note(traits, interview, bool(second), second_ru),
+        h += len(self.multi_cell(self.epw, 4.0, self._bars_note(traits, interview, second, second_ru),
                                  dry_run=True, output="LINES")) * 4.0
         return h + 1
 
@@ -534,7 +535,7 @@ class Report(FPDF):
         self.set_xy(self.l_margin, y + 4.2)
         self._draw_bars_legend(self._legend_lines(self._bars_legend(bool(second), second_ru)))
         self.set_font("ui", "", 8); self.set_text_color(NOTE_GREY)
-        self.multi_cell(0, 4.0, self._bars_note(traits, interview, bool(second), second_ru), new_x="LMARGIN",
+        self.multi_cell(0, 4.0, self._bars_note(traits, interview, second, second_ru), new_x="LMARGIN",
                         new_y="NEXT", align="L")
         self.set_text_color(0)
         self.ln(1)

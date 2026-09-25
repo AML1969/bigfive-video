@@ -28,13 +28,15 @@ from .palette import (ACCENT, BUTTON_PRIMARY, BUTTON_PRIMARY_HOVER, BUTTON_STOP,
 from .pipeline import Studio, run_analysis
 from .report import fmt_secs, mmss_labels, seg_label
 from .ru_texts import ensure_russian_job, transcript_shown, vocabulary_shown
-from .scores import clean_view
+from .scores import clean_view, data_json
 from .webparts import (MEMBER_TITLES, NOTE, TRAIT_TITLES, _bar_html, _contrib_html, _members_html, _words_text,
                        table_html, th_text)
 
 log = logging.getLogger("bs3.web")
 # which OCEAN-AI weights were used, for the «Участники ансамбля» box
 CORPUS_RU = {"mupta": "веса OCEAN-AI MuPTA для русской речи", "fi": "веса OCEAN-AI First Impressions V2 для английской речи"}
+# the tab «Данные» of a Russian job whose result.json carries 2.0 fields that 3.0 does not use (scores.data_json)
+DATA_TRIMMED = "В result.json ниже не показаны устаревшие поля версии 2.0, которые 3.0 не использует; файл не изменён."
 # metric cards: 1 px outline 3:1 on every background, light tint (palette.CARD_TINT, the background check_palette.py
 # measures the card text and the outline on) so label, value and note read as one card
 CARDS = "display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px"
@@ -251,7 +253,8 @@ def page_outputs(rep: dict) -> tuple:
     saved one, or computed now and never written), the characterization from characterization.build. The first 22
     values keep their places (index 2 — the key facts with the type card first, index 3 — the characterization), then
     five new ones: «Как получены оценки», «Эмоции и голос: коротко», the MBTI panels, the letter strip and «Как читать
-    тип MBTI». The «Данные» tab shows result.json as it lies on disk."""
+    тип MBTI». The «Данные» tab shows result.json as it lies on disk, except that for Russian speech the 2.0 fields
+    that 3.0 does not use (percentiles, the stored 2.0 summary) are left out, with a note (scores.data_json)."""
     job = Path(rep["job_dir"])
     expl_path = job / "explain" / "explanation.json"
     expl = json.loads(expl_path.read_text(encoding="utf-8")) if expl_path.exists() else None
@@ -273,6 +276,9 @@ def page_outputs(rep: dict) -> tuple:
                    + (f"; {weights}." if weights else "."))
     if mb and mb.get("computed_on_render"):
         member_txt += "\n" + caveats.text("C22")
+    data, data_trimmed = data_json(rep)
+    if data_trimmed:
+        member_txt += "\n" + DATA_TRIMMED
     # English speech: the Russian translation with a one-line note (the original stays in result.json)
     note, transcript = transcript_shown(rep)
     # fill=True: charts in a row of two windows grow to the height of the window next to them (see APP_CSS)
@@ -286,7 +292,7 @@ def page_outputs(rep: dict) -> tuple:
            _frames_html(view), _contrib_html(expl),
            _words_text(expl, rep, lang, expl_path) if expl else "",
            mmss_labels(rep.get("behavior_description_ru") or ""), member_txt,
-           json.dumps(rep, ensure_ascii=False, indent=2), str(job / "result.json"), str(job),
+           json.dumps(data, ensure_ascii=False, indent=2), str(job / "result.json"), str(job),
            # new in 3.0 (design 10.3, 10.5)
            mbti_html.method_html(method_notes(view, expl)), mbti_html.emo_intro_html(view),
            mbti_html.types_html(mb), mbti_html.strip_html(mb), mbti_html.read_html(mb))

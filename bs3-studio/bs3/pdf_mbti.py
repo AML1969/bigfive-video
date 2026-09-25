@@ -219,7 +219,9 @@ def _axis_table(pdf: Report, systems: list[dict], agr: dict | None, cfg: dict) -
             break
     pdf.table(header, rows, widths, size=size, zebra=True, first_left=True, row_h=5.4, min_rows=len(rows))
     pdf.c_margin = c_margin
-    pdf.caption("Нейротизм = 1 − эмоциональная стабильность. Соответствие шкал: " + TABLE_NOTE[0].lower()
+    pdf.caption("Число в скобках после буквы — уверенность по оси (0 — на границе 0.5, 1 — у края шкалы), а не сама "
+                "оценка. " + ("«≈ на границе» — ось на границе хотя бы у одной из систем. " if agr else "")
+                + "Нейротизм = 1 − эмоциональная стабильность. Соответствие шкал: " + TABLE_NOTE[0].lower()
                 + TABLE_NOTE[1:], 7.5)
 
 

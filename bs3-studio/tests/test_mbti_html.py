@@ -32,16 +32,16 @@ def test_types_b():
     for s in ("OCEAN-AI (веса MuPTA) — основная оценка", "Своя модель — второе мнение",
               "«Наставник»", "С учётом границ: ENFJ (пограничных осей нет)", "С учётом границ: ISXX",
               "Нейротизм — средний уровень. В MBTI этой шкалы нет, поэтому он приводится отдельно.",
-              "Совпадают 0 из 4 осей; расходятся E–I, S–N; на границе у одной из систем: T–F, J–P.",
+              "Уверенных совпадений нет; расходятся E–I, S–N; на границе хотя бы у одной из систем: T–F, J–P.",
               "I · интроверсия", "экстраверсия · E", "соответствие шкал r ≈ 0.74",
-              "E · умеренно (0.46) · экстраверсия 0.73 — выше среднего",
-              "F · отчётливо (0.74) · доброжелательность 0.87 — высокий уровень",
+              "E · умеренно (уверенность 0.46) · экстраверсия 0.73 — выше среднего",
+              "F · отчётливо (уверенность 0.74) · доброжелательность 0.87 — высокий уровень",
               "X (ближе к P) · на границе · добросовестность 0.48 — средний уровень"):
         assert s in h, s
     # the marker of extraversion at the score 0.73 on the track 0…1
     assert "left:calc(73.0% - 7px)" in h
     # signs in the second panel, one per axis: ≠ on E–I and S–N, ≈ on the others
-    assert h.count("</b> расходится") == 2 and h.count("</b> на границе у одной из систем") == 2
+    assert h.count("</b> расходится") == 2 and h.count("</b> на границе хотя бы у одной из систем") == 2
     assert "minmax(min(320px,100%),1fr)" in h                        # panels wrap one under the other on a phone
     assert "сегмент" not in h
     for w in RELATIVE:
@@ -53,7 +53,9 @@ def test_types_a_and_none():
     assert "«Наставник»" in h and "С учётом границ: XNFJ · возможен INFJ («Советник»)" in h
     assert "X (ближе к E) · на границе · экстраверсия 0.56 — средний уровень" in h
     assert "С учётом границ: IXXX · тип не выражен: 3 оси из 4 на границе" in h
-    assert "Совпадают 0 из 4 осей; на границе у одной из систем: E–I, S–N, T–F, J–P." in h
+    assert "Уверенных совпадений нет; на границе хотя бы у одной из систем: E–I, S–N, T–F, J–P." in h
+    # the own model's agreeableness 0.47531: printed 0.48 as on the bars, not 0.47 through a stored 0.475
+    assert "X (ближе к T) · на границе · доброжелательность 0.48 — средний уровень" in h
     assert mbti_html.types_html(None) == f"<p style='{mbti_html.TEXT14};margin:0'>{caveats.text('C21')}</p>"
 
 
@@ -62,7 +64,7 @@ def test_types_en():
     for s in ("Итог: среднее двух систем", "OCEAN-AI (веса First Impressions V2)", "Своя модель (First Impressions V2)"):
         assert s in h, s
     assert "пороги предварительные" not in h
-    assert re.search(r"(отчётливо|умеренно) \(0\.\d\d\)", h)           # the confidence number after the word
+    assert re.search(r"(отчётливо|умеренно) \(уверенность 0\.\d\d\)", h)   # the confidence, labelled
 
 
 def test_strip_b():
@@ -78,7 +80,11 @@ def test_strip_b():
 
 def test_strip_a_short_and_new_jobs():
     s = mbti_html.strip_html(_mb(rep("A")))
-    assert "Основная система: ENFJ во всех 17 отрезках с оценкой; все четыре оси совпадают с итогом во всех отрезках." in s
+    # the strict letters never change, but no segment has a confident ENFJ: the line says so
+    assert ("Основная система: строгий тип ENFJ во всех 17 отрезках с оценкой; строгие буквы всех четырёх осей "
+            "совпадают с итогом во всех отрезках; ось E–I на границе во всех 17 отрезках, S–N — в 7, T–F — в 6, "
+            "J–P — в 6.") in s
+    assert "ENFJ во всех 17 отрезках с оценкой; все четыре оси" not in s
     r = rep("B")
     r["timeline"] = []
     r["segments"] = 1
@@ -91,7 +97,7 @@ def test_strip_a_short_and_new_jobs():
             t["variants"]["oceanai"] = copy.deepcopy(t["scores"])
     s = mbti_html.strip_html(_mb(r))
     assert "Своя модель — второе мнение" in s and caveats.text("C18") not in s
-    assert "Своя модель: ISTP во всех 33 отрезках с оценкой" in s
+    assert "Своя модель: строгий тип ISTP во всех 33 отрезках с оценкой" in s
 
 
 def test_read():

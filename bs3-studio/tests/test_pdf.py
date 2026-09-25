@@ -85,7 +85,7 @@ def test_pdf_builds_and_reads():
             assert caveats.text(code)[:60] in text, (name, code)
         for bad in ("Краткие выводы", "сегмент", "определяет тип личности", "опорн", "положени", "типичн",
                     "русских роликов", "обработанных системой", "предварительн", "большинства", "Согласие двух систем",
-                    "Вторая система"):
+                    "Вторая система", "на русских роликах", "на русской речи её", "порядок черт"):
             assert bad not in text.replace("не определяет тип личности", ""), (name, bad)
         appx = text.split("Значения по отрезкам")[-1]
         assert " MBTI " in appx, name
@@ -94,8 +94,10 @@ def test_pdf_builds_and_reads():
     text = _text(path)
     if text is not None:
         assert "ENFJ во всех 26 отрезках с оценкой; все четыре оси совпадают с итогом во всех отрезках" in text
-        assert "Совпадают 0 из 4 осей; расходятся E–I, S–N; на границе у одной из систем: T–F, J–P." in text
+        assert "Уверенных совпадений нет; расходятся E–I, S–N; на границе хотя бы у одной из систем: T–F, J–P." in text
         assert "F, отчётливо (0.74)" in text and "E, умеренно (0.46)" in text
+        assert "Число в скобках после буквы — уверенность по оси" in text          # the number is labelled
+        assert "Второе мнение — своя модель, обученная на англоязычных роликах First Impressions V2" in text
         appx = text.split("Значения по отрезкам")[-1]
         assert "ENFJ" in appx
         assert "«—» в столбцах Big Five и MBTI" in appx

@@ -239,10 +239,12 @@ def _members_html(rep: dict) -> str:
         if any_tick:
             legend.append(_tick_swatch() + "процентиль в First Impressions V2")
         body = rows + _scale_row() + _legend(legend)
+        from .scores import SECOND_SCALE_RU, gap_sentence
+        gap = gap_sentence(var[others[0]], var[main], others[0], main) if len(others) == 1 and main in var else ""
         note = (f"Основная оценка ({MEMBER_TITLES.get(main, main)}) — в полосках над этой рамкой. "
-                "Второе мнение считается на другой шкале: "
-                "модель обучена на англоязычных влогерах FIV2, поэтому на русских роликах её значения систематически "
-                "ниже. Сравнивайте порядок черт, а не сами числа.")
+                + (SECOND_SCALE_RU if others == ["mm"] else
+                   "Второе мнение считается на другой шкале, поэтому оценки двух систем не усредняются.")
+                + (f" {gap}" if gap else ""))
     else:
         title = "Участники ансамбля: итоговая оценка — их среднее"
         head = ["Модель"] + [TRAIT_TITLES_2L[k] for k in TRAIT_KEYS]

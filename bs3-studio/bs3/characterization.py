@@ -26,7 +26,7 @@ from importlib import resources
 
 from . import caveats
 from .norms import TRAIT_KEYS
-from .scores import level, level_phrase, score_text
+from .scores import level, level_phrase, score_text, shown
 
 AXES = ("EI", "SN", "TF", "JP")
 AXIS_LABEL = {"EI": "E–I", "SN": "S–N", "TF": "T–F", "JP": "J–P"}
@@ -142,9 +142,19 @@ def placeholder_html() -> str:
 # ------------------------------------------------------------------------------------------------------ build ---
 
 def _scores(view: dict) -> dict:
-    """The main scores of the clean view on 0…1 (None for a missing trait)."""
+    """The main scores of the clean view on 0…1 as the text prints them and decides on them (scores.shown, two
+    decimals; None for a missing trait), so neuroticism = 1 − the printed emotional stability."""
     tr = view.get("traits") or {}
-    return {k: _num((tr.get(k) or {}).get("score")) for k in TRAIT_KEYS}
+    return {k: shown((tr.get(k) or {}).get("score")) for k in TRAIT_KEYS}
+
+
+def _by_distance(keys, ps: dict, view: dict) -> list:
+    """The traits in the order of |v − 0.5| of the printed score; equal printed distances keep the order of the
+    unrounded scores."""
+    tr = view.get("traits") or {}
+    raw = {k: _num((tr.get(k) or {}).get("score")) for k in keys}
+    raw = {k: ps[k] if v is None else v for k, v in raw.items()}
+    return sorted(keys, key=lambda k: (-round(abs(ps[k] - 0.5), 9), -abs(raw[k] - 0.5)))
 
 
 def _header(mb: dict | None, lang: str, T: dict, ps: dict) -> dict:
@@ -179,15 +189,15 @@ def _header(mb: dict | None, lang: str, T: dict, ps: dict) -> dict:
     return {"letters": letters, "letters_text": word, "name": name, "labels": labels, "aria": aria}
 
 
-def _p_short(mb, lang, T, lex, ps) -> str:
+def _p_short(mb, lang, T, lex, ps, view) -> str:
     S = T["short"]
     out = []
-    ranked = sorted((k for k in MBTI_TRAITS if ps.get(k) is not None and level(ps[k]) != "mid"),
-                    key=lambda k: -round(abs(ps[k] - 0.5), 9))[:2]
+    ranked = _by_distance([k for k in MBTI_TRAITS if ps.get(k) is not None and level(ps[k]) != "mid"], ps, view)[:2]
     phrases = []
     for k in ranked:
         lv = level(ps[k])
-        pole = "high" if lv in ("high", "above") else "low"
+        # «скорее» + the phrase of the level itself (above / below), so «Коротко» agrees with the trait paragraph
+        pole = lv if lv in lex["short"][k] else ("high" if lv in ("high", "above") else "low")
         phrases.append((lex["short_adverbs"][lv], lex["short"][k][pole]))
     if len(phrases) == 2:
         out.append(S["standout_two"].format(a1=phrases[0][0], p1=phrases[0][1], a2=phrases[1][0], p2=phrases[1][1]))
@@ -285,10 +295,13 @@ def _p_mbti(mb, T, type_names) -> str:
     out.append(M["basis"])
     st = mb.get("stability")
     if st:
+        from .mbti import border_text
+        border = border_text(mb.get("timeline") or [])
         n = max(int((st.get(ax) or {}).get("of") or 0) for ax in AXES)
         unstable = [ax for ax in AXES if st.get(ax) and st[ax]["same"] < st[ax]["of"]]
         if not unstable:
-            out.append(M["stable_all"].format(n=n, segments=_plural(n, "отрезке", "отрезках", "отрезках")))
+            out.append(M["stable_strict" if border else "stable_all"].format(
+                n=n, segments=_plural(n, "отрезке", "отрезках", "отрезках")))
         else:
             first = unstable[0]
             s = M["part_first"].format(axis=AXIS_LABEL[first], k=st[first]["same"], n=st[first]["of"],
@@ -298,6 +311,8 @@ def _p_mbti(mb, T, type_names) -> str:
             if len(unstable) < len([ax for ax in AXES if st.get(ax)]):
                 s += M["part_rest"]
             out.append(s + ".")
+        if border:
+            out.append(M["border"].format(border=border))
     return " ".join(out)
 
 
@@ -377,9 +392,9 @@ def build(view: dict, mb: dict | None) -> Character:
     from .mbti import load_config
     type_names = load_config().get("type_names_ru") or {}
 
-    paragraphs = [{"key": "short", "lead": L["short"], "text": _p_short(mb, lang, T, lex, ps)},
+    paragraphs = [{"key": "short", "lead": L["short"], "text": _p_short(mb, lang, T, lex, ps, view)},
                   {"key": "basis", "lead": L["basis"], "text": _p_basis(view, mb, lang, T)}]
-    order = sorted((k for k in MBTI_TRAITS if ps.get(k) is not None), key=lambda k: -round(abs(ps[k] - 0.5), 9))
+    order = _by_distance([k for k in MBTI_TRAITS if ps.get(k) is not None], ps, view)
     for k in order:
         para = _p_trait(k, view, mb, lang, T, lex, ps)
         if para:

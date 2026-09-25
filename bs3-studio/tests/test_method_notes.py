@@ -2,11 +2,14 @@
 reference group, Russian bars show the score only)."""
 from __future__ import annotations
 
+import re
+
 from samples import english, rep
 
 from bs3 import narrative, scores, webparts
 
-RELATIVE = ("опорн", "положени", "русских роликов", "обработанных", "большинства", "предварительн", "типичн")
+RELATIVE = ("опорн", "положени", "русских роликов", "обработанных", "большинства", "предварительн", "типичн",
+            "на русской речи её", "на русских роликах", "порядок черт")
 
 
 def test_method_notes_sample_b():
@@ -19,8 +22,10 @@ def test_method_notes_sample_b():
     assert "По ходу ролика (26 отрезков с оценкой OCEAN-AI) оценки устойчивы: разброс не больше ±0.02." in t
     assert "В 7 отрезках из 33 система OCEAN-AI не дала оценки" in t
     assert "не противоречие в выводах" not in t
-    assert "Своя модель обучена на англоязычных роликах First Impressions V2, и на русской речи её числа в среднем на" in t
-    assert "это разница шкал двух систем, поэтому их оценки не усредняются, а тип MBTI каждой показан отдельно." in t
+    # the difference of the two systems on this recording only, not a rule about Russian videos
+    assert re.search(r"Своя модель обучена на англоязычных роликах First Impressions V2 и работает на своей шкале: на "
+                     r"этой записи её оценки в среднем на 0\.\d\d ниже, чем у OCEAN-AI, поэтому оценки двух систем не "
+                     r"усредняются, а тип MBTI каждой показан отдельно\.", t)
     assert "сегмент" not in t
     for w in RELATIVE:
         assert w not in t, w
@@ -65,7 +70,8 @@ def test_second_opinion_ru_score_only():
     h = webparts._members_html(v)
     assert "Второе мнение: своя модель MM-PSYCHE (своя шкала, обучена на First Impressions V2)" in h
     assert "0.25<" in h                                                        # own model E 0.2515
-    assert "Сравнивайте порядок черт, а не сами числа." in h
+    assert scores.SECOND_SCALE_RU in h
+    assert re.search(r"На этой записи оценки своей модели в среднем на 0\.\d\d ниже, чем у OCEAN-AI\.", h)
     for w in RELATIVE + ("процентил",):
         assert w not in h.lower(), w
 

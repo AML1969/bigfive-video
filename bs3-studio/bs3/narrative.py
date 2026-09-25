@@ -222,10 +222,11 @@ def method_notes(view: dict, expl: dict | None = None) -> str:
             diff = float(np.mean([float(var["oceanai"][k]) - float(var["mm"][k]) for k in TRAIT_KEYS]))
         except (KeyError, TypeError, ValueError):
             diff = None
-        if diff is not None and diff > 0:
-            parts.append(f"Своя модель обучена на англоязычных роликах First Impressions V2, и на русской речи её числа "
-                         f"в среднем на {diff:.2f} ниже, чем у OCEAN-AI: это разница шкал двух систем, поэтому их оценки "
-                         "не усредняются, а тип MBTI каждой показан отдельно.")
+        if diff is not None and round(abs(diff), 2) > 0:
+            # this recording's own difference only: no rule drawn from other videos
+            parts.append(f"Своя модель обучена на англоязычных роликах First Impressions V2 и работает на своей шкале: "
+                         f"на этой записи её оценки в среднем на {abs(diff):.2f} {'ниже' if diff > 0 else 'выше'}, чем "
+                         "у OCEAN-AI, поэтому оценки двух систем не усредняются, а тип MBTI каждой показан отдельно.")
     return " ".join(parts)
 
 

@@ -16,15 +16,15 @@ from __future__ import annotations
 import html as _html
 
 from . import caveats
-from .mbti import AXES, AXIS_LABEL, SIGN, agreement_line, load_config
+from .mbti import AXES, AXIS_LABEL, BORDER_RU, SIGN, agreement_line, border_text, load_config
 from .norms import RU_NAMES
 from .palette import HTML as PAL
-from .scores import level_phrase, plural_ru, score_text
+from .scores import LEVELS_RU, level_phrase, plural_ru, score_text
 from .webparts import NOTE, table_html, th_text
 
 OUTLINE = PAL["track_outline"]
 HATCH = "repeating-linear-gradient(45deg,rgba(128,128,128,.25) 0 3px,transparent 3px 6px)"
-AGREE_RU = {"agree": "совпадает", "differ": "расходится", "border": "на границе у одной из систем"}
+AGREE_RU = {"agree": "совпадает", "differ": "расходится", "border": BORDER_RU}
 TEXT14 = "font-size:14px;line-height:1.5"
 # 5.5: axis, Big Five scale, direction, correspondence of the scales (r from config/mbti.json)
 TABLE_ROWS = (("EI", "Экстраверсия", "выше → E"), ("SN", "Открытость опыту", "выше → N"),
@@ -133,12 +133,13 @@ def _axis_row(ax: str, a: dict, cfg: dict, marker: str, agree: str | None) -> st
     else:
         word = a.get("word") or ""
         if word in ("отчётливо", "умеренно"):
-            word += f" ({float(a.get('confidence') or 0):.2f})"
+            word += f" (уверенность {float(a.get('confidence') or 0):.2f})"
         if a.get("borderline"):
             head = f"X (ближе к {a.get('letter')})"
         else:
             head = str(a.get("letter"))
-        lp = level_phrase(p)
+        # the borderline zone is always «средний уровень» (also for a section saved with unrounded decisions)
+        lp = LEVELS_RU["mid"] if a.get("borderline") else level_phrase(p)
         lvl = f"{RU_NAMES[trait]} {score_text(p)} — {lp}" if lp else ""
     parts = [head, word, lvl] + ([f"соответствие шкал r ≈ {corr['r']}"] if corr.get("r") is not None else [])
     sub = " · ".join(x for x in parts if x)
@@ -247,29 +248,35 @@ def _seg_word(n: int) -> str:
 
 def summary_line(item: dict, who: str) -> str:
     """«Основная система: ESFJ в 16 из 26 отрезков с оценкой, ENFJ — в 10; ось S–N совпадает с итогом в 16 из 26
-    отрезков, остальные оси — во всех.»"""
+    отрезков, остальные оси — во всех.» The types and the agreement with the whole video are those of the strict
+    letters; when an axis was on the border in some segments the line says «строгий тип» / «строгие буквы» and adds
+    in how many («ось E–I на границе во всех 17 отрезках, S–N — в 8»)."""
     modal = item.get("modal_types") or []
     entries = item.get("timeline") or []
     n = sum(1 for e in entries if e.get("type_strict"))
     if not modal or not n:
         return ""
     t1, c1 = modal[0]
+    border = border_text(entries)
+    strict = "строгий тип " if border else ""
     if c1 == n:
-        head = f"{who}: {t1} во всех {n} {plural_ru(n, 'отрезке', 'отрезках', 'отрезках')} с оценкой"
+        head = f"{who}: {strict}{t1} во всех {n} {plural_ru(n, 'отрезке', 'отрезках', 'отрезках')} с оценкой"
     else:
-        head = f"{who}: {t1} в {c1} из {n} {_seg_word(n)} с оценкой"
+        head = f"{who}: {strict}{t1} в {c1} из {n} {_seg_word(n)} с оценкой"
         head += "".join(f", {t} — в {c}" for t, c in modal[1:])
+    tail_border = f"; {border}" if border else ""
     st = item.get("stability")
     if not st:
-        return head + "."
+        return head + tail_border + "."
     shaky = [ax for ax in AXES if (st.get(ax) or {}).get("same") != (st.get(ax) or {}).get("of")]
     if not shaky:
-        return head + "; все четыре оси совпадают с итогом во всех отрезках."
+        what = "строгие буквы всех четырёх осей совпадают" if border else "все четыре оси совпадают"
+        return head + f"; {what} с итогом во всех отрезках" + tail_border + "."
     parts = [f"ось {AXIS_LABEL[ax]} совпадает с итогом в {st[ax]['same']} из {st[ax]['of']} {_seg_word(st[ax]['of'])}"
              for ax in shaky]
     rest = len(AXES) - len(shaky)
     tail = "" if rest == 0 else (", остальные оси — во всех" if rest > 1 else ", остальная ось — во всех")
-    return head + "; " + ", ".join(parts) + tail + "."
+    return head + "; " + ", ".join(parts) + tail + tail_border + "."
 
 
 LEGEND = ("Жирная буква — ось выражена отчётливо, обычная — умеренно, в пунктирной рамке — на границе (показана буква "

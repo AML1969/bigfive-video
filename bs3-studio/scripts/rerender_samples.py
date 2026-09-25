@@ -49,16 +49,20 @@ EXPECT = {
     "A": {"type": "XNFJ", "type_strict": "ENFJ", "alternatives": ["INFJ"], "second": ("IXXX", "ISTJ"),
           "agreement": {"EI": "border", "SN": "border", "TF": "border", "JP": "border"},
           "extraversion": "0.56", "dropped": [16], "header": ["ENFJ", "«Наставник»", "ось E–I на границе"],
-          "strip": "ENFJ во всех 17 отрезках с оценкой; все четыре оси совпадают с итогом во всех отрезках"},
+          # the strict letters never change, but no segment has a confident ENFJ (scores rounded to two decimals)
+          "strip": ("строгий тип ENFJ во всех 17 отрезках с оценкой; строгие буквы всех четырёх осей совпадают с "
+                    "итогом во всех отрезках; ось E–I на границе во всех 17 отрезках, S–N — в 7, T–F — в 6, "
+                    "J–P — в 6")},
     "B": {"type": "ENFJ", "type_strict": "ENFJ", "alternatives": [], "second": ("ISXX", "ISTP"),
           "agreement": {"EI": "differ", "SN": "differ", "TF": "border", "JP": "border"},
           "extraversion": "0.73", "dropped": [10, 11, 12, 14, 15, 26, 33], "header": ["ENFJ", "«Наставник»"],
           "strip": "ENFJ во всех 26 отрезках с оценкой; все четыре оси совпадают с итогом во всех отрезках"},
 }
-# nothing about a group of processed videos anywhere (change of 2026-09-26)
-# («на русских роликах её значения ниже» about the scale of the own model is not a group: it stays)
+# nothing about a group of processed videos anywhere (change of 2026-09-26), including a rule drawn from them
+# («на русских роликах её значения ниже»): a difference of the two systems is given for this recording only
 RELATIVE = re.compile(r"опорн|положени[ея] (?:в|среди|оценки)|типичн|\d+ русск\w* ролик|среди (?:тех же )?русских|"
-                      r"обработанных (?:русских|системой)|предварительн|большинства из|сейчас их \d|проверка на \d",
+                      r"обработанных (?:русских|системой)|предварительн|большинства из|сейчас их \d|проверка на \d|"
+                      r"на русских ролик|на русской речи (?:её|их) (?:числа|значения|оценки)|пула обработанных",
                       re.I)
 # the characterization does not compare the two systems (change of 2026-09-26)
 NO_SYSTEMS = re.compile(r"Согласие двух систем|Вторая система|Второе мнение|Системы по отдельности|противоположно")
@@ -174,7 +178,7 @@ def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path |
     c.ok("определяет тип" not in char and "сегмент" not in char, "no «определяет тип», no «сегмент» in the text")
     c.ok(not NO_SYSTEMS.search(char), "the characterization does not compare the two systems")
     for name, h in (("characterization", char), ("key facts", facts), ("bars", bars), ("method", method),
-                    ("types", types), ("strip", strip), ("read", read)):
+                    ("types", types), ("strip", strip), ("read", read), ("members", members)):
         m_rel = RELATIVE.search(re.sub(r"<[^>]+>", " ", h))
         c.ok(m_rel is None, f"nothing about a group of processed videos in {name}" + (f": «{m_rel.group(0)}»" if m_rel else ""))
     stem = Path(rep.get("original_file_name") or "").stem
@@ -212,6 +216,11 @@ def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path |
     # data tab
     if mb and mb.get("computed_on_render"):
         c.ok(caveats.text("C22") in members, "C22 in «Участники ансамбля и время обработки»")
+    if meta["lang"] == "ru":
+        shown_json = json.loads(raw)
+        c.ok(not any(k in (shown_json.get("traits") or {}).get(t, {}) for t in shown_json.get("traits") or {}
+                     for k in ("percentile", "percentile_ref")) and "narrative" not in shown_json,
+             "tab «Данные»: no percentiles and no 2.0 summary for Russian speech")
     # nothing of the 2.0 summary, nothing written
     c.ok(not any(isinstance(o, str) and "Краткие выводы" in o for o in outs), "«Краткие выводы» nowhere on the page")
     for name, h in (("method", method), ("emo_intro", emo_intro), ("types", types), ("strip", strip), ("read", read)):

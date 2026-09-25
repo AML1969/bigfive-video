@@ -13,7 +13,10 @@ written), in which
 
 Levels and MBTI letters use the absolute score of the system on [0, 1] (the customer's formula: threshold 0.5,
 borderline zone |v − 0.5| < 0.15). The five level bands are aligned with that zone, so a value with a confident
-letter is never «средний уровень» and a value in the borderline zone always is:
+letter is never «средний уровень» and a value in the borderline zone always is. The report prints a score with two
+decimals, and the bands and letters are decided on exactly that printed value (`shown`): the view keeps the scores
+unrounded and they are rounded once, here, so a printed 0.65 never gets two readings and the same score never prints
+two ways:
 d = v − 0.5: d >= 0.30 high, 0.15 <= d < 0.30 above, |d| < 0.15 mid, −0.30 < d <= −0.15 below, d <= −0.30 low
 (v >= 0.80 high, 0.65 <= v < 0.80 above, 0.35 < v < 0.65 mid, 0.20 < v <= 0.35 below, v <= 0.20 low).
 """
@@ -36,8 +39,8 @@ RELATIVE_KEYS = ("percentile", "percentile_ref", "percentile_vs_fiv2", "position
 SOURCE_OF = {"oceanai": "ocean_ai", "mm": "own_model", "mean": "mean"}
 FALLBACK_ORDER = ("oceanai", "mm")
 
-__all__ = ["clean_view", "segment_ok", "level", "level_phrase", "score_text", "LEVELS_RU", "plural_ru",
-           "main_system"]
+__all__ = ["clean_view", "segment_ok", "level", "level_phrase", "score_text", "shown", "LEVELS_RU", "plural_ru",
+           "main_system", "data_json"]
 
 
 def plural_ru(n, one: str, few: str, many: str) -> str:
@@ -88,9 +91,16 @@ def segment_ok(rep: dict, t: dict) -> bool:
     return main in (t.get("members_used") or [])
 
 
-def level(v) -> str | None:
-    """Level band of a score v on [0, 1] (None for a missing score); see the module docstring."""
+def shown(v) -> float | None:
+    """The score as the report prints it and decides on it: rounded once to two decimals (None for a missing one)."""
     x = _num(v)
+    return None if x is None else round(x, 2)
+
+
+def level(v) -> str | None:
+    """Level band of a score v on [0, 1], decided on its printed value `shown(v)` (None for a missing score); see
+    the module docstring."""
+    x = shown(v)
     if x is None:
         return None
     d = round(x - MIDDLE, 9)             # as the borderline test of mbti: 0.65 − 0.5 is 0.15, not 0.15000000000000002
@@ -112,8 +122,8 @@ def level_phrase(v) -> str | None:
 
 
 def score_text(v) -> str | None:
-    """The score as the page prints it: two decimals («0.73»)."""
-    x = _num(v)
+    """The score as the page prints it: two decimals («0.73»), the same number as `shown(v)`."""
+    x = shown(v)
     return None if x is None else f"{x:.2f}"
 
 
@@ -136,7 +146,7 @@ def clean_view(rep: dict) -> dict:
             if v is None:
                 continue
             t = traits.setdefault(k, {"name_ru": RU_NAMES[k]})
-            t["score"] = round(v, 4)
+            t["score"] = v                  # unrounded: rounded once, at display (shown)
 
     # 3. segments without the main system: gaps
     timeline = view.get("timeline") or []
@@ -180,3 +190,50 @@ def clean_view(rep: dict) -> dict:
         "segments_without_primary": dropped, "primary_missing": bool(primary_missing),
     }
     return view
+
+
+SYSTEM_GEN = {"oceanai": "OCEAN-AI", "mm": "своей модели"}
+SECOND_SCALE_RU = ("Второе мнение — своя модель, обученная на англоязычных роликах First Impressions V2; у неё своя "
+                   "шкала, поэтому оценки двух систем не усредняются.")
+
+
+def gap_sentence(second: dict, main: dict, second_sys: str = "mm", main_sys: str = "oceanai") -> str:
+    """«На этой записи оценки своей модели в среднем на 0.35 ниже, чем у OCEAN-AI.»: the mean difference of the two
+    systems over the five traits of this recording only (no rule drawn from other videos); '' when a score is missing
+    or the difference prints as 0.00. `second` / `main`: {trait: score} or {trait: {"score": …}}."""
+    def val(d, k):
+        x = (d or {}).get(k)
+        return _num(x.get("score") if isinstance(x, dict) else x)
+    diffs = [(val(second, k), val(main, k)) for k in TRAIT_KEYS]
+    if any(a is None or b is None for a, b in diffs):
+        return ""
+    d = sum(a - b for a, b in diffs) / len(diffs)
+    if round(abs(d), 2) == 0:
+        return ""
+    return (f"На этой записи оценки {SYSTEM_GEN.get(second_sys, second_sys)} в среднем на {abs(d):.2f} "
+            f"{'ниже' if d < 0 else 'выше'}, чем у {SYSTEM_GEN.get(main_sys, main_sys)}.")
+
+
+LEGACY_KEYS = ("narrative",)         # the 2.0 plain-language summary; 3.0 shows «Как получены оценки» instead
+
+
+def data_json(rep: dict) -> tuple[dict, bool]:
+    """(what the tab «Данные» shows, whether anything was left out): a deep copy of result.json; for Russian speech
+    without the percentile keys of step 5 of clean_view (older jobs carry percentiles against the pool of processed
+    videos) and without the stored 2.0 `narrative` built from them. The file on disk is not changed."""
+    data = copy.deepcopy(rep)
+    if (data.get("model") or {}).get("lang") != "ru":
+        return data, False
+    dropped = False
+    traits = data.get("traits") if isinstance(data.get("traits"), dict) else {}
+    for t in [traits.get(k) for k in TRAIT_KEYS] + [data.get("interview")]:
+        if isinstance(t, dict):
+            for key in RELATIVE_KEYS:
+                if key in t:
+                    t.pop(key)
+                    dropped = True
+    for key in LEGACY_KEYS:
+        if key in data:
+            data.pop(key)
+            dropped = True
+    return data, dropped

@@ -85,8 +85,9 @@ def _cases() -> dict:
 
 def test_lexicon_complete_and_follows_the_rules():
     lex = C.load_lexicon()
-    # 2: proofreading of task T25; 3: position phrase of ES in its lead; 4: absolute scale, no reference group
-    assert lex["lexicon_version"] == 4
+    # 2: proofreading of task T25; 3: position phrase of ES in its lead; 4: absolute scale, no reference group;
+    # 5: band edges of the printed score, short phrases per level, «эмоциональная стабильность» as everywhere
+    assert lex["lexicon_version"] == 5
     assert set(lex["levels"]) == set(TRAIT_KEYS)
     for k in TRAIT_KEYS:
         assert set(lex["levels"][k]) == set(LEVELS), k
@@ -113,8 +114,15 @@ def test_lexicon_complete_and_follows_the_rules():
 def test_short_phrases_poles():
     lex = C.load_lexicon()
     assert set(lex["short"]) == {"extraversion", "openness", "agreeableness", "conscientiousness"}
-    assert lex["short"]["extraversion"] == {"high": "общительным и энергичным", "low": "сдержанным и немногословным"}
+    assert lex["short"]["extraversion"] == {"high": "общительным и энергичным",
+                                            "above": "общительным и открытым в контакте",
+                                            "below": "сдержанным и спокойным в контакте",
+                                            "low": "сдержанным и немногословным"}
     assert lex["short"]["conscientiousness"]["low"] == "свободным и спонтанным в манере"
+    for k, d in lex["short"].items():
+        assert set(d) == {"high", "above", "below", "low"}, k
+    # «скорее» + the above phrase agrees with the trait paragraph (no «мягким в общении» under «выше среднего»)
+    assert lex["short"]["agreeableness"]["above"] in lex["levels"]["agreeableness"]["above"][0]
     for d in lex["short"].values():
         for s in d.values():
             for w in STOP:
@@ -154,7 +162,8 @@ def test_every_case_reads_within_the_rules():
                 assert f"({v['traits']['emotional_stability']['score']:.2f})" in p["lead"], case
                 assert len(re.findall(r"0\.\d{2}", body)) == 1, case
             elif p["key"] == "basis":       # the band edges of the scale, and nothing else
-                assert set(re.findall(r"0\.\d{2}", body)) == {"0.35", "0.65", "0.80", "0.20"}, case
+                assert set(re.findall(r"0\.\d{2}", body)) == {"0.80", "0.65", "0.79", "0.36", "0.64", "0.21",
+                                                               "0.35", "0.20"}, case
             else:
                 assert not re.search(r"0\.\d{2}", body), (case, p["key"])
         assert ch.paragraphs[-1]["key"] == "limits" and ch.paragraphs[-1]["lead"] == "Границы вывода."
@@ -188,7 +197,7 @@ def test_sample_b():
     assert ch.header_plain() == "ENFJ «Наставник» · MBTI по OCEAN-AI · нейротизм: средний уровень"
     short = ch.short_plain()
     assert short == ("По первому впечатлению от записи человек выглядит заметно доброжелательным и мягким в общении, а "
-                     "также скорее собранным и организованным. В нотации MBTI это тип ENFJ («Наставник»). Нейротизм — "
+                     "также скорее собранным и последовательным. В нотации MBTI это тип ENFJ («Наставник»). Нейротизм — "
                      "средний уровень.")
     assert [p["key"] for p in ch.paragraphs] == [
         "short", "basis", "trait:agreeableness", "trait:conscientiousness", "trait:extraversion", "trait:openness",
@@ -201,7 +210,7 @@ def test_sample_b():
     assert a["lead"] == "Доброжелательность — высокий уровень"
     assert a["text"].startswith("(0.87; в MBTI — буква F, отчётливо). ")
     st = ch.paragraph("stability")
-    assert st["lead"] == "Эмоциональная устойчивость — средний уровень (0.53); нейротизм, соответственно, — средний уровень."
+    assert st["lead"] == "Эмоциональная стабильность — средний уровень (0.53); нейротизм, соответственно, — средний уровень."
     assert st["text"].startswith("Спокойные моменты чередуются с признаками волнения.")
     typ = ch.paragraph("mbti")["text"]
     assert typ.startswith("В нотации MBTI профиль соответствует типу ENFJ («Наставник»).")
@@ -226,7 +235,13 @@ def test_sample_a():
     assert ch.paragraph("mbti")["text"].startswith("В нотации MBTI ближе всего тип ENFJ («Наставник»), но ось E–I на "
                                                    "границе, поэтому точнее записать XNFJ: возможен и тип INFJ "
                                                    "(«Советник»).")
-    assert "во всех 17 отрезках с оценкой" in ch.paragraph("mbti")["text"]
+    # the strict letters never change, but the axes are on the border in part of the segments: said plainly
+    assert ch.paragraph("mbti")["text"].endswith(
+        "По ходу записи строгие буквы не менялись: по каждой оси буква строгого деления совпадает с итоговой во всех "
+        "17 отрезках с оценкой. При этом ось E–I на границе во всех 17 отрезках, S–N — в 7, T–F — в 6, J–P — в 6.")
+    assert "буквы не менялись: по каждой оси буква совпадает" not in ch.plain()
+    assert ch.short_plain().startswith("По первому впечатлению от записи человек выглядит скорее доброжелательным и "
+                                       "настроенным на сотрудничество")
     assert [p["key"] for p in ch.paragraphs][2:6] == ["trait:agreeableness", "trait:conscientiousness",
                                                       "trait:openness", "trait:extraversion"]
     for k in ("openness", "agreeableness", "conscientiousness"):
@@ -303,7 +318,7 @@ def test_html_and_pdf_forms():
 
 def test_golden_texts():
     """Verbatim comparison with tests/golden/char_A.txt, char_B.txt (task T25: saved after the proofreading of
-    lexicon_version 2, regenerated for lexicon_version 3 and for lexicon_version 4 — the absolute scale — from the
+    lexicon_version 2, regenerated for lexicon_version 3, 4 (the absolute scale) and 5 (printed band edges) from the
     same inputs as here). A lexicon or template change must regenerate them on purpose."""
     for name in ("A", "B"):
         path = GOLDEN / f"char_{name}.txt"

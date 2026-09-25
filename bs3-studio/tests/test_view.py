@@ -107,11 +107,13 @@ def test_segment_ok_formats():
 
 
 def test_levels_and_bands():
-    """The five bands of the absolute score (edges in scores.py): high >= 0.80, above 0.65-0.80, mid 0.35-0.65
-    (exactly the MBTI borderline zone), below 0.20-0.35, low <= 0.20."""
+    """The five bands of the absolute score (edges in scores.py), decided on the printed value (two decimals):
+    high >= 0.80, above 0.65-0.80, mid 0.35-0.65 (exactly the MBTI borderline zone), below 0.20-0.35, low <= 0.20."""
     L = scores.level
-    assert L(0.80) == "high" and L(0.7999) == "above" and L(0.65) == "above" and L(0.6499) == "mid"
-    assert L(0.5) == "mid" and L(0.3501) == "mid" and L(0.35) == "below" and L(0.2001) == "below"
+    assert L(0.80) == "high" and L(0.79) == "above" and L(0.65) == "above" and L(0.64) == "mid"
+    assert L(0.6449) == "mid" and L(0.6451) == "above" and L(0.7951) == "high"      # 0.64 / 0.65 / 0.80 printed
+    assert L(0.5) == "mid" and L(0.36) == "mid" and L(0.35) == "below" and L(0.21) == "below"
+    assert L(0.3551) == "mid" and L(0.3549) == "below" and L(0.2049) == "low"       # 0.36 / 0.35 / 0.20 printed
     assert L(0.20) == "low" and L(0.0) == "low" and L(1.0) == "high" and L(None) is None
     assert L(float("nan")) is None and L("abc") is None and L(1.3) == "high" and L(-0.2) == "low"
     assert scores.level_phrase(0.9) == "высокий уровень" and scores.level_phrase(0.73) == "выше среднего"
@@ -124,12 +126,54 @@ def test_levels_and_bands():
 def test_levels_agree_with_the_letters():
     """A value with a confident MBTI letter is never «средний уровень»; one in the borderline zone always is."""
     from bs3 import mbti
-    for i in range(1001):
-        v = i / 1000
-        a = mbti.bigfive_to_mbti({"extraversion": v})["axes"]["EI"]
+    for i in range(10001):
+        v = i / 10000
+        a = mbti.mbti_for("oceanai", {"extraversion": v}, "ru")["axes"]["EI"]
         assert (scores.level(v) == "mid") == a["borderline"], v
+        assert a["value"] == scores.shown(v) and f"{a['value']:.2f}" == scores.score_text(v), v
         if not a["borderline"]:
             assert scores.level(v) in (("high", "above") if a["letter"] == "E" else ("below", "low")), v
     for v in (0.35, 0.65, 0.2, 0.8, 0.15, 0.85):
         a = mbti.bigfive_to_mbti({"extraversion": v})["axes"]["EI"]
         assert (scores.level(v) == "mid") == a["borderline"], v
+
+
+def test_rounded_once():
+    """A score is rounded once, to the printed two decimals, and the letter, the borderline flag, the level word and
+    the printed number agree everywhere (0.6497 and 0.35049 print as 0.65 and 0.35 and are not on the border;
+    0.75499 prints 0.75, not 0.76 through 0.7550; 0.47531 prints 0.48, not 0.47 through 0.475)."""
+    from bs3 import mbti, mbti_html
+    sc = {"openness": 0.6497, "conscientiousness": 0.35049, "extraversion": 0.47531, "agreeableness": 0.75499,
+          "emotional_stability": 0.5}
+    m = mbti.mbti_for("mm", sc, "ru")
+    ax = m["axes"]
+    assert (ax["SN"]["value"], ax["SN"]["letter"], ax["SN"]["borderline"]) == (0.65, "N", False)
+    assert (ax["JP"]["value"], ax["JP"]["letter"], ax["JP"]["borderline"]) == (0.35, "P", False)
+    assert (ax["EI"]["value"], ax["EI"]["borderline"]) == (0.48, True) and ax["TF"]["value"] == 0.75
+    assert [scores.score_text(v) for v in (0.75499, 0.47531, 0.6497, 0.35049)] == ["0.75", "0.48", "0.65", "0.35"]
+    h = mbti_html.types_html({**m, "second": [], "agreement": None})
+    for s in ("открытость опыту 0.65 — выше среднего", "добросовестность 0.35 — ниже среднего",
+              "экстраверсия 0.48 — средний уровень", "доброжелательность 0.75 — выше среднего"):
+        assert s in h, s
+    assert "умеренно (уверенность 0.30)" in h                          # the confidence is labelled, not a score
+    # the view keeps the main scores unrounded; they are rounded at display
+    r = rep("B")
+    r["variant_scores"]["oceanai"]["conscientiousness"] = 0.75499
+    v = scores.clean_view(r)
+    assert v["traits"]["conscientiousness"]["score"] == 0.75499
+    assert scores.score_text(v["traits"]["conscientiousness"]["score"]) == "0.75"
+
+
+def test_data_json():
+    """Tab «Данные» of a Russian job: no percentiles, no stored 2.0 summary; the input is not changed."""
+    r = rep("A")
+    r["traits"]["openness"]["percentile"] = 21.4
+    r["traits"]["openness"]["percentile_ref"] = "пула обработанных русских роликов (N=6)"
+    r["narrative"] = "… ниже, чем у большинства из 6 русских роликов …"
+    before = copy.deepcopy(r)
+    d, trimmed = scores.data_json(r)
+    assert trimmed and "narrative" not in d and "percentile" not in d["traits"]["openness"]
+    assert r == before
+    e = english("B")
+    d2, trimmed2 = scores.data_json(e)
+    assert d2 == e and not trimmed2

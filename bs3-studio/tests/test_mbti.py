@@ -122,7 +122,7 @@ def test_absolute_scale_config():
         m = mbti.mbti_for(system, b[system], "ru")
         for ax in mbti.AXES:
             a = m["axes"][ax]
-            assert a["value"] == round(b[system][a["trait"]], 3)
+            assert a["value"] == scores.shown(b[system][a["trait"]])          # the printed value, two decimals
             assert set(a) <= {"trait", "value", "threshold", "letter", "confidence", "borderline", "word", "missing",
                               "clipped"}
         assert "reference" not in m
@@ -150,7 +150,10 @@ def test_agreement():
     b = mbti.agreement(m("ocean_ai", "ESFJ"), m("own_model", "ESFJ"))
     assert b["n_agree"] == 4 and set(b["axes"].values()) == {"agree"}
     assert mbti.agreement_line(b) == "Обе системы дают один и тот же тип."
-    assert mbti.agreement_line(a) == "Совпадают 0 из 4 осей; расходится E–I; на границе у одной из систем: S–N, T–F, J–P."
+    assert mbti.agreement_line(a) == ("Уверенных совпадений нет; расходится E–I; на границе хотя бы у одной из систем: "
+                                      "S–N, T–F, J–P.")
+    c = mbti.agreement(m("ocean_ai", "ESFJ", {"SN", "TF"}), m("own_model", "ESTJ", {"SN"}))
+    assert mbti.agreement_line(c) == "Совпадают 2 из 4 осей; на границе хотя бы у одной из систем: S–N, T–F."
     missing = m("own_model", "ESFJ")
     missing["axes"]["EI"] = {"letter": None, "missing": True, "borderline": True}
     assert mbti.agreement(m("ocean_ai", "ESFJ"), missing)["axes"]["EI"] == "border"
@@ -242,20 +245,23 @@ def test_golden_sample_a():
     mb = mbti.build_section(v, computed_at="t")
     assert mb["type"] == "XNFJ" and mb["type_strict"] == "ENFJ" and mb["type_name"] == "Наставник" and mb["x_count"] == 1
     assert mb["alternatives"] == ["INFJ"]
-    assert _p(mb) == [0.556, 0.651, 0.669, 0.653]
-    assert [mb["axes"][ax]["confidence"] for ax in mbti.AXES] == [0.11, 0.3, 0.34, 0.31]
+    assert _p(mb) == [0.56, 0.65, 0.67, 0.65]
+    assert [mb["axes"][ax]["confidence"] for ax in mbti.AXES] == [0.12, 0.3, 0.34, 0.3]
     assert [mb["axes"][ax]["word"] for ax in mbti.AXES] == ["на границе", "умеренно", "умеренно", "умеренно"]
     assert [scores.level(v["traits"][k]["score"]) for k in TRAIT_KEYS] == ["above", "above", "mid", "above", "mid"]
-    assert mb["neuroticism"] == {"value": 0.644, "level": "средний уровень",
+    assert mb["neuroticism"] == {"value": 0.64, "level": "средний уровень",
                                  "note": "шкала не имеет соответствия в MBTI, приводится отдельно"}
     s = mb["second"][0]
     assert s["source"] == "own_model" and s["type"] == "IXXX" and s["type_strict"] == "ISTJ"
-    assert _p(s) == [0.311, 0.415, 0.475, 0.505]
+    assert _p(s) == [0.31, 0.41, 0.48, 0.51]
     assert mb["agreement"]["axes"] == {"EI": "border", "SN": "border", "TF": "border", "JP": "border"}
     assert mb["agreement"]["n_agree"] == 0
     assert v["view_meta"]["segments_without_primary"] == [16]
     assert mb["modal_types"] == [["ENFJ", 17]]
     assert all(mb["stability"][ax] == {"same": 17, "of": 17} for ax in mbti.AXES)
+    # the strict letters never change, but the axes are on the border in part of the segments
+    assert mbti.border_counts(mb["timeline"]) == ({"EI": 17, "SN": 7, "TF": 6, "JP": 6}, 17)
+    assert mbti.border_text(mb["timeline"]) == "ось E–I на границе во всех 17 отрезках, S–N — в 7, T–F — в 6, J–P — в 6"
     assert round(v["traits"]["extraversion"]["score"], 3) == 0.556
     assert "timeline" not in s
 
@@ -265,8 +271,8 @@ def test_golden_sample_b():
     mb = mbti.build_section(v, computed_at="t")
     assert mb["type"] == "ENFJ" and mb["type_strict"] == "ENFJ" and mb["type_name"] == "Наставник"
     assert mb["alternatives"] == [] and mb["x_count"] == 0
-    assert _p(mb) == [0.73, 0.712, 0.868, 0.755]
-    assert [mb["axes"][ax]["confidence"] for ax in mbti.AXES] == [0.46, 0.42, 0.74, 0.51]
+    assert _p(mb) == [0.73, 0.71, 0.87, 0.76]
+    assert [mb["axes"][ax]["confidence"] for ax in mbti.AXES] == [0.46, 0.42, 0.74, 0.52]
     assert [mb["axes"][ax]["word"] for ax in mbti.AXES] == ["умеренно", "умеренно", "отчётливо", "умеренно"]
     assert not any(mb["axes"][ax]["borderline"] for ax in mbti.AXES)
     assert [scores.level(v["traits"][k]["score"]) for k in TRAIT_KEYS] == ["above", "above", "above", "high", "mid"]
@@ -274,7 +280,9 @@ def test_golden_sample_b():
     assert mb["neuroticism_note"] == "Шкала нейротизма (средний уровень) в MBTI не выражается, приводится отдельно"
     s = mb["second"][0]
     assert s["type"] == "ISXX" and s["type_strict"] == "ISTP"
-    assert _p(s) == [0.252, 0.343, 0.454, 0.476]
+    assert _p(s) == [0.25, 0.34, 0.45, 0.48]
+    assert mbti.border_counts(mb["timeline"]) == ({"EI": 0, "SN": 0, "TF": 0, "JP": 0}, 26)
+    assert mbti.border_text(mb["timeline"]) == ""
     assert mb["agreement"]["axes"] == {"EI": "differ", "SN": "differ", "TF": "border", "JP": "border"}
     assert mb["agreement"]["n_agree"] == 0
     assert mb["segments_total"] == 33 and mb["segments_used"] == 26

@@ -1,2 +1,0 @@
-# the frozen reference group is package data (numbers only, design 4.4); the repository-wide rule "data/" must not hide it
-!/bs3/data/

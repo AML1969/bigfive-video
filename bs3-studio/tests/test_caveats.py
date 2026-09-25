@@ -56,7 +56,7 @@ def test_no_reference_group():
 
 
 def test_c5_c6_c9_absolute_scale():
-    assert "от 0.35 до 0.65" in caveats.text("C5") and "0.5" in caveats.text("C5")
+    assert "от 0.36 до 0.64" in caveats.text("C5") and "0.5" in caveats.text("C5")
     for lang in ("ru", "en"):
         assert "середина шкалы 0.5" in caveats.c6(lang)
     assert "у края шкалы" in caveats.text("C9")
