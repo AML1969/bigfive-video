@@ -1,8 +1,8 @@
 """Plain-text journal of the web service: who opened the page and when, which file was analysed and the outcome.
 
 One UTF-8 text file, entries appended in order and never rewritten: ~/bs3_data/logs/journal.txt (BS3_JOURNAL
-overrides). A result entry carries the main scores, the second opinion and the «Краткие выводы» text exactly as the
-page shows them. Visitor details come from the reverse proxy: X-Forwarded-For (client address) and X-Remote-User
+overrides). A result entry carries the clean main scores, the second opinion, the MBTI type of both systems and the
+paragraph «Коротко» of the characterization, the same as the page shows them. Visitor details come from the reverse proxy: X-Forwarded-For (client address) and X-Remote-User
 (login name from Caddy basic_auth); opened directly on the machine, the address is marked «локально».
 Writing the journal never breaks the page: every failure is logged and swallowed.
 """
@@ -78,27 +78,40 @@ def _scores(scores: dict) -> str:
     return ", ".join(f"{ru} {float(scores[k]):.2f}" for k, ru in TRAITS if k in scores)
 
 
-def result_lines(rep: dict, narrative: str) -> list[str]:
-    """Body of a result entry: main scores, second opinion (or both members for the mean), summary, job folder."""
-    model = rep.get("model") or {}
+def result_lines(rep: dict) -> list[str]:
+    """Body of a result entry (design 10.6): the clean main scores (scores.clean_view), the second opinion (or both
+    members for the mean), the MBTI type of the main system and of the second opinion with their agreement, the
+    paragraph «Коротко» of the characterization and the job folder. The view, the type and the characterization are
+    built here from `rep`; nothing is written back."""
+    from . import characterization
+    from .mbti import get_mbti, journal_lines
+    from .scores import clean_view
+
+    view = clean_view(rep)
+    meta = view.get("view_meta") or {}
+    model = view.get("model") or {}
     primary = model.get("primary")
-    main = {k: (v.get("score") if isinstance(v, dict) else v) for k, v in (rep.get("traits") or {}).items()}
+    main_sys = meta.get("main_system") or primary
+    main = {k: (v.get("score") if isinstance(v, dict) else v) for k, v in (view.get("traits") or {}).items()}
     if primary:
-        src = MEMBERS.get(primary, primary) + (", веса MuPTA" if primary == "oceanai" and model.get("lang") == "ru" else "")
+        src = MEMBERS.get(main_sys, main_sys) + (", веса MuPTA" if main_sys == "oceanai" and model.get("lang") == "ru"
+                                                  else "")
     else:
         src = "среднее двух систем"
     line = f"Итог ({src}): {_scores(main)}"
-    iv = rep.get("interview")
+    iv = view.get("interview")
     iv = iv.get("score") if isinstance(iv, dict) else iv
     if iv is not None:
         line += f"; «пригласил бы на собеседование» {float(iv):.2f}"
     lines = [line]
-    for m, v in (rep.get("variant_scores") or {}).items():
-        if m != primary:
+    for m, v in (view.get("variant_scores") or {}).items():
+        if m != main_sys or not primary:
             lines.append(f"{'Второе мнение' if primary else 'Участник'} ({MEMBERS.get(m, m)}): {_scores(v)}")
-    text = re.sub(r"\s+", " ", narrative or "").strip()
-    if text:
-        lines.append(f"Краткие выводы: {text}")
+    mb = get_mbti(rep, view)
+    lines += journal_lines(mb)
+    short = re.sub(r"\s+", " ", characterization.build(view, mb).short_plain() or "").strip()
+    if short:
+        lines.append(f"Характеристика (коротко): {short}")
     if rep.get("job_dir"):
         lines.append(f"Папка: {rep['job_dir']}")
     return lines
@@ -112,11 +125,11 @@ def start(request, video, lang: str, explain: bool) -> None:
     _write("СТАРТ", request, f"{_file(video)}, язык {LANGS.get(lang, lang)}, объяснения {'да' if explain else 'нет'}")
 
 
-def result(request, rep: dict, narrative: str, wall_sec: float) -> None:
+def result(request, rep: dict, wall_sec: float) -> None:
     name = rep.get("original_file_name") or Path(str(rep.get("input", ""))).name
     tail = f"файл «{name}», ролик {_mmss(rep.get('duration_sec', 0))}, обработка {_mmss(wall_sec)}"
     try:
-        body = result_lines(rep, narrative)
+        body = result_lines(rep)
     except Exception:  # noqa: BLE001
         log.exception("journal: could not format the result")
         body = ["(не удалось оформить итог, см. result.json в папке задачи)"]

@@ -16,16 +16,19 @@ import threading
 import time
 from pathlib import Path
 
-from . import PRODUCT, PRODUCT_SLUG, journal
+from . import PRODUCT, PRODUCT_SLUG, caveats, characterization, journal, mbti_html
 from .charts import (EMO_RU, VOICE_RU, fig_emotion_bars, fig_emotions_timeline, fig_face_expr, fig_radar,
                      fig_speech_timeline, fig_traits_timeline, fig_voice_timeline, plot_html as _plot_html)
-from .narrative2 import analyses_sentences, fix_counts, key_facts, plural_ru
+from .mbti import fact_card, get_mbti
+from .narrative import method_notes
+from .narrative2 import fix_counts, key_facts, plural_ru
 from .norms import TRAIT_KEYS
 from .palette import (ACCENT, BUTTON_PRIMARY, BUTTON_PRIMARY_HOVER, BUTTON_STOP, BUTTON_STOP_HOVER, CARD_TINT,
                       HTML as PAL, PAGE_NOTE_OPACITY, SUBDUED_TEXT_LIGHT)
 from .pipeline import Studio, run_analysis
-from .report import DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU, fmt_secs, mmss_labels, seg_label
+from .report import fmt_secs, mmss_labels, seg_label
 from .ru_texts import ensure_russian_job, transcript_shown, vocabulary_shown
+from .scores import clean_view
 from .webparts import (MEMBER_TITLES, NOTE, TRAIT_TITLES, _bar_html, _contrib_html, _members_html, _words_text,
                        table_html, th_text)
 
@@ -39,17 +42,21 @@ CARD = (f"padding:10px 14px;border:1px solid {PAL['card_border']};background:rgb
         "border-radius:8px;min-width:0")
 
 
-def _cards(items) -> str:
+def _cards(items, min_px: int = 180) -> str:
     """(label, value, note) -> a grid of cards; note may be empty."""
     html = "".join(f"<div style='{CARD}'><div style='{NOTE}'>{lab}</div>"
                    f"<div style='font-size:20px;font-weight:600;line-height:1.25;margin:3px 0;"
                    f"font-variant-numeric:tabular-nums'>{val if val not in (None, '') else '—'}</div>"
                    + (f"<div style='{NOTE}'>{note}</div>" if note else "") + "</div>" for lab, val, note in items)
-    return f"<div style='{CARDS}'>{html}</div>" if html else ""
+    grid = CARDS.replace("minmax(180px", f"minmax({int(min_px)}px")
+    return f"<div style='{grid}'>{html}</div>" if html else ""
 
 
-def _facts_html(rep: dict) -> str:
-    return _cards(key_facts(rep))
+def _facts_html(view: dict, mb: dict | None = None) -> str:
+    """«Ключевые факты» in the left column (design 10.2): the MBTI type card first, then the cards of 2.0 from the clean
+    view; 150 px minimum, two cards in a row in the 320 px column."""
+    card = fact_card(mb)
+    return _cards(([card] if card else []) + key_facts(view), min_px=150)
 
 
 def _dominant(dist: dict) -> str:
@@ -233,38 +240,58 @@ def _frames_html(rep: dict, max_side: int = 640) -> str:
             + "Щелчок по кадру увеличивает его, повторный щелчок закрывает.</p>")
 
 
+N_PAGE = 27            # values of page_outputs: 22 of 2.0 (index 3 is now the characterization) + 5 new blocks
+
+
 def page_outputs(rep: dict) -> tuple:
     """Everything the result page shows for a finished job, in the order of the output blocks after the status line
-    (without the PDF button). Jobs processed before the Russian texts existed get them here, stored back."""
+    (without the PDF button). Jobs processed before the Russian texts existed get them here, stored back.
+
+    Design 10.5: the numbers come from the clean view (scores.clean_view), the MBTI section from mbti.get_mbti (the
+    saved one, or computed now and never written), the characterization from characterization.build. The first 22
+    values keep their places (index 2 — the key facts with the type card first, index 3 — the characterization), then
+    five new ones: «Как получены оценки», «Эмоции и голос: коротко», the MBTI panels, the letter strip and «Как читать
+    тип MBTI». The «Данные» tab shows result.json as it lies on disk."""
     job = Path(rep["job_dir"])
     expl_path = job / "explain" / "explanation.json"
     expl = json.loads(expl_path.read_text(encoding="utf-8")) if expl_path.exists() else None
     ensure_russian_job(job, rep, expl)
+    view = clean_view(rep)
+    mb = get_mbti(rep, view)
+    ch = characterization.build(view, mb)
     lang = (rep.get("model") or {}).get("lang", "ru")
-    narrative = fix_counts(rep.get("narrative") or "") + " " + analyses_sentences(rep)
-    members = rep.get("variant_scores") or {}
-    primary = (rep.get("model") or {}).get("primary")
-    role = lambda m: " — основная оценка" if m == primary else (" — второе мнение" if primary else "")
+    members = view.get("variant_scores") or {}
+    main = (view.get("view_meta") or {}).get("main_system")
+    primary = (view.get("model") or {}).get("primary")
+    role = lambda m: " — основная оценка" if m == main else (" — второе мнение" if primary else "")
     member_txt = "\n".join(f"{MEMBER_TITLES.get(m, m)}{role(m)}: "
                            + ", ".join(f"{TRAIT_TITLES[k].lower()} {v[k]:.2f}" for k in TRAIT_KEYS if k in v) + "."
                            for m, v in members.items())
     # model.corpus of an ensemble is a technical descriptor; the OCEAN-AI weights follow the language
     weights = CORPUS_RU["mupta" if (rep.get("model") or {}).get("lang") == "ru" else "fi"] if "oceanai" in members else ""
-    member_txt += (f"\nОбработка заняла {fmt_secs(rep['timings_sec'].get('total_wall', 0))}"
+    member_txt += (f"\nОбработка заняла {fmt_secs((rep.get('timings_sec') or {}).get('total_wall', 0))}"
                    + (f"; {weights}." if weights else "."))
+    if mb and mb.get("computed_on_render"):
+        member_txt += "\n" + caveats.text("C22")
     # English speech: the Russian translation with a one-line note (the original stays in result.json)
     note, transcript = transcript_shown(rep)
     # fill=True: charts in a row of two windows grow to the height of the window next to them (see APP_CSS)
-    return (_plot_html(fig_radar, rep, fill=True), _bar_html(rep["traits"], rep.get("interview")) + _members_html(rep),
-            _facts_html(rep), narrative.strip(), _plot_html(fig_traits_timeline, rep),
-            _plot_html(fig_emotions_timeline, rep), _plot_html(fig_voice_timeline, rep, fill=True),
-            _plot_html(fig_speech_timeline, rep, fill=True), _plot_html(fig_emotion_bars, rep),
-            _segments_table(rep), _speech_html(rep),
-            "\n\n".join(t for t in (note, transcript) if t), _face_html(rep), _plot_html(fig_face_expr, rep),
-            _frames_html(rep), _contrib_html(expl),
-            _words_text(expl, rep, lang, expl_path) if expl else "",
-            mmss_labels(rep.get("behavior_description_ru") or ""), member_txt,
-            json.dumps(rep, ensure_ascii=False, indent=2), str(job / "result.json"), str(job))
+    out = (_plot_html(fig_radar, view, fill=True),
+           _bar_html(view["traits"], view.get("interview")) + _members_html(view),
+           _facts_html(view, mb), ch.html(), _plot_html(fig_traits_timeline, view),
+           _plot_html(fig_emotions_timeline, view), _plot_html(fig_voice_timeline, view, fill=True),
+           _plot_html(fig_speech_timeline, view, fill=True), _plot_html(fig_emotion_bars, view),
+           _segments_table(view), _speech_html(view),
+           "\n\n".join(t for t in (note, transcript) if t), _face_html(view), _plot_html(fig_face_expr, view),
+           _frames_html(view), _contrib_html(expl),
+           _words_text(expl, rep, lang, expl_path) if expl else "",
+           mmss_labels(rep.get("behavior_description_ru") or ""), member_txt,
+           json.dumps(rep, ensure_ascii=False, indent=2), str(job / "result.json"), str(job),
+           # new in 3.0 (design 10.3, 10.5)
+           mbti_html.method_html(method_notes(view, expl)), mbti_html.emo_intro_html(view),
+           mbti_html.types_html(mb), mbti_html.strip_html(mb), mbti_html.read_html(mb))
+    assert len(out) == N_PAGE
+    return out
 
 
 def export_pdf(job_dir: str | Path) -> str:
@@ -276,14 +303,15 @@ def export_pdf(job_dir: str | Path) -> str:
     expl_path = job / "explain" / "explanation.json"
     expl = json.loads(expl_path.read_text(encoding="utf-8")) if expl_path.exists() else None
     ensure_russian_job(job, rep, expl)          # jobs processed before the Russian texts: translate once, store back
-    rep["chart_files"] = save_pdf_charts(rep, job / "charts", expl)
+    view = clean_view(rep)                      # the PDF shows the same clean numbers as the page (design 6.1)
+    view["chart_files"] = save_pdf_charts(view, job / "charts", expl)
     frames = sorted(str(p) for p in (job / "explain").glob("key_*.jpg")) if (job / "explain").exists() else []
-    media = rep.get("media")
+    media = view.get("media")
     if not media or "error" in media:
         inp = next(job.glob("input.*"), None)
         media = probe_media(inp) if inp else None
-    stem = re.sub(r"[^A-Za-z0-9А-Яа-яЁё._-]+", "_", Path(rep.get("original_file_name") or "video").stem)[:60]
-    return build_pdf(rep, job / f"{PRODUCT_SLUG}_report_{stem}.pdf", explanation=expl, media=media, key_frames=frames)
+    stem = re.sub(r"[^A-Za-z0-9А-Яа-яЁё._-]+", "_", Path(view.get("original_file_name") or "video").stem)[:60]
+    return build_pdf(view, job / f"{PRODUCT_SLUG}_report_{stem}.pdf", explanation=expl, media=media, key_frames=frames)
 
 
 def analysis_error_ru(e: BaseException) -> str:
@@ -391,6 +419,12 @@ APP_CSS += (
     f".row.bs3-pair>.column>.bs3-grow:has(.video-container){{height:auto!important;min-height:{VIDEO_H}px;"
     "display:flex;flex-direction:column}"
     ".row.bs3-pair .bs3-grow .video-container{flex-grow:1}")
+# «Характеристика личности» (design 10.1): 15 px text, line height 1.55, at most 75 characters per line, paragraphs
+# 10 px apart with bold leads, no scroll inside the block (the column grows with the text). The HTML of
+# characterization.html() carries the same values inline; these rules keep Gradio's prose styles from overriding them.
+APP_CSS += (".bs3-char .bs3-char-text{font-size:15px;line-height:1.55;max-width:75ch}"
+            ".bs3-char .bs3-char-text p{margin:0 0 10px}.bs3-char .bs3-char-text p b{font-weight:700}"
+            ".bs3-char,.bs3-char .html-container,.bs3-char .prose{max-height:none!important;overflow:visible!important}")
 
 
 def _theme():
@@ -449,7 +483,7 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
     import gradio as gr
     from .longvideo import AnalysisCancelled
 
-    N_REST = 23
+    N_REST = N_PAGE + 1           # page_outputs + the PDF button (design 10.5: 28)
 
     def render(rep: dict) -> tuple:
         return page_outputs(rep) + (gr.update(interactive=True),)
@@ -492,7 +526,7 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
             raise gr.Error(msg, title=ERROR_TITLE)
         rep = result["r"]
         outs = render(rep)
-        journal.result(request, rep, outs[3], time.time() - state["t0"])   # outs[3]: the «Краткие выводы» text
+        journal.result(request, rep, time.time() - state["t0"])        # builds its own view, type and summary
         yield (_status_html(1.0, f"обработано за {fmt_secs(time.time() - state['t0'])}", state="done"),) + outs
 
     # `from __future__ import annotations` keeps «gr.Request» as a string, and Gradio resolves it in the module namespace,
@@ -512,12 +546,13 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
             log.exception("PDF export failed for %s", job_dir)
             raise gr.Error("Не удалось собрать PDF. Подробности записаны в журнал сервера.", title=ERROR_TITLE)
 
-    def block(label: str, chart: bool = False, grow: bool = False):
+    def block(label: str, chart: bool = False, grow: bool = False, classes: tuple = (), value: str = ""):
         """Result block with a visible title in the block corner (gr.HTML hides its label and frame by default). Chart
         blocks (chart=True) use the chart's own title as the label; units and scales are in the chart subtitle under it.
         grow=True: the window of a bs3-pair row that takes the extra height (APP_CSS)."""
-        return gr.HTML(label=label, show_label=True, container=True,
-                       elem_classes=["bs3-block"] + (["bs3-chart"] if chart else []) + (["bs3-grow"] if grow else []))
+        return gr.HTML(value=value, label=label, show_label=True, container=True,
+                       elem_classes=["bs3-block"] + (["bs3-chart"] if chart else []) + (["bs3-grow"] if grow else [])
+                       + list(classes))
 
     force_russian_gradio()
     with gr.Blocks(title=f"{PRODUCT} — характеристика личности, Big Five, MBTI, эмоции, голос, речь", theme=_theme(),
@@ -532,9 +567,11 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
             with gr.Column(scale=1, min_width=220):
                 pdf_btn = gr.DownloadButton("Экспорт в PDF", variant="primary", interactive=False)
         status = gr.HTML(value="")
+        # design 10.1: left — what was measured (video, settings, buttons, key facts), right — what it means (the
+        # characterization); the key facts take the extra height of the left column, so both frames end on one line
         with gr.Row(elem_classes=["bs3-pair"]):
             with gr.Column(scale=1, min_width=320):
-                video = gr.Video(label="Видео", sources=["upload"], height=VIDEO_H, elem_classes=["bs3-grow"])
+                video = gr.Video(label="Видео", sources=["upload"], height=VIDEO_H)
                 lang = gr.Radio(choices=[("русский", "ru"), ("английский", "en")], value="ru", label="Язык речи",
                                 info="Русский: основную оценку даёт OCEAN-AI (веса MuPTA), своя модель — второе мнение. "
                                      "Английский: среднее двух систем.")
@@ -542,10 +579,10 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
                 with gr.Row():
                     btn = gr.Button("Анализировать", variant="primary")
                     stop_btn = gr.Button("Остановить обработку", variant="stop")
+                facts = block("Ключевые факты", grow=True)
             with gr.Column(scale=2, min_width=480):
-                facts = block("Ключевые факты")
-                narrative = gr.Textbox(label="Краткие выводы", lines=9, max_lines=20, autoscroll=False,
-                                       elem_classes=["bs3-grow"])
+                character = block("Характеристика личности", grow=True, classes=("bs3-char",),
+                                  value=characterization.placeholder_html())
         with gr.Tabs():
             with gr.Tab("Обзор"):
                 # the radar window takes the height of the bars and the second opinion: the circle grows as far as the
@@ -555,6 +592,11 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
                         radar = block("Профиль Big Five", chart=True, grow=True)
                     with gr.Column(scale=1, min_width=360):
                         bars = block("Оценки по чертам и второе мнение", grow=True)
+                method = block("Как получены оценки")
+            with gr.Tab("Тип MBTI"):
+                mbti_types = block("Тип MBTI по двум системам")
+                mbti_strip = block("Тип по ходу ролика")
+                mbti_read = block("Как читать тип MBTI")
             with gr.Tab("Таймлайн"):
                 traits_plot = block("Big Five по ходу ролика", chart=True)
                 emo_plot = block("Эмоции по ходу ролика", chart=True)
@@ -564,6 +606,7 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
                     with gr.Column(scale=1, min_width=360):
                         speech_plot = block("Речь по ходу ролика", chart=True, grow=True)
             with gr.Tab("Эмоции и голос"):
+                emo_intro = block("Эмоции и голос: коротко")
                 emo_bars = block("Средний профиль эмоций за ролик", chart=True)
                 seg_table = block("Эмоции, голос и темп по отрезкам")
             with gr.Tab("Речь"):
@@ -585,13 +628,14 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
                 members = gr.Textbox(label="Участники ансамбля и время обработки", lines=4, max_lines=8, autoscroll=False)
                 raw = gr.Code(label="result.json", language="json", lines=24, elem_classes=["bs3-json"])
                 path = gr.Textbox(label="Сохранено в", interactive=False)
-        # the caveats are the most important small print on the page: 13 px (gr.Markdown <small> gave 11 px)
+        # the caveats are the most important small print on the page: 13 px (gr.Markdown <small> gave 11 px);
+        # design 11: C1, C2, C10, C3, word for word from caveats.py
         gr.HTML(f"<div style='font-size:13px;line-height:1.5;margin-top:6px;padding-top:10px;"
-                f"border-top:1px solid {PAL['card_border']}'><b>Как читать результаты.</b> {DISCLAIMER_RU}<br>"
-                f"{INTERVIEW_DISCLAIMER_RU}<br>Эмоции, голос и мимика — сигналы моделей, обученных на англоязычных корпусах "
-                "и фотографиях; это наблюдения о поведении на видео, а не диагноз.</div>")
-        outputs = [status, radar, bars, facts, narrative, traits_plot, emo_plot, voice_plot, speech_plot, emo_bars, seg_table,
-                   speech_html, transcript, face_html, face_plot, gallery, contrib, words_detail, desc, members, raw, path, job_state, pdf_btn]
+                f"border-top:1px solid {PAL['card_border']}'><b>Как читать результаты.</b> "
+                + "<br>".join(caveats.text(c) for c in ("C1", "C2", "C10", "C3")) + "</div>")
+        outputs = [status, radar, bars, facts, character, traits_plot, emo_plot, voice_plot, speech_plot, emo_bars,
+                   seg_table, speech_html, transcript, face_html, face_plot, gallery, contrib, words_detail, desc, members,
+                   raw, path, job_state, method, emo_intro, mbti_types, mbti_strip, mbti_read, pdf_btn]
         assert len(outputs) == N_REST + 1
         run_ev = btn.click(analyze, inputs=[video, lang, explain], outputs=outputs, show_progress="hidden", api_name=False)
         stop_btn.click(stop, inputs=None, outputs=[status], cancels=[run_ev], show_progress="hidden", api_name=False)
