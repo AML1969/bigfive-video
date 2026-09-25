@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "bs3-studio"
 version = "3.0.0a1"
-description = "BS Profiler 3.0: Big Five plus emotion, voice, facial-expression and speech analytics from a video. Separate project from bs 1.0 (own package, port, work dir)."
+description = "BS Profiler 3.0: personality characterization (Big Five with MBTI notation), emotion, voice, facial-expression and speech analytics from a video. Separate project from BS 2.0 (own package, port, work dir)."
 requires-python = ">=3.10"
 dependencies = []
 
@@ -17,4 +17,4 @@ where = ["."]
 include = ["bs3*"]
 
 [tool.setuptools.package-data]
-bs3 = ["*.json", "mm/*.csv"]
+bs3 = ["*.json", "mm/*.csv", "config/*.json", "data/*.json"]

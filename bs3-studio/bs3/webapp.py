@@ -1,6 +1,6 @@
 """BS Profiler 3.0 web UI (Gradio): Big Five + emotions, voice, face and speech analytics with interactive charts.
 
-Run:  bs3 web [--port 7880]      (inside WSL; open http://localhost:7880 on Windows). Independent of bs 1.0 (:7860).
+Run:  bs3 web [--port 7880]      (inside WSL; open http://localhost:7880 on Windows). Независим от BS 2.0 (:7870).
 
 Readability rules for the HTML blocks (both Gradio themes, see palette.py): text colours are inherited from the theme,
 secondary text is the same colour at opacity .75 and at least 13 px, marks and outlines come from palette.HTML, and
@@ -16,7 +16,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import journal
+from . import PRODUCT, PRODUCT_SLUG, journal
 from .charts import (EMO_RU, VOICE_RU, fig_emotion_bars, fig_emotions_timeline, fig_face_expr, fig_radar,
                      fig_speech_timeline, fig_traits_timeline, fig_voice_timeline, plot_html as _plot_html)
 from .narrative2 import analyses_sentences, fix_counts, key_facts, plural_ru
@@ -283,7 +283,7 @@ def export_pdf(job_dir: str | Path) -> str:
         inp = next(job.glob("input.*"), None)
         media = probe_media(inp) if inp else None
     stem = re.sub(r"[^A-Za-z0-9А-Яа-яЁё._-]+", "_", Path(rep.get("original_file_name") or "video").stem)[:60]
-    return build_pdf(rep, job / f"BS3_report_{stem}.pdf", explanation=expl, media=media, key_frames=frames)
+    return build_pdf(rep, job / f"{PRODUCT_SLUG}_report_{stem}.pdf", explanation=expl, media=media, key_frames=frames)
 
 
 def analysis_error_ru(e: BaseException) -> str:
@@ -520,14 +520,15 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
                        elem_classes=["bs3-block"] + (["bs3-chart"] if chart else []) + (["bs3-grow"] if grow else []))
 
     force_russian_gradio()
-    with gr.Blocks(title="BS Profiler 3.0 — Big Five, эмоции, голос, речь", theme=_theme(), css=APP_CSS) as demo:
+    with gr.Blocks(title=f"{PRODUCT} — характеристика личности, Big Five, MBTI, эмоции, голос, речь", theme=_theme(),
+                   css=APP_CSS) as demo:
         job_state = gr.State("")
         with gr.Row():
             with gr.Column(scale=4):
                 # the title stays the first line; the copyright sits right under it in small dimmed type (APP_CSS)
-                gr.Markdown(f"# BS Profiler 3.0 — анализ человека по видео\n\n<p class='bs3-copy'>{COPYRIGHT}</p>\n\n"
-                            "Big Five (первое впечатление), эмоции по речи и по лицу, характеристики голоса, манера речи, "
-                            "объяснения. Всё считается локально.")
+                gr.Markdown(f"# {PRODUCT} — анализ человека по видео\n\n<p class='bs3-copy'>{COPYRIGHT}</p>\n\n"
+                            "Характеристика личности, Big Five (первое впечатление) и перевод в нотацию MBTI, эмоции по "
+                            "речи и по лицу, голос, манера речи, объяснения. Всё считается локально.")
             with gr.Column(scale=1, min_width=220):
                 pdf_btn = gr.DownloadButton("Экспорт в PDF", variant="primary", interactive=False)
         status = gr.HTML(value="")

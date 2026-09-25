@@ -17,6 +17,7 @@ from pathlib import Path
 
 from fpdf import FPDF
 
+from . import PRODUCT
 from .narrative2 import analyses_parts, fix_counts, key_facts, plural_ru
 from .norms import RU_SHORT, TRAIT_KEYS, percentile
 from .palette import CARD_PDF, SCORE_BAR_PDF, SECOND_BAR_PDF, TRAIT_BAR_PDF
@@ -224,7 +225,7 @@ class Report(FPDF):
         self.set_y(-10)
         self.set_font("ui", "", 8)
         self.set_text_color(NOTE_GREY)
-        right = f"BS Profiler 3.0 · стр. {self.page_no()}" + (f" из {self.total_pages}" if self.total_pages else "")
+        right = f"{PRODUCT} · стр. {self.page_no()}" + (f" из {self.total_pages}" if self.total_pages else "")
         y = self.get_y()
         if self.file_label:
             self.set_x(self.l_margin)
@@ -1379,7 +1380,7 @@ def _render(report: dict, explanation, media, frames: list, charts: dict, fname:
     _plan(pdf, report, explanation, frames, charts)
     has_expl = "explain" in pdf.plan
     pdf.add_page()
-    pdf.h1("BS Profiler 3.0 — отчёт по видео: Big Five, эмоции, голос, речь")
+    pdf.h1(f"{PRODUCT} — отчёт по видео: Big Five, эмоции, голос, речь")
     _passport(pdf, report, media, fname)
     facts = _pdf_facts(report, "voice_speech" in pdf.plan and bool((report.get("analyses") or {}).get("speech")))
     if facts:
