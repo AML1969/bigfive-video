@@ -3,7 +3,7 @@
 The lexicon rules of 8.5, and on synthetic views (ru samples A and B, en, without analyses, without the second system,
 all traits typical, all extreme, main system missing): length, forbidden words, no raw scores, letters agree with the
 MBTI section, the closing paragraph, the provisional reference group, no type name when the type is not expressed,
-determinism. The verbatim golden texts (tests/golden/char_A.txt, char_B.txt) are compared once they exist (task T25).
+determinism, and the verbatim golden texts tests/golden/char_A.txt, char_B.txt (task T25).
 """
 from __future__ import annotations
 
@@ -85,7 +85,7 @@ def _cases() -> dict:
 
 def test_lexicon_complete_and_follows_the_rules():
     lex = C.load_lexicon()
-    assert lex["lexicon_version"] == 1
+    assert lex["lexicon_version"] == 2          # 2: proofreading of task T25
     assert set(lex["levels"]) == set(TRAIT_KEYS)
     for k in TRAIT_KEYS:
         assert set(lex["levels"][k]) == set(LEVELS), k
@@ -288,11 +288,16 @@ def test_html_and_pdf_forms():
     assert "Здесь появится характеристика личности" in C.placeholder_html()
 
 
-def test_golden_texts_when_present():
-    """Verbatim comparison with tests/golden/char_A.txt, char_B.txt (saved after the owner's reading, task T25)."""
+def test_golden_texts():
+    """Verbatim comparison with tests/golden/char_A.txt, char_B.txt (task T25: saved after the proofreading of
+    lexicon_version 2, from the same inputs as here). A lexicon or template change must regenerate them on purpose."""
     for name in ("A", "B"):
         path = GOLDEN / f"char_{name}.txt"
-        if not path.exists():
-            continue
+        assert path.is_file(), f"missing golden text {path.name}"
         _, _, ch = _build(_with_analyses(rep(name), name))
-        assert ch.plain() == path.read_text(encoding="utf-8"), name
+        want = path.read_text(encoding="utf-8")
+        got = ch.plain()
+        if got != want:
+            diff = next((i for i, (a, b) in enumerate(zip(got, want)) if a != b), min(len(got), len(want)))
+            raise AssertionError(f"{name}: differs from {path.name} at character {diff}: "
+                                 f"{got[max(0, diff - 40):diff + 40]!r} vs {want[max(0, diff - 40):diff + 40]!r}")
