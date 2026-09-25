@@ -16,6 +16,7 @@ import threading
 import time
 from pathlib import Path
 
+from . import journal
 from .charts import (EMO_RU, VOICE_RU, fig_emotion_bars, fig_emotions_timeline, fig_face_expr, fig_radar,
                      fig_speech_timeline, fig_traits_timeline, fig_voice_timeline, plot_html as _plot_html)
 from .narrative2 import analyses_sentences, fix_counts, key_facts, plural_ru
@@ -453,9 +454,10 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
     def render(rep: dict) -> tuple:
         return page_outputs(rep) + (gr.update(interactive=True),)
 
-    def analyze(video, lang, explain):
+    def analyze(video, lang, explain, request: gr.Request):
         if not video:
             raise gr.Error("Загрузите видео", title=ERROR_TITLE)
+        journal.start(request, video, lang, explain)
         state = {"frac": 0.0, "desc": "запуск", "t0": time.time()}
 
         def cb(frac, desc=None, **kw):
@@ -480,14 +482,22 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
             # the bar must not stay on the orange «Идёт обработка» while the error dialog is shown (as in BS 1.0):
             # the outcome goes to the bar first, and the dialog on top of it explains what to do
             if isinstance(e, AnalysisCancelled):
+                journal.failed(request, video, "остановлено пользователем", stopped=True)
                 yield (_status_html(state["frac"], "по запросу пользователя", state="stopped"),) + (gr.update(),) * N_REST
                 raise gr.Error("Обработка остановлена. Проверьте язык речи и запустите заново.", title="Остановлено")
             log.error("analysis failed", exc_info=(type(e), e, e.__traceback__))
             msg = analysis_error_ru(e)
+            journal.failed(request, video, msg)
             yield (_status_html(state["frac"], msg, state="error"),) + (gr.update(),) * N_REST
             raise gr.Error(msg, title=ERROR_TITLE)
         rep = result["r"]
-        yield (_status_html(1.0, f"обработано за {fmt_secs(time.time() - state['t0'])}", state="done"),) + render(rep)
+        outs = render(rep)
+        journal.result(request, rep, outs[3], time.time() - state["t0"])   # outs[3]: the «Краткие выводы» text
+        yield (_status_html(1.0, f"обработано за {fmt_secs(time.time() - state['t0'])}", state="done"),) + outs
+
+    # `from __future__ import annotations` keeps «gr.Request» as a string, and Gradio resolves it in the module namespace,
+    # where gradio is not imported: hand it the class itself, before the handler is registered
+    analyze.__annotations__["request"] = gr.Request
 
     def stop():
         studio.stop_event.set()
@@ -585,6 +595,14 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
         run_ev = btn.click(analyze, inputs=[video, lang, explain], outputs=outputs, show_progress="hidden", api_name=False)
         stop_btn.click(stop, inputs=None, outputs=[status], cancels=[run_ev], show_progress="hidden", api_name=False)
         pdf_btn.click(make_pdf, inputs=[job_state], outputs=[pdf_btn], api_name=False)
+
+        def on_visit(request: gr.Request):
+            journal.visit(request)
+
+        on_visit.__annotations__["request"] = gr.Request     # see the note under analyze()
+
+        # outside the queue: a visit is written at once, not after the analysis running for someone else
+        demo.load(on_visit, inputs=None, outputs=None, queue=False, show_progress="hidden", api_name=False)
         if preview_job:
             # the finished job becomes the initial value of every output (set before the page config is built), so
             # the page arrives filled; a demo.load event did not always reach the browser
