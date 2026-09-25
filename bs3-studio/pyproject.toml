@@ -17,4 +17,4 @@ where = ["."]
 include = ["bs3*"]
 
 [tool.setuptools.package-data]
-bs3 = ["*.json", "mm/*.csv", "config/*.json", "data/*.json"]
+bs3 = ["*.json", "mm/*.csv", "config/*.json"]

@@ -66,7 +66,7 @@ def test_segment_types_by_start():
     t = pdf_mbti.segment_types_by_start(mb)
     assert len(t) == 33
     assert sum(1 for v in t.values() if v is None) == 7                 # the segments without OCEAN-AI
-    assert {v for v in t.values() if v} >= {"EXFJ"}
+    assert {v for v in t.values() if v} == {"ENFJ"}
 
 
 def test_pdf_builds_and_reads():
@@ -83,7 +83,9 @@ def test_pdf_builds_and_reads():
             assert s in text, (name, s)
         for code in ("C8", "C9", "C16", "C18", "C11", "C15"):
             assert caveats.text(code)[:60] in text, (name, code)
-        for bad in ("Краткие выводы", "сегмент", "определяет тип личности"):
+        for bad in ("Краткие выводы", "сегмент", "определяет тип личности", "опорн", "положени", "типичн",
+                    "русских роликов", "обработанных системой", "предварительн", "большинства", "Согласие двух систем",
+                    "Вторая система"):
             assert bad not in text.replace("не определяет тип личности", ""), (name, bad)
         appx = text.split("Значения по отрезкам")[-1]
         assert " MBTI " in appx, name
@@ -91,11 +93,11 @@ def test_pdf_builds_and_reads():
     path, mb = _build(rep("B"))
     text = _text(path)
     if text is not None:
-        assert ("ESFJ в 16 из 26 отрезков с оценкой, ENFJ — в 10; ось S–N совпадает с итогом в 16 из 26 отрезков, "
-                "остальные оси — во всех") in text
-        assert "Совпадают 0 из 4 осей; расходится E–I; на границе у одной из систем: S–N, T–F, J–P." in text
+        assert "ENFJ во всех 26 отрезках с оценкой; все четыре оси совпадают с итогом во всех отрезках" in text
+        assert "Совпадают 0 из 4 осей; расходятся E–I, S–N; на границе у одной из систем: T–F, J–P." in text
+        assert "F, отчётливо (0.74)" in text and "E, умеренно (0.46)" in text
         appx = text.split("Значения по отрезкам")[-1]
-        assert "EXFJ" in appx and "ESFJ" in appx
+        assert "ENFJ" in appx
         assert "«—» в столбцах Big Five и MBTI" in appx
 
 
@@ -117,4 +119,4 @@ def test_build_pdf_computes_missing_parts():
     text = _text(out)
     assert out.exists()
     if text is not None:
-        assert "Характеристика личности" in text and "EXFJ" in text
+        assert "Характеристика личности" in text and "ENFJ" in text

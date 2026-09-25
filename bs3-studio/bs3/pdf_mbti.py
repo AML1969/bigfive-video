@@ -178,13 +178,13 @@ def _type_line(pdf: Report, title: str, item: dict, with_alternatives: bool) -> 
     pdf.ln(lh)
 
 
-def _axis_cell(a: dict | None, norm: bool) -> str:
+def _axis_cell(a: dict | None) -> str:
     if not a or a.get("missing"):
         return "нет данных"
     if a.get("borderline"):
         return f"X (на границе, ближе к {a.get('letter')})"
     s = f"{a.get('letter')}, {a.get('word')}"
-    return s + (f" ({float(a.get('confidence') or 0):.2f})" if norm else "")
+    return s + f" ({float(a.get('confidence') or 0):.2f})"
 
 
 def _axis_table(pdf: Report, systems: list[dict], agr: dict | None, cfg: dict) -> None:
@@ -195,8 +195,7 @@ def _axis_table(pdf: Report, systems: list[dict], agr: dict | None, cfg: dict) -
     for ax, scale, _direction in TABLE_ROWS:
         row = [AXIS_LABEL[ax], scale]
         for s in systems:
-            norm = (s.get("reference") or {}).get("kind") == "norm"
-            row.append(_axis_cell((s.get("axes") or {}).get(ax), norm))
+            row.append(_axis_cell((s.get("axes") or {}).get(ax)))
         if agr:
             row.append(AGREE_PDF.get((agr.get("axes") or {}).get(ax), "—"))
         c = corr.get(ax) or {}
@@ -332,8 +331,7 @@ def mbti_section(pdf: Report, view: dict, mb: dict | None) -> None:
     if "mbti" not in pdf.plan or not mb:
         return
     cfg = load_config()
-    lang =(view.get("view_meta") or {}).get("lang") or ("ru" if (mb.get("reference") or {}).get("kind") ==
-                                                          "provisional" else "en")
+    lang = (view.get("view_meta") or {}).get("lang") or ("en" if mb.get("source") == "mean" else "ru")
     second = mb.get("second") or []
     items = [mb] + second
     agr = mb.get("agreement")

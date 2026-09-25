@@ -1,7 +1,6 @@
-"""Pool of processed videos per language: empirical percentiles for a scale that has no labelled reference
-population at hand (OCEAN-AI on MuPTA weights for Russian speech). Every analysed video is registered once
-(fingerprint of the file), and a score is reported as its rank among the pool. Small pools give coarse
-percentiles; below MIN_POOL no percentile is reported."""
+"""Pool of processed videos per language: every analysed video with a primary system is registered once
+(fingerprint of the file) with its main scores. The pool is only collected internally: nothing is compared with it
+and no page, PDF or text shows numbers or words based on it (change of 2026-09-26)."""
 from __future__ import annotations
 
 import datetime as _dt
@@ -13,7 +12,6 @@ from pathlib import Path
 from .norms import TRAIT_KEYS
 
 POOL_DIR = Path(os.environ.get("BS3_POOL_DIR", "~/bs3_data/pool")).expanduser()
-MIN_POOL = 3
 
 
 def fingerprint(path: str | Path) -> str:
@@ -48,25 +46,3 @@ def entries(lang: str) -> list[dict]:
         except Exception:  # noqa: BLE001
             continue
     return out
-
-
-def percentile(trait: str, score: float, lang: str) -> tuple[float | None, int]:
-    """Rank of `score` among the pool (0..100, mid-rank for ties). None when the pool is smaller than MIN_POOL."""
-    vals = [e["scores"][trait] for e in entries(lang) if trait in e.get("scores", {})]
-    n = len(vals)
-    if n < MIN_POOL:
-        return None, n
-    below = sum(1 for v in vals if v < score - 1e-9)
-    equal = sum(1 for v in vals if abs(v - score) <= 1e-9)
-    # the video itself counts as a pool member: if its exact score is not stored (e.g. re-analysed with slightly
-    # different numbers), rank it as an extra member, so the top video reads 95%, never 100%
-    if equal == 0:
-        n_eff, equal = n + 1, 1
-    else:
-        n_eff = n
-    return round(100.0 * (below + 0.5 * equal) / n_eff, 1), n
-
-
-def label(lang: str, n: int) -> str:
-    names = {"ru": "русских", "en": "английских"}
-    return f"пула обработанных {names.get(lang, lang)} роликов (N={n})"      # reads after «относительно …»

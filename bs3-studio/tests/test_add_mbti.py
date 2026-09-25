@@ -42,13 +42,19 @@ def test_writes_section_under_root():
         assert m.add_mbti(job, root=root) == "written"
         saved = json.loads((job / "result.json").read_text(encoding="utf-8"))
         sec = saved["mbti"]
-        assert sec["schema_version"] == 1 and sec["type"] == "EXFJ" and sec["type_strict"] == "ESFJ"
+        assert sec["schema_version"] == 2 and sec["type"] == "ENFJ" and sec["type_strict"] == "ENFJ"
         assert sec["computed_by"] == "BS Profiler 3.0 3.0.0a1" and "computed_on_render" not in sec
         assert mbti.get_mbti(saved) == sec                 # the page now shows the stored section as it is
         before = _sha(job / "result.json")
         assert m.add_mbti(job, root=root) == "kept"        # stored already: not recomputed without --force
         assert _sha(job / "result.json") == before
         assert m.add_mbti(job, root=root, force=True) == "written"
+        # a section of schema 1 (letters by the position in a reference group) is replaced without --force
+        old = {**saved, "mbti": {**sec, "schema_version": 1, "type": "EXFJ"}}
+        (job / "result.json").write_text(json.dumps(old, ensure_ascii=False), encoding="utf-8")
+        assert mbti.get_mbti(old)["type"] == "ENFJ"         # the old section is not shown
+        assert m.add_mbti(job, root=root) == "written"
+        assert json.loads((job / "result.json").read_text(encoding="utf-8"))["mbti"]["schema_version"] == 2
 
 
 def test_refuses_outside_root_and_leaves_file_unchanged():

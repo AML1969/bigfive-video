@@ -1,18 +1,14 @@
-"""Big Five in MBTI notation (design 5, 7).
+"""Big Five in MBTI notation (design 5, 7; change of 2026-09-26).
 
-The customer's formula is kept (BORDERLINE = 0.15, confidence = |v − thr| / 0.5, X on a borderline axis in `type`,
-four letters in `type_strict`), but in the default method "position" it is applied to the position p of a score in the
-reference group of the same system (refnorms), not to the raw score: the raw scales of the two systems are not
-comparable, and with the fixed threshold 0.5 on raw scores every Russian video got the same type. Method "raw" (p =
-the raw score clipped to [0, 1], thresholds `raw_thresholds`) is exactly the customer's document; it is kept for tests,
-the BFI-2 check and calibration.
+Exactly the customer's formula on the system's own score v in [0, 1] (config `raw_thresholds`, 0.5 on every axis):
+the letter by v >= 0.5, BORDERLINE = 0.15, confidence = min(|v − 0.5| / 0.5, 1), X on a borderline axis in `type`,
+four letters in `type_strict`. The same for both systems and both speech languages; no reference group anywhere.
 
-Deliberate deviations from the document: p instead of the raw score; the confidence denominator for a threshold other
-than 0.5 (thr below it, 1 − thr above it, so both ends reach 1); the difference is rounded to 9 digits so that
-0.65 − 0.5 is not 0.15000000000000002; a missing trait gives the letter X with `missing: true` in both `type` and
-`type_strict`; a value outside [0, 1] is clipped with `clipped: true`.
+Details: the confidence denominator for a threshold other than 0.5 (thr below it, 1 − thr above it, so both ends reach
+1); the difference is rounded to 9 digits so that 0.65 − 0.5 is not 0.15000000000000002; a missing trait gives the
+letter X with `missing: true` in both `type` and `type_strict`; a value outside [0, 1] is clipped with `clipped: true`.
 
-Nothing here writes to disk: `get_mbti(rep, view)` returns the section saved by the pipeline (schema 1) or computes it
+Nothing here writes to disk: `get_mbti(rep, view)` returns the section saved by the pipeline (schema 2) or computes it
 on the fly; the caller never stores the computed one.
 """
 from __future__ import annotations
@@ -25,7 +21,7 @@ import math
 from collections import Counter
 from importlib import resources
 
-from . import PRODUCT, __version__, refnorms
+from . import PRODUCT, __version__
 from .norms import TRAIT_KEYS
 from .scores import level_phrase, plural_ru
 
@@ -39,6 +35,8 @@ RELIABILITY_BASIS = ("соответствие шкал MBTI и NEO-PI в сам
                      "не точность оценки по видео")
 NEURO_NOTE = "шкала не имеет соответствия в MBTI, приводится отдельно"
 SIGN = {"agree": "=", "differ": "≠", "border": "≈"}
+SCHEMA_VERSION = 2            # 1: letters by the position in a reference group of processed videos (before 2026-09-26)
+METHOD = "raw"
 
 _cfg: dict | None = None
 
@@ -92,7 +90,7 @@ def alternatives(type_strict: str, axes: dict, cfg: dict | None = None) -> list[
 
 def bigfive_to_mbti(scores: dict, thresholds: dict | None = None, *, borderline: float = 0.15,
                     cfg: dict | None = None) -> dict:
-    """The customer's formula on values in [0, 1] (positions p in the method "position").
+    """The customer's formula on scores in [0, 1].
 
     Returns {"type", "type_strict", "type_name", "alternatives", "x_count", "axes": {axis: {"trait", "value",
     "threshold", "letter", "confidence", "borderline"[, "missing"][, "clipped"]}}, "neuroticism": {"value"} | None}.
@@ -134,11 +132,10 @@ def bigfive_to_mbti(scores: dict, thresholds: dict | None = None, *, borderline:
             "axes": axes, "neuroticism": neuro}
 
 
-def _thresholds(cfg: dict, system: str, lang: str) -> dict:
-    if cfg.get("method") == "raw":
-        return dict(cfg.get("raw_thresholds") or {})
-    th = cfg.get("thresholds") or {}
-    return {**(th.get("default") or {}), **(th.get(f"{system}@{lang}") or {})}
+def _thresholds(cfg: dict) -> dict:
+    """The threshold of every axis (config `raw_thresholds`, 0.5 by the customer's document)."""
+    th = cfg.get("raw_thresholds") or {}
+    return {ax: float(th.get(ax, 0.5)) for ax in AXES}
 
 
 def _r(x, nd):
@@ -146,48 +143,27 @@ def _r(x, nd):
 
 
 def mbti_for(system: str, raw_scores: dict, lang: str, cfg: dict | None = None) -> dict:
-    """Type of one system ('oceanai' | 'mm' | 'mean') from its raw Big Five scores, in the format of result.json."""
+    """Type of one system ('oceanai' | 'mm' | 'mean') from its own Big Five scores, in the format of result.json.
+    `lang` is kept for the callers: the formula is the same for both speech languages."""
     cfg = cfg or load_config()
-    lang = "ru" if lang == "ru" else "en"
     raw_scores = raw_scores if isinstance(raw_scores, dict) else {}
-    method = cfg.get("method", "position")
-    thr = _thresholds(cfg, system, lang)
-    ref_id = refnorms.reference_for(system, lang)
-
-    def pos(trait):
-        v = _num(raw_scores.get(trait))
-        if v is None:
-            return None
-        return refnorms.position(system, lang, trait, v) if method == "position" else v
-
-    ps = {k: pos(k) for k in TRAIT_KEYS}
-    core = bigfive_to_mbti(ps, thr, borderline=cfg.get("borderline", 0.15), cfg=cfg)
+    scores = {k: _num(raw_scores.get(k)) for k in TRAIT_KEYS}
+    core = bigfive_to_mbti(scores, _thresholds(cfg), borderline=cfg.get("borderline", 0.15), cfg=cfg)
     axes = {}
     for ax in AXES:
         a = dict(core["axes"][ax])
-        trait = a["trait"]
-        raw = _num(raw_scores.get(trait))
-        if method == "position":
-            thr_raw = refnorms.value_at(system, lang, trait, a["threshold"])
-        else:
-            thr_raw = a["threshold"]
         a["value"] = _r(a["value"], 3)
-        a["raw_score"] = _r(raw, 3)
-        a["threshold_raw"] = _r(thr_raw, 3)
         a["confidence"] = round(a["confidence"], 2)
         a["word"] = word_for(core["axes"][ax])
-        axes[ax] = {k: a[k] for k in ("trait", "value", "raw_score", "threshold", "threshold_raw", "letter",
-                                      "confidence", "borderline", "word", "missing", "clipped") if k in a}
+        axes[ax] = {k: a[k] for k in ("trait", "value", "threshold", "letter", "confidence", "borderline", "word",
+                                      "missing", "clipped") if k in a}
     corr = cfg.get("correspondence") or {}
-    es_raw, es_p = _num(raw_scores.get("emotional_stability")), ps.get("emotional_stability")
-    if es_raw is None or es_p is None:
-        neuro, neuro_note = None, None
-    else:
-        np_ = 1.0 - min(max(es_p, 0.0), 1.0)
-        lv = level_phrase(np_)
-        neuro = {"value": round(1.0 - es_raw, 3), "position": round(np_, 3), "level": lv, "note": NEURO_NOTE}
+    neuro, neuro_note = None, None
+    if core["neuroticism"] is not None:
+        nv = core["neuroticism"]["value"]
+        lv = level_phrase(nv)
+        neuro = {"value": round(nv, 3), "level": lv, "note": NEURO_NOTE}
         neuro_note = f"Шкала нейротизма ({lv}) в MBTI не выражается, приводится отдельно"
-    ref = refnorms.describe(ref_id)
     return {
         "source": SOURCE_OF.get(system, system),
         "type": core["type"], "type_strict": core["type_strict"], "type_name": core["type_name"],
@@ -197,7 +173,6 @@ def mbti_for(system: str, raw_scores: dict, lang: str, cfg: dict | None = None) 
         "reliability_r": {ax: corr[ax]["r"] for ax in AXES if ax in corr},
         "reliability_basis": RELIABILITY_BASIS,
         "neuroticism": neuro, "neuroticism_note": neuro_note,
-        "reference": {k: ref[k] for k in ("id", "kind", "n", "frozen_at", "label_ru")},
     }
 
 
@@ -250,7 +225,7 @@ def _segment_scores(t: dict, system: str, main: str) -> dict | None:
 
 
 def segment_types(view: dict, system: str, cfg: dict | None = None) -> list[dict]:
-    """Type of `system` on every segment, with the same thresholds and reference group as for the whole video."""
+    """Type of `system` on every segment, with the same thresholds as for the whole video."""
     cfg = cfg or load_config()
     meta = view.get("view_meta") or {}
     main, lang = meta.get("main_system"), meta.get("lang", "en")
@@ -348,10 +323,10 @@ def build_section(view: dict, *, computed_at: str | None = None, cfg: dict | Non
     elif lang != "ru" and len(second) == 2:
         agr = agreement(second[0], second[1])
     sec = {
-        "schema_version": 1,
+        "schema_version": SCHEMA_VERSION,
         "computed_by": f"{PRODUCT} {__version__}",
         "computed_at": computed_at or _dt.datetime.now().isoformat(timespec="seconds"),
-        "method": cfg.get("method", "position"),
+        "method": METHOD,
         "borderline": cfg.get("borderline", 0.15),
         "source": m["source"], "role": "main",
     }
@@ -362,10 +337,11 @@ def build_section(view: dict, *, computed_at: str | None = None, cfg: dict | Non
 
 
 def get_mbti(rep: dict, view: dict | None = None) -> dict | None:
-    """The section to show: the one saved in result.json (schema 1) as it is, otherwise computed now from the clean
-    view with `computed_on_render: True`. Never changes `rep` and never writes anything."""
+    """The section to show: the one saved in result.json (schema 2) as it is, otherwise computed now from the clean
+    view with `computed_on_render: True` (a saved section of schema 1 placed the scores in a reference group and is
+    not shown). Never changes `rep` and never writes anything."""
     saved = rep.get("mbti") if isinstance(rep, dict) else None
-    if isinstance(saved, dict) and saved.get("schema_version") == 1:
+    if isinstance(saved, dict) and saved.get("schema_version") == SCHEMA_VERSION:
         return copy.deepcopy(saved)
     if view is None:
         from .scores import clean_view
@@ -375,10 +351,6 @@ def get_mbti(rep: dict, view: dict | None = None) -> dict | None:
 
 
 # -------------------------------------------------------------------------------------------- short texts ---
-
-def _is_provisional(mb: dict) -> bool:
-    return (mb.get("reference") or {}).get("kind") == "provisional"
-
 
 def _name(t: str | None, cfg: dict | None = None) -> str | None:
     if not t:
@@ -408,8 +380,6 @@ def fact_card(mb: dict | None) -> tuple[str, str, str] | None:
     else:
         value = mb.get("type")
         notes.append(f"тип не выражен: {x} оси из 4 на границе")
-    if _is_provisional(mb):
-        notes.append("пороги предварительные")
     for s in mb.get("second") or []:
         notes.append(f"{SOURCE_RU.get(s.get('source'), s.get('source'))}: {s.get('type')}")
     return type_title(mb), value, " · ".join(notes)
@@ -433,8 +403,6 @@ def journal_lines(mb: dict | None) -> list[str]:
     if not mb:
         return ["Тип MBTI: не рассчитан (нет оценок Big Five)"]
     head = SOURCE_RU.get(mb.get("source"), mb.get("source"))
-    if _is_provisional(mb):
-        head += ", пороги предварительные"
     line = f"Тип MBTI ({head}): {_type_words(mb)}"
     if mb.get("neuroticism"):
         line += f"; нейротизм — {mb['neuroticism']['level']}"

@@ -1,10 +1,11 @@
 """Caveats C1–C22 (design 11, task T13): every one has a text, the templates are filled, word forms agree with the
-numbers, and none says «сегмент»."""
+numbers, none says «сегмент», and none mentions a group of processed videos or statistics of the two systems on
+them (change of 2026-09-26)."""
 from __future__ import annotations
 
 import re
 
-from bs3 import caveats, refnorms
+from bs3 import caveats
 from bs3.report import DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU
 
 PLACEHOLDER = re.compile(r"\{[a-zA-Z_]+\}")
@@ -44,21 +45,23 @@ def test_no_segment_word_and_no_type_claim():
             assert code == "C3" and "не определяет тип личности" in t
 
 
-def test_c6_ru_numbers_from_the_frozen_group():
-    t = caveats.c6("ru")
-    ref = refnorms.describe(refnorms.reference_for("oceanai", "ru"))
-    assert f"среди {ref['n']} русских роликов, обработанных системой до 25.09.2026" in t
-    assert "First Impressions V2" in caveats.c6("en")
+def test_no_reference_group():
+    for code, t in _all_filled().items():
+        low = t.lower()
+        for w in ("опорн", "положени", "процентил", "русских ролик", "роликов, обработанных", "предварительн",
+                  "типичн", "плохо согласуются", "из 13", "медиан"):
+            if code == "C6-en" and w == "процентил":        # FIV2 percentiles on the English bars do not set letters
+                continue
+            assert w not in low, (code, w)
 
 
-def test_c7_ru_numbers_from_the_norms_file():
-    t = caveats.c7("ru")
-    st = refnorms.agreement_stats()
-    assert st["letters_same"] == {"EI": 5, "SN": 7, "TF": 3, "JP": 3}
-    assert "На 13 русских роликах их оценки пока плохо согласуются" in t
-    assert "по оси E–I в 5 роликах из 13, по S–N — в 7, по T–F — в 3, по J–P — в 3." in t
-    one = caveats.c7("ru", {"n": 21, "letters_same": {"EI": 1, "SN": 2, "TF": 3, "JP": 4}})
-    assert "На 21 русском ролике" in one and "в 1 ролике из 21" in one
+def test_c5_c6_c9_absolute_scale():
+    assert "от 0.35 до 0.65" in caveats.text("C5") and "0.5" in caveats.text("C5")
+    for lang in ("ru", "en"):
+        assert "середина шкалы 0.5" in caveats.c6(lang)
+    assert "у края шкалы" in caveats.text("C9")
+    assert "Основной считается OCEAN-AI" in caveats.c7("ru") and "граница" not in caveats.c7("ru")
+    assert caveats.text("C20").endswith("построены по своей модели.")
 
 
 def test_c13_word_forms():

@@ -83,15 +83,6 @@ def _encoder(v) -> str:
     return f"FFmpeg (libav{'format' if m.group(1) == 'f' else 'codec'} {m.group(2)})" if m else s
 
 
-SMALL_POOL = 20      # below this many processed videos a percentage only looks precise (same rule as the web page)
-
-
-def _small_pool_n(ref: str):
-    """Size of the pool when it is below SMALL_POOL (the position is then given in words), otherwise None."""
-    m = re.search(r"N\s*=\s*(\d+)", ref or "")
-    return int(m.group(1)) if "пула" in (ref or "") and m and int(m.group(1)) < SMALL_POOL else None
-
-
 def _trained_on(m: dict, members: list) -> str:
     """model.trained_on names one corpus for the whole ensemble; say which member learned from what."""
     oc = {"ru": "MuPTA (русская речь)", "en": "First Impressions V2"}.get(m.get("lang"))
@@ -104,9 +95,9 @@ def _trained_on(m: dict, members: list) -> str:
 
 
 def pct_phrase(pct, ref: str = "") -> str:
-    """'выше, чем у 83% русских роликов' / 'ниже, чем у 95% людей в FIV2' / 'примерно посередине среди …'.
-    The wording is the one of the score bars of the web page: webparts writes them, so the same number is never
-    worded two ways (the language of the pool — русских / английских / обработанных — comes from the reference)."""
+    """'ниже, чем у 95% людей в FIV2' / 'примерно посередине среди людей в FIV2'; '' for anything but a FIV2
+    percentile. The wording is the one of the score bars of the web page: webparts writes them, so the same number is
+    never worded two ways."""
     from .webparts import _pct_phrase
     return _pct_phrase(pct, ref)[0]
 
@@ -114,17 +105,8 @@ def pct_phrase(pct, ref: str = "") -> str:
 def _ref_ru(ref: str) -> str:
     """percentile_ref from result.json (genitive, reads after «относительно») without technical English words."""
     r = re.sub(r",\s*своя модель\s*$", "", ref or "")
-    r = re.sub(r"\(N\s*=\s*(\d+)\)", r"(сейчас их \1)", r)          # pool size, as on the web page
     return r.replace("train First Impressions V2", "обучающей выборки First Impressions V2").replace(
         "train FIV2", "обучающей выборки FIV2")
-
-
-def _where_ru(ref: str) -> str:
-    """The reference group as on the web page: «среди обработанных русских роликов (сейчас их 5)» for the pool of
-    processed videos, «относительно обучающей выборки First Impressions V2 (6000 клипов)» otherwise."""
-    r = _ref_ru(ref)
-    m = re.match(r"^пула\s+(обработанных\s.+)$", r)
-    return f"среди {m.group(1)}" if m else f"относительно {r}"
 
 
 def _asr_ru(name) -> str:
@@ -142,7 +124,7 @@ def _version_ru(v) -> str:
 
 
 def _group_name(keys: list[str]) -> str:
-    """Which score rows a reference group applies to, for the note under the score bars."""
+    """Which score rows a FIV2 percentile applies to, for the note under the score bars."""
     if set(keys) == set(TRAIT_KEYS):
         return "пять черт"
     return ", ".join("«собеседование»" if k == "interview" else TITLES[k].lower() for k in keys)
@@ -408,14 +390,14 @@ class Report(FPDF):
     def _bar_rows(self, traits: dict, interview: dict | None):
         return [(k, traits[k]) for k in TRAIT_KEYS] + ([("interview", interview)] if interview else [])
 
-    def _bars_legend(self, second: bool, second_ref: str | None = None):
+    def _bars_legend(self, second: bool, second_ru: bool = False):
         """Legend items (kind, text) under the score bars."""
         # «как на графиках» with one reservation: the extraversion fill is a step darker than its line on the charts,
         # because the chart colour gives only 2.9:1 on the light track of the bar
         items = [("traits", "оценка черты 0…1 (цвет — как на графиках, экстраверсия чуть темнее)")]
         if second:
             # Russian speech: the note under the bars says which system and group (the legend then fits one line)
-            items.append(("second", "второе мнение" if second_ref else "второе мнение: своя модель, FIV2"))
+            items.append(("second", "второе мнение" if second_ru else "второе мнение: своя модель, FIV2"))
         items.append(("tick", "середина шкалы"))
         return items
 
@@ -432,55 +414,50 @@ class Report(FPDF):
             lines.append(cur)
         return lines
 
-    def _bars_note(self, traits: dict, interview: dict | None, second: bool, second_ref: str | None = None) -> str:
-        groups: dict[str, list[str]] = {}          # reference group in words («среди …», «относительно …») -> item keys
-        footnote = ""                              # a frozen reference group (clean view of Russian speech) says
-        for k, t in self._bar_rows(traits, interview):     # itself what it covers and why there are no percentages
-            ref = t.get("percentile_ref", "train First Impressions V2 (6000 клипов)")
-            if str(ref).startswith("ref:"):
-                from .refnorms import describe
-                footnote = describe(ref[4:])["footnote_ru"]
-                continue
-            groups.setdefault(_where_ru(ref), []).append(k)
-        parts = [footnote] if footnote else []
+    def _bars_note(self, traits: dict, interview: dict | None, second: bool, second_ru: bool = False) -> str:
+        groups: dict[str, list[str]] = {}          # FIV2 reference in words -> item keys (Russian speech: none)
+        for k, t in self._bar_rows(traits, interview):
+            pct = t.get("percentile", t.get("percentile_vs_fiv2"))
+            ref = t.get("percentile_ref", "train First Impressions V2 (6000 клипов)" if pct is not None else "")
+            if pct is not None and pct_phrase(pct, ref):
+                groups.setdefault(f"относительно {_ref_ru(ref)}", []).append(k)
+        parts = ["Длина полоски — оценка системы от 0 до 1; уровни черт и буквы MBTI считаются по этой же шкале, "
+                 "середина — 0.5."]
         interview_named = False
         if groups:
-            if len(groups) == 1 and not footnote:
-                parts.append(f"Рядом с полоской — положение: {next(iter(groups))}.")
+            if len(groups) == 1:
+                parts.append(f"Рядом с полоской — процентиль {next(iter(groups))}.")
             else:
-                parts += [(f"«Собеседование» (коричневая полоска, своя модель) — {ref}." if keys == ["interview"] else
-                           f"{_group_name(keys).capitalize()} — {ref}.") for ref, keys in groups.items()]
+                parts += [(f"«Собеседование» (коричневая полоска, своя модель) — процентиль {ref}."
+                           if keys == ["interview"] else f"{_group_name(keys).capitalize()} — процентиль {ref}.")
+                          for ref, keys in groups.items()]
                 interview_named = any(keys == ["interview"] for keys in groups.values())
-        n = _small_pool_n(traits[TRAIT_KEYS[0]].get("percentile_ref", ""))
-        if n is not None:
-            parts.append(f"Роликов в сравнении пока {n}, поэтому положение черт описано словами, а не в процентах.")
-        if second and second_ref:
-            parts.append("Второе мнение — своя модель, положение среди тех же русских роликов; она обучена на "
-                         "англоязычных влогерах FIV2, и на русской речи её числа ниже: сравнивайте положение и порядок "
-                         "черт, а не сами числа.")
+        if second and second_ru:
+            parts.append("Второе мнение — своя модель; она обучена на англоязычных влогерах FIV2, и на русской речи её "
+                         "числа ниже: сравнивайте порядок черт, а не сами числа.")
         elif second:
             parts.append("Второе мнение — на другой шкале: своя модель обучена на англоязычных влогерах, поэтому на "
-                         "русских роликах её значения ниже; сравнивайте положение и порядок черт, а не сами числа.")
+                         "русских роликах её значения ниже; сравнивайте порядок черт, а не сами числа.")
         if interview and not interview_named:
             parts.append("Коричневая полоска — впечатление «собеседование» (своя модель, шкала FIV2).")
         return " ".join(parts)
 
     def score_bars_height(self, traits: dict, interview: dict | None, second: dict | None = None,
-                          second_ref: str | None = None) -> float:
+                          second_ru: bool = False) -> float:
         n = len(TRAIT_KEYS)
         h = n * (8.6 if second else 6.0) + (8.0 if interview else 0.0) + 4.2
-        h += len(self._legend_lines(self._bars_legend(bool(second), second_ref))) * 4.4 + 1
+        h += len(self._legend_lines(self._bars_legend(bool(second), second_ru))) * 4.4 + 1
         self.set_font("ui", "", 8)
-        h += len(self.multi_cell(self.epw, 4.0, self._bars_note(traits, interview, bool(second), second_ref),
+        h += len(self.multi_cell(self.epw, 4.0, self._bars_note(traits, interview, bool(second), second_ru),
                                  dry_run=True, output="LINES")) * 4.0
         return h + 1
 
     def score_bars(self, traits: dict, interview: dict | None, second: dict | None = None,
-                   second_ref: str | None = None, second_system: str = "mm"):
+                   second_ru: bool = False):
         """One row per trait: the bar is the score itself (0…1, what a reader expects to see filled), the text gives the
-        score and the position relative to the reference group in words. second: {trait: score} of the second opinion,
-        drawn as a thin slate bar under each trait with its position: for Russian speech (`second_ref` = "ref:<id>")
-        among the same frozen group of Russian videos as on the web page, otherwise in FIV2."""
+        score and, for a FIV2 percentile (English speech), its position in words. second: {trait: score} of the second
+        opinion, drawn as a thin slate bar under each trait: for Russian speech (`second_ru`) with its score only, as on
+        the web page, otherwise with its FIV2 percentile."""
         items = self._bar_rows(traits, interview)
         bar_w, bar_h = self.BAR_W, self.BAR_H
         c = SCORE_BAR_PDF
@@ -491,7 +468,7 @@ class Report(FPDF):
         row_h = 5.4 if second else 6.0      # with the second opinion every trait takes 5.4 + 3.2 mm
         for k, t in items:
             pct = t.get("percentile", t.get("percentile_vs_fiv2")); score = float(t["score"])
-            ref = t.get("percentile_ref", "train First Impressions V2 (6000 клипов)")
+            ref = t.get("percentile_ref", "train First Impressions V2 (6000 клипов)" if pct is not None else "")
             if k == "interview":        # a separate label of the own model: set off from the five traits (dashed rule)
                 yl = self.get_y() + 1.0
                 self.set_draw_color(c["outline"]); self.set_line_width(0.2); self.set_dash_pattern(dash=0.8, gap=0.8)
@@ -519,7 +496,7 @@ class Report(FPDF):
             self.line(xm, y, xm, y + bar_h)
             self.set_draw_color(0)
             self.set_x(x + bar_w + 2)
-            text = f"{score:.2f}   {pct_phrase(pct, ref)}"
+            text = f"{score:.2f}   {pct_phrase(pct, ref)}".rstrip()
             # cell() insets the text by c_margin on both sides: the room for it is that much smaller
             room = self.l_margin + self.epw - self.get_x() - 2 * self.c_margin
             for pt in (8, 7.5, 7.2, 7.0):
@@ -535,10 +512,8 @@ class Report(FPDF):
                 self.rect(x, ys, bar_w * max(0.01, min(1.0, s)), 1.4, style="F")
                 self.set_xy(x + bar_w + 2, self.get_y() - 0.4)
                 self.set_text_color(*_rgb(SECOND_BAR_PDF))
-                if second_ref:
-                    from .refnorms import position
-                    p2 = position(second_system, "ru", k, s)
-                    text = f"второе мнение {s:.2f} · {pct_phrase(None if p2 is None else round(100 * p2, 1), second_ref)}"
+                if second_ru:
+                    text = f"второе мнение {s:.2f}"
                 else:
                     text = f"второе мнение {s:.2f} · {pct_phrase(percentile(k, s), 'train FIV2')}"
                 room = self.l_margin + self.epw - self.get_x() - 2 * self.c_margin
@@ -548,10 +523,6 @@ class Report(FPDF):
                         break
                 else:                               # the longest phrase at the smallest size: one word less
                     text = text.replace("примерно посередине", "посередине")
-                    if self.get_string_width(text) > room:
-                        # the group of the second opinion is named in the note under the bars («среди тех же
-                        # русских роликов»): «ниже, чем у большинства из 13 русских роликов» -> «… у большинства»
-                        text = re.sub(r"\s(?:из|среди)\s\d+\s\S+\s\S+$", "", text)
                 self.cell(0, 3.2, text, new_x="LMARGIN", new_y="NEXT")
                 self.set_text_color(0)
         # scale under the bars: 0, 0.5, 1, each label centred on its point of the bar
@@ -561,9 +532,9 @@ class Report(FPDF):
             self.set_xy(pos - 5, y); self.cell(10, 3.6, val, align="C")
         self.set_text_color(0)
         self.set_xy(self.l_margin, y + 4.2)
-        self._draw_bars_legend(self._legend_lines(self._bars_legend(bool(second), second_ref)))
+        self._draw_bars_legend(self._legend_lines(self._bars_legend(bool(second), second_ru)))
         self.set_font("ui", "", 8); self.set_text_color(NOTE_GREY)
-        self.multi_cell(0, 4.0, self._bars_note(traits, interview, bool(second), second_ref), new_x="LMARGIN",
+        self.multi_cell(0, 4.0, self._bars_note(traits, interview, bool(second), second_ru), new_x="LMARGIN",
                         new_y="NEXT", align="L")
         self.set_text_color(0)
         self.ln(1)
@@ -836,13 +807,9 @@ def _profile_section(pdf: Report, report: dict, explanation, charts: dict) -> No
     var = report.get("variant_scores") or {}
     second_sys = next((k for k, v in var.items() if primary and k != main and all(t in v for t in TRAIT_KEYS)), None)
     second = var.get(second_sys) if second_sys else None
-    # Russian speech: the second opinion is placed among the same frozen group of Russian videos as on the web page
-    second_ref = None
-    if second is not None and m.get("lang") == "ru" and str((report["traits"][TRAIT_KEYS[0]] or {})
-                                                            .get("percentile_ref", "")).startswith("ref:"):
-        from .refnorms import reference_for
-        second_ref = "ref:" + reference_for(second_sys, "ru")
-    bars_h = pdf.score_bars_height(report["traits"], report.get("interview"), second, second_ref)
+    # Russian speech: the second opinion with its score only, as on the web page
+    second_ru = second is not None and m.get("lang") == "ru"
+    bars_h = pdf.score_bars_height(report["traits"], report.get("interview"), second, second_ru)
 
     def layout(size: float):
         lh = size * 0.5
@@ -884,7 +851,7 @@ def _profile_section(pdf: Report, report: dict, explanation, charts: dict) -> No
     # ---- score bars with the second opinion (Russian speech) or the members (English speech: their mean)
     title = "Оценки по чертам и второе мнение" if second else "Оценки по чертам"
     pdf.h3(title, keep_mm=bars_h)
-    pdf.score_bars(report["traits"], report.get("interview"), second, second_ref, second_sys or "mm")
+    pdf.score_bars(report["traits"], report.get("interview"), second, second_ru)
     if var and not primary:
         pdf.h3("Участники ансамбля: итоговая оценка — их среднее", keep_mm=22)
         rows = [[MEMBERS.get(n, n)] + [f"{float(v.get(k, float('nan'))):.2f}" for k in TRAIT_KEYS] for n, v in var.items()]

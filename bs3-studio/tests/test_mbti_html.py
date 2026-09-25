@@ -1,6 +1,7 @@
 """The tab «Тип MBTI» (design 10.3, 5.5–5.7; task T18) on the numeric copies of samples A and B: panels, agreement
 line and signs, neuroticism, the letter strip with gaps and its summary line, C18/C19, the reading guide with the
-caveats, the short emotion paragraph; no «сегмент» anywhere."""
+caveats, the short emotion paragraph; no «сегмент» and nothing about a group of processed videos anywhere (change of
+2026-09-26: letters on the absolute scale, the tracks show the score itself)."""
 from __future__ import annotations
 
 import copy
@@ -19,29 +20,40 @@ def _mb(r: dict) -> dict:
     return mbti.get_mbti(r, scores.clean_view(r))
 
 
+RELATIVE = ("опорн", "положени", "типичн", "русских роликов", "обработанных", "предварительн", "большинства")
+
+
 def _cells(strip: str, axis: str) -> int:
     return len(re.findall(rf"title='[^']*· {axis}: [A-Z], ", strip))
 
 
 def test_types_b():
     h = mbti_html.types_html(_mb(rep("B")))
-    for s in ("OCEAN-AI (веса MuPTA) — основная оценка", "пороги предварительные", "Своя модель — второе мнение",
-              "«Попечитель»", "С учётом границ: EXFJ · возможен ENFJ («Наставник»)", "С учётом границ: ISXX",
-              "Нейротизм — ниже типичного. В MBTI этой шкалы нет, поэтому он приводится отдельно.",
-              "Совпадают 0 из 4 осей; расходится E–I; на границе у одной из систем: S–N, T–F, J–P.",
-              "I · интроверсия", "экстраверсия · E", "соответствие шкал r ≈ 0.74", "X (ближе к S) · на границе"):
+    for s in ("OCEAN-AI (веса MuPTA) — основная оценка", "Своя модель — второе мнение",
+              "«Наставник»", "С учётом границ: ENFJ (пограничных осей нет)", "С учётом границ: ISXX",
+              "Нейротизм — средний уровень. В MBTI этой шкалы нет, поэтому он приводится отдельно.",
+              "Совпадают 0 из 4 осей; расходятся E–I, S–N; на границе у одной из систем: T–F, J–P.",
+              "I · интроверсия", "экстраверсия · E", "соответствие шкал r ≈ 0.74",
+              "E · умеренно (0.46) · экстраверсия 0.73 — выше среднего",
+              "F · отчётливо (0.74) · доброжелательность 0.87 — высокий уровень",
+              "X (ближе к P) · на границе · добросовестность 0.48 — средний уровень"):
         assert s in h, s
-    # signs in the second panel, one per axis: ≠ on E–I, ≈ on the others
-    assert h.count("</b> расходится") == 1 and h.count("</b> на границе у одной из систем") == 3
+    # the marker of extraversion at the score 0.73 on the track 0…1
+    assert "left:calc(73.0% - 7px)" in h
+    # signs in the second panel, one per axis: ≠ on E–I and S–N, ≈ on the others
+    assert h.count("</b> расходится") == 2 and h.count("</b> на границе у одной из систем") == 2
     assert "minmax(min(320px,100%),1fr)" in h                        # panels wrap one under the other on a phone
     assert "сегмент" not in h
+    for w in RELATIVE:
+        assert w not in h, w
 
 
 def test_types_a_and_none():
     h = mbti_html.types_html(_mb(rep("A")))
-    assert "«Мастер»" in h and "С учётом границ: ISTP (пограничных осей нет)" in h
-    assert "С учётом границ: XXXJ · тип не выражен: 3 оси из 4 на границе" in h
-    assert "Совпадают 0 из 4 осей; расходится J–P; на границе у одной из систем: E–I, S–N, T–F." in h
+    assert "«Наставник»" in h and "С учётом границ: XNFJ · возможен INFJ («Советник»)" in h
+    assert "X (ближе к E) · на границе · экстраверсия 0.56 — средний уровень" in h
+    assert "С учётом границ: IXXX · тип не выражен: 3 оси из 4 на границе" in h
+    assert "Совпадают 0 из 4 осей; на границе у одной из систем: E–I, S–N, T–F, J–P." in h
     assert mbti_html.types_html(None) == f"<p style='{mbti_html.TEXT14};margin:0'>{caveats.text('C21')}</p>"
 
 
@@ -50,7 +62,7 @@ def test_types_en():
     for s in ("Итог: среднее двух систем", "OCEAN-AI (веса First Impressions V2)", "Своя модель (First Impressions V2)"):
         assert s in h, s
     assert "пороги предварительные" not in h
-    assert re.search(r"(отчётливо|умеренно) \(0\.\d\d\)", h)           # FIV2: the confidence number after the word
+    assert re.search(r"(отчётливо|умеренно) \(0\.\d\d\)", h)           # the confidence number after the word
 
 
 def test_strip_b():
@@ -58,8 +70,7 @@ def test_strip_b():
     for ax in ("E–I", "S–N", "T–F", "J–P"):
         assert _cells(s, ax) == 26, ax
     assert s.count("нет оценки OCEAN-AI") == 7 * 4
-    assert ("Основная система: ESFJ в 16 из 26 отрезков с оценкой, ENFJ — в 10; ось S–N совпадает с итогом в 16 из 26 "
-            "отрезков, остальные оси — во всех.") in s
+    assert "Основная система: ENFJ во всех 26 отрезках с оценкой; все четыре оси совпадают с итогом во всех отрезках." in s
     assert caveats.text("C8") in s and caveats.text("C18") in s
     assert "overflow-x:auto" in s and "grid-template-columns:56px repeat(33,26px)" in s
     assert "сегмент" not in s
@@ -67,7 +78,7 @@ def test_strip_b():
 
 def test_strip_a_short_and_new_jobs():
     s = mbti_html.strip_html(_mb(rep("A")))
-    assert "Основная система: ISTP во всех 17 отрезках с оценкой; все четыре оси совпадают с итогом во всех отрезках." in s
+    assert "Основная система: ENFJ во всех 17 отрезках с оценкой; все четыре оси совпадают с итогом во всех отрезках." in s
     r = rep("B")
     r["timeline"] = []
     r["segments"] = 1
@@ -80,7 +91,7 @@ def test_strip_a_short_and_new_jobs():
             t["variants"]["oceanai"] = copy.deepcopy(t["scores"])
     s = mbti_html.strip_html(_mb(r))
     assert "Своя модель — второе мнение" in s and caveats.text("C18") not in s
-    assert "Своя модель: ISTJ во всех 33 отрезках с оценкой" in s
+    assert "Своя модель: ISTP во всех 33 отрезках с оценкой" in s
 
 
 def test_read():
@@ -92,6 +103,8 @@ def test_read():
               "McCrae, Costa, 1989"):
         assert s in h, s
     assert caveats.c6("en") in mbti_html.read_html(_mb(english("B")))
+    for w in RELATIVE:
+        assert w not in h, w
 
 
 def test_emo_intro():

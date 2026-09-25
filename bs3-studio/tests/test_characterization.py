@@ -1,8 +1,9 @@
 """«Характеристика личности» (design 8, 13.1 test_characterization; task T14).
 
 The lexicon rules of 8.5, and on synthetic views (ru samples A and B, en, without analyses, without the second system,
-all traits typical, all extreme, main system missing): length, forbidden words, no raw scores, letters agree with the
-MBTI section, the closing paragraph, the provisional reference group, no type name when the type is not expressed,
+all traits in the middle, all high, main system missing): length, forbidden words, scores only in the parentheses of
+the trait lines, letters agree with the MBTI section, the closing paragraph, nothing about a group of processed videos
+and no comparison of the two systems (change of 2026-09-26), no type name when the type is not expressed,
 determinism, and the verbatim golden texts tests/golden/char_A.txt, char_B.txt (task T25).
 """
 from __future__ import annotations
@@ -14,19 +15,21 @@ from pathlib import Path
 from samples import english, rep
 
 from bs3 import characterization as C
-from bs3 import mbti, refnorms, scores
+from bs3 import mbti, scores
 from bs3.norms import TRAIT_KEYS
 
 LEVELS = ("high", "above", "mid", "below", "low")
 STOP = ("диагноз", "расстройств", "патолог", "норма", "нормальн", "отклонени", "плохо", "хорошо", "пригод", "рекоменд",
         "тревожн", "является", "склонен", "сегмент")
+# nothing about a group of processed videos, no comparison of the two systems (change of 2026-09-26)
+RELATIVE = ("опорн", "положени", "типичн", "русских ролик", "обработанных", "большинства", "предварительн",
+            "группы сравнения", "вторая система", "второе мнение", "согласие двух систем", "противоположно",
+            "системы по отдельности", "проверка на")
 PRONOUNS = ("он", "она", "его", "её", "ее", "ему", "ей", "него", "неё", "нему", "ней")
 GOLDEN = Path(__file__).resolve().parent / "golden"
-# deviation from design 8.2 (test bound 150-650): the verbatim design texts (8.4-8.6, caveats of 11) give about
-# 720-790 words for the two samples, more than the 400-550 the design estimated, and risk 14.10 allows no further
-# levers; the upper bound leaves room for the longest combination. Back to 650 once the owner shortens the texts
-# (e.g. at the proofreading of the lexicon, decision 16.6)
-MIN_WORDS, MAX_WORDS = 150, 850
+# design 8.2: 150-650 words (without the paragraph «Согласие двух систем», removed on 2026-09-26, the two samples give
+# about 490-520 words)
+MIN_WORDS, MAX_WORDS = 150, 650
 
 # numbers only (voice, speech, face and text-emotion means of the two samples), no identities
 AN = {
@@ -56,24 +59,19 @@ def _build(r: dict):
     return v, mb, C.build(v, mb)
 
 
-def _group_values(system: str, trait: str) -> list:
-    return refnorms.load_ru_prov()["sources"][system][trait]
-
-
 def _cases() -> dict:
     out = {"A": _with_analyses(rep("A"), "A"), "B": _with_analyses(rep("B"), "B"),
            "en": _with_analyses(english("B"), "B"), "no_analyses": rep("B")}
     r = _with_analyses(rep("B"), "B")
     del r["variant_scores"]["mm"]
     out["no_second"] = r
-    r = _with_analyses(rep("B"), "B")                 # every trait at the median of the group: all axes on the border
+    r = _with_analyses(rep("B"), "B")                 # every trait in the middle of the scale: all axes on the border
     for k in TRAIT_KEYS:
-        vals = sorted(_group_values("oceanai", k))
-        r["variant_scores"]["oceanai"][k] = vals[len(vals) // 2]
+        r["variant_scores"]["oceanai"][k] = 0.5
     out["all_mid"] = r
-    r = _with_analyses(rep("A"), "A")                 # every trait above the whole group
+    r = _with_analyses(rep("A"), "A")                 # every trait high on the scale
     for k in TRAIT_KEYS:
-        r["variant_scores"]["oceanai"][k] = max(_group_values("oceanai", k)) + 0.01
+        r["variant_scores"]["oceanai"][k] = 0.9
     out["all_high"] = r
     r = _with_analyses(rep("B"), "B")                 # OCEAN-AI gave nothing: the own model becomes the main system
     del r["variant_scores"]["oceanai"]
@@ -87,7 +85,8 @@ def _cases() -> dict:
 
 def test_lexicon_complete_and_follows_the_rules():
     lex = C.load_lexicon()
-    assert lex["lexicon_version"] == 3          # 2: proofreading of task T25; 3: position phrase of ES in its lead
+    # 2: proofreading of task T25; 3: position phrase of ES in its lead; 4: absolute scale, no reference group
+    assert lex["lexicon_version"] == 4
     assert set(lex["levels"]) == set(TRAIT_KEYS)
     for k in TRAIT_KEYS:
         assert set(lex["levels"][k]) == set(LEVELS), k
@@ -102,6 +101,8 @@ def test_lexicon_complete_and_follows_the_rules():
                 assert not re.search(r"\d", s), where
                 for w in STOP:          # at the start of a word: «проявляется» (openness/high) is not «является»
                     assert not re.search(r"(?<![а-яё])" + w, low), (where, w)
+                for w in RELATIVE:
+                    assert w not in low, (where, w)
                 tokens = re.findall(r"[а-яё]+", low)
                 for p in PRONOUNS:
                     assert p not in tokens, (where, p)
@@ -135,21 +136,33 @@ def test_every_case_reads_within_the_rules():
         # «ключ: число» in the paragraphs (the header label «тип не выражен: 3 оси из 4 на границе» is fixed by 8.3)
         body_text = "\n".join(p["lead"] + " " + p["text"] for p in ch.paragraphs)
         assert not re.search(r"\b\w+:\s*\d", body_text), (case, re.search(r"\b\w+:\s*\d", body_text).group(0))
+        for w in RELATIVE:
+            assert w not in low, (case, w)
+        assert "согласие двух систем" not in low and ch.paragraph("agreement") is None, case
         for p in ch.paragraphs:
             body = p["lead"] + " " + p["text"]
             if p["key"] == "behavior":
                 assert not re.search(r"0\.\d{2}", body), case
                 rest = re.sub(r"\d+ (слово|слова|слов) в минуту", "", body)
                 assert not re.findall(r"\d+(?![\d%])", rest), (case, rest)       # only shares with %
+            elif p["key"].startswith("trait:"):
+                # the score itself, two decimals, first in the parentheses, and no other number
+                k = p["key"][6:]
+                assert p["text"].startswith(f"({v['traits'][k]['score']:.2f}"), (case, k)
+                assert len(re.findall(r"0\.\d{2}", body)) == 1, (case, k)
+            elif p["key"] == "stability":
+                assert f"({v['traits']['emotional_stability']['score']:.2f})" in p["lead"], case
+                assert len(re.findall(r"0\.\d{2}", body)) == 1, case
+            elif p["key"] == "basis":       # the band edges of the scale, and nothing else
+                assert set(re.findall(r"0\.\d{2}", body)) == {"0.35", "0.65", "0.80", "0.20"}, case
             else:
                 assert not re.search(r"0\.\d{2}", body), (case, p["key"])
         assert ch.paragraphs[-1]["key"] == "limits" and ch.paragraphs[-1]["lead"] == "Границы вывода."
         assert ch.paragraphs[0]["key"] == "short" and ch.paragraphs[1]["key"] == "basis"
-        if v["view_meta"]["lang"] == "ru":
-            assert "предварительная" in text and "а не относительно населения" in text, case
-            assert "пороги предварительные" in ch.header_plain(), case
-        else:
-            assert "предварительн" not in text, case
+        # the level word of every trait line is the band of its score
+        for k in TRAIT_KEYS:
+            para = ch.paragraph(f"trait:{k}") or ch.paragraph("stability")
+            assert para["lead"].split(" — ")[1].startswith(scores.level_phrase(v["traits"][k]["score"])), (case, k)
         # letters agree with the MBTI section
         x = mb["x_count"]
         shown = mb["type_strict"] if x <= 2 else mb["type"]
@@ -170,69 +183,60 @@ def test_every_case_reads_within_the_rules():
         assert ch2.plain() == text and ch2.html() == ch.html(), case
 
 
-def test_sample_b_matches_the_design_example():
+def test_sample_b():
     _, mb, ch = _build(_with_analyses(rep("B"), "B"))
-    assert ch.header_plain() == ("ESFJ «Попечитель» · MBTI по OCEAN-AI · ось S–N на границе · нейротизм: ниже "
-                                 "типичного · пороги предварительные")
+    assert ch.header_plain() == "ENFJ «Наставник» · MBTI по OCEAN-AI · нейротизм: средний уровень"
     short = ch.short_plain()
-    assert short == ("По первому впечатлению от записи человек выглядит заметно собранным и организованным, а также "
-                     "заметно общительным и энергичным. В нотации MBTI ближе всего тип ESFJ («Попечитель»), ось S–N на "
-                     "границе. Нейротизм — ниже типичного. Вторая система расходится с основной по оси E–I (её тип — "
-                     "ISXX).")
+    assert short == ("По первому впечатлению от записи человек выглядит заметно доброжелательным и мягким в общении, а "
+                     "также скорее собранным и организованным. В нотации MBTI это тип ENFJ («Наставник»). Нейротизм — "
+                     "средний уровень.")
     assert [p["key"] for p in ch.paragraphs] == [
-        "short", "basis", "trait:conscientiousness", "trait:extraversion", "trait:agreeableness", "trait:openness",
-        "stability", "mbti", "behavior", "agreement", "limits"]
+        "short", "basis", "trait:agreeableness", "trait:conscientiousness", "trait:extraversion", "trait:openness",
+        "stability", "mbti", "behavior", "limits"]
     assert "по 26 отрезкам записи" in ch.paragraph("basis")["text"]
     e = ch.paragraph("trait:extraversion")
-    assert e["lead"] == "Экстраверсия — заметно выше типичного"
-    assert e["text"].startswith("(выше, чем у большинства из 13 русских роликов; в MBTI — буква E, отчётливо). ")
-    assert e["text"].endswith("Вторая система оценивает эту черту противоположно.")
-    o = ch.paragraph("trait:openness")
-    assert o["text"] == ("(примерно посередине среди 13 русских роликов; в MBTI ось S–N на границе). По открытости "
-                         "опыту человек не выделяется из группы сравнения: интерес к новому и опора на привычное "
-                         "выглядят уравновешенными.")
-    for k in ("conscientiousness", "agreeableness"):
-        assert "противоположно" not in ch.paragraph(f"trait:{k}")["text"]
+    assert e["lead"] == "Экстраверсия — выше среднего"
+    assert e["text"].startswith("(0.73; в MBTI — буква E, умеренно). ")
+    a = ch.paragraph("trait:agreeableness")
+    assert a["lead"] == "Доброжелательность — высокий уровень"
+    assert a["text"].startswith("(0.87; в MBTI — буква F, отчётливо). ")
     st = ch.paragraph("stability")
-    assert st["lead"] == ("Эмоциональная устойчивость — выше типичного (выше, чем у большинства из 13 русских роликов); "
-                          "нейротизм, соответственно, — ниже типичного")
-    assert not st["text"].startswith("(")
+    assert st["lead"] == "Эмоциональная устойчивость — средний уровень (0.53); нейротизм, соответственно, — средний уровень."
+    assert st["text"].startswith("Спокойные моменты чередуются с признаками волнения.")
     typ = ch.paragraph("mbti")["text"]
-    assert typ.startswith("В нотации MBTI ближе всего тип ESFJ («Попечитель»), но ось S–N на границе, поэтому точнее "
-                          "записать EXFJ: возможен и тип ENFJ («Наставник»).")
-    assert typ.endswith("По ходу записи буква по оси S–N совпадает с итоговой в 16 из 26 отрезков с оценкой; по "
-                        "остальным осям — во всех.")
+    assert typ.startswith("В нотации MBTI профиль соответствует типу ENFJ («Наставник»).")
+    assert typ.endswith("По ходу записи буквы не менялись: по каждой оси буква совпадает с итоговой во всех 26 "
+                        "отрезках с оценкой.")
     beh = ch.paragraph("behavior")["text"]
     assert beh.startswith("Темп речи медленный (61 слово в минуту), паузы умеренные. Голос по модели эмоций в речи "
                           "ровный и спокойный. Выражение лица, которое модель распознаёт чаще всего, — нейтральное (65% "
                           "кадров). По содержанию речь в основном нейтральна по эмоциональной окраске. Сдержанный голос "
                           "и неторопливая речь не вполне согласуются с оценкой экстраверсии — стоит посмотреть запись.")
-    agr = ch.paragraph("agreement")["text"]
-    assert ("с основной почти не согласна: по открытости опыту, добросовестности, доброжелательности и эмоциональной "
-            "устойчивости одна из систем даёт уровень около типичного; по экстраверсии системы расходятся в "
-            "противоположные стороны — этот вывод наименее надёжен.") in agr
-    assert ("По её оценкам тип — ISXX (ближайший ISTJ); ни одна буква не совпадает уверенно: по оси E–I буквы "
-            "расходятся, по S–N, T–F и J–P хотя бы одна система на границе.") in agr
-    assert agr.endswith("(проверка на 13 роликах), поэтому основной считается OCEAN-AI.")
     lim = ch.paragraph("limits")["text"]
     assert "В 7 отрезках из 33 система OCEAN-AI не дала оценки" in lim
     assert lim.endswith("а не пересказывают эпизоды этого ролика.")
+    assert "ISXX" not in ch.plain() and "ISTP" not in ch.plain()        # the second system is not in the text
 
 
 def test_sample_a():
     _, mb, ch = _build(_with_analyses(rep("A"), "A"))
-    assert ch.header_plain() == ("ISTP «Мастер» · MBTI по OCEAN-AI · нейротизм: заметно выше типичного · пороги "
-                                 "предварительные")
-    assert "В нотации MBTI это тип ISTP («Мастер»)." in ch.short_plain()
-    assert ch.paragraph("mbti")["text"].startswith("В нотации MBTI профиль соответствует типу ISTP («Мастер»).")
+    assert ch.header_plain() == ("ENFJ «Наставник» · MBTI по OCEAN-AI · ось E–I на границе · нейротизм: средний "
+                                 "уровень")
+    assert "В нотации MBTI ближе всего тип ENFJ («Наставник»), ось E–I на границе." in ch.short_plain()
+    assert ch.paragraph("mbti")["text"].startswith("В нотации MBTI ближе всего тип ENFJ («Наставник»), но ось E–I на "
+                                                   "границе, поэтому точнее записать XNFJ: возможен и тип INFJ "
+                                                   "(«Советник»).")
     assert "во всех 17 отрезках с оценкой" in ch.paragraph("mbti")["text"]
-    assert [p["key"] for p in ch.paragraphs][2:6] == ["trait:openness", "trait:extraversion", "trait:agreeableness",
-                                                      "trait:conscientiousness"]
-    for k in ("openness", "extraversion", "agreeableness", "conscientiousness"):
-        assert ch.paragraph(f"trait:{k}")["lead"].endswith("заметно ниже типичного")
+    assert [p["key"] for p in ch.paragraphs][2:6] == ["trait:agreeableness", "trait:conscientiousness",
+                                                      "trait:openness", "trait:extraversion"]
+    for k in ("openness", "agreeableness", "conscientiousness"):
+        assert ch.paragraph(f"trait:{k}")["lead"].endswith("выше среднего")
+    e = ch.paragraph("trait:extraversion")
+    assert e["lead"] == "Экстраверсия — средний уровень"
+    assert e["text"] == "(0.56; в MBTI ось E–I на границе). На записи сочетаются активность в контакте и сдержанность."
     assert "Сдержанный голос" not in ch.plain() and "Оживлённый голос" not in ch.plain()
     assert "радость (51% кадров)" in ch.paragraph("behavior")["text"]
-    assert "XXXJ (ближайший ENFJ)" in ch.paragraph("agreement")["text"]
+    assert "IXXX" not in ch.plain() and "ISTJ" not in ch.plain()        # the second system is not in the text
     assert "В 1 отрезке из 18" in ch.paragraph("limits")["text"]
 
 
@@ -240,19 +244,21 @@ def test_special_cases():
     cases = _cases()
     _, _, ch = _build(cases["no_analyses"])
     assert ch.paragraph("behavior") is None
-    _, _, ch = _build(cases["no_second"])
-    assert ch.paragraph("agreement")["text"] == "Второе мнение для этого ролика недоступно."
-    assert "Вторая система" not in ch.short_plain()
+    _, _, ch_ns = _build(cases["no_second"])
+    _, _, ch_b = _build(_with_analyses(rep("B"), "B"))
+    assert ch_ns.plain() == ch_b.plain()                 # the second system does not change the text
     _, mb, ch = _build(cases["all_mid"])
     assert mb["type"] == "XXXX" and len(mb["alternatives"]) == 15
     assert "тип не выражен: 4 оси из 4 на границе" in ch.header_plain() and ch.header["name"] is None
     assert "Тип MBTI по этой записи не выражен (XXXX)." in ch.short_plain()
     assert ch.paragraph("mbti")["text"].startswith("По всем четырём осям значения близки к границе (XXXX)")
-    assert "ни одна из четырёх черт, связанных с MBTI, не выделяется" in ch.short_plain()
+    assert "ни одна из четырёх черт, связанных с MBTI, не выделяется: все они на среднем уровне." in ch.short_plain()
+    assert "оценки лежат в средней зоне шкалы" in ch.paragraph("mbti")["text"]
     _, mb, ch = _build(cases["all_high"])
     assert mb["type"] == "ENFJ"
-    assert all(ch.paragraph(f"trait:{k}")["lead"].endswith("заметно выше типичного")
+    assert all(ch.paragraph(f"trait:{k}")["lead"].endswith("высокий уровень")
                for k in ("openness", "conscientiousness", "extraversion", "agreeableness"))
+    assert ch.paragraph("stability")["lead"].endswith("нейротизм, соответственно, — низкий уровень.")
     _, mb, ch = _build(cases["primary_missing"])
     assert mb["source"] == "own_model"
     assert "MBTI по своей модели" in ch.header_plain()
@@ -260,9 +266,8 @@ def test_special_cases():
     assert "Основная система OCEAN-AI не дала оценок по этому ролику" in ch.paragraph("limits")["text"]
     _, mb, ch = _build(cases["en"])
     assert "MBTI по среднему двух систем" in ch.header_plain()
-    assert "First Impressions V2 (6000 роликов)" in ch.paragraph("basis")["text"]
-    assert "Системы по отдельности" in ch.paragraph("agreement")["text"]
-    assert "проверка на" not in ch.paragraph("agreement")["text"]
+    assert "по среднему двух систем" in ch.paragraph("basis")["text"]
+    assert "от 0 до 1" in ch.paragraph("basis")["text"]
 
 
 def test_no_big_five():
@@ -282,19 +287,24 @@ def test_html_and_pdf_forms():
     h = ch.html()
     assert h.count("<p ") == len(ch.paragraphs)
     assert "<b>Коротко.</b>" in h and "font-size:36px" in h
-    assert "E<span style='opacity:.55;text-decoration:underline 2px dashed #808080" in h     # the S on the border
-    assert "border:1px dashed #808080" in h and "ось S–N на границе" in h
+    assert "<b>Согласие двух систем.</b>" not in h and "line-height:1.1'>ENFJ</span>" in h    # no borderline axis
     assert "<script" not in h
     pdf = ch.pdf_paragraphs()
     assert pdf[0]["markdown"].startswith("**Коротко.** По первому впечатлению")
     hd = ch.pdf_header()
-    assert hd["letters"] == [("E", False), ("S", True), ("F", False), ("J", False)] and hd["name"] == "Попечитель"
+    assert hd["letters"] == [("E", False), ("N", False), ("F", False), ("J", False)] and hd["name"] == "Наставник"
+    _, _, ch = _build(_with_analyses(rep("A"), "A"))
+    h = ch.html()
+    assert "<span style='opacity:.55;text-decoration:underline 2px dashed #808080;text-underline-offset:6px'>E</span>NFJ" in h
+    assert "border:1px dashed #808080" in h and "ось E–I на границе" in h
+    assert ch.pdf_header()["letters"] == [("E", True), ("N", False), ("F", False), ("J", False)]
     assert "Здесь появится характеристика личности" in C.placeholder_html()
 
 
 def test_golden_texts():
     """Verbatim comparison with tests/golden/char_A.txt, char_B.txt (task T25: saved after the proofreading of
-    lexicon_version 2, regenerated for lexicon_version 3, from the same inputs as here). A lexicon or template change must regenerate them on purpose."""
+    lexicon_version 2, regenerated for lexicon_version 3 and for lexicon_version 4 — the absolute scale — from the
+    same inputs as here). A lexicon or template change must regenerate them on purpose."""
     for name in ("A", "B"):
         path = GOLDEN / f"char_{name}.txt"
         assert path.is_file(), f"missing golden text {path.name}"

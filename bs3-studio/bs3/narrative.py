@@ -13,7 +13,6 @@ MOD_RU = {"face": "лицо", "audio": "голос", "audio_whisper": "голо�
           "text": "содержание речи", "behavior": "описание поведения"}
 
 
-SMALL_POOL = 20          # below this many processed videos a percentage only looks precise: say it in words
 SYSTEM_RU = {"oceanai": "OCEAN-AI", "mm": "своя модель (MM-PSYCHE)", "scene": "SSL-MEPR (сцена)"}
 # grammatical gender of the modality names, for «почти не повлиял / повлияло»
 MOD_GENDER = {"лицо": "n", "голос": "m", "содержание речи": "n", "описание поведения": "n"}
@@ -29,35 +28,15 @@ def plural_ru(n: int, forms: tuple) -> str:
     return forms[2]
 
 
-def _pool_size(ref: str):
-    import re
-    m = re.search(r"N\s*=\s*(\d+)", ref or "")
-    return int(m.group(1)) if m else None
-
-
-def _pct_phrase(t: dict, what: str = "роликов") -> str:
-    """Same wording as the score bars: a percentage for large reference groups, words for a small pool (cuts 65/35,
-    the same as the level bands of the characterization). `percentile_ref = "ref:<id>"` (clean_view of Russian jobs)
-    names a frozen reference group of refnorms."""
+def _pct_phrase(t: dict) -> str:
+    """The FIV2 percentile in words, as on the score bars; '' for anything else (percentiles against the pool of
+    processed videos are never worded, change of 2026-09-26)."""
     pct = t.get("percentile")
-    if pct is None:
-        return ""
     ref = t.get("percentile_ref", "")
-    if ref.startswith("ref:"):
-        from .scores import position_phrase
-        return position_phrase(max(0.0, min(100.0, float(pct))) / 100.0, ref[4:]) or ""
-    if "пула" in ref:
-        group = "русских роликов" if "русских" in ref else ("английских роликов" if "английских" in ref else "обработанных роликов")
-    else:
-        group = "людей в First Impressions V2"
+    if pct is None or not ("First Impressions V2" in ref or "FIV2" in ref):
+        return ""
+    group = "людей в First Impressions V2"
     p = max(0.0, min(100.0, float(pct)))
-    n = _pool_size(ref)
-    if "пула" in ref and n is not None and n < SMALL_POOL:
-        if p >= 65:
-            return f"выше, чем у большинства из {n} {group}"
-        if p <= 35:
-            return f"ниже, чем у большинства из {n} {group}"
-        return f"примерно посередине среди {n} {group}"
     if 45 <= p <= 55:
         return f"примерно посередине среди {group}"
     return f"выше, чем у {p:.0f}% {group}" if p > 50 else f"ниже, чем у {100 - p:.0f}% {group}"
@@ -190,14 +169,13 @@ def build_narrative(rep: dict, expl: dict | None = None) -> str:
 
 
 def method_notes(view: dict, expl: dict | None = None) -> str:
-    """«Как получены оценки» (design 9): where the scores come from, the reference group, how stable the scores are
-    over the video, the segments without the main system (C13) and, for Russian speech, why the two systems are not
-    compared by their numbers. Built on the clean view (scores.clean_view); replaces the Big Five part of the 2.0
+    """«Как получены оценки» (design 9): where the scores come from, the scale of levels and letters, how stable the
+    scores are over the video, the segments without the main system (C13) and, for Russian speech, why the two
+    systems are not averaged. Built on the clean view (scores.clean_view); replaces the Big Five part of the 2.0
     summary. `expl` is accepted for the page and the PDF, which call it with the explanation at hand."""
     from . import caveats
     meta = view.get("view_meta") or {}
     lang, main = meta.get("lang", "en"), meta.get("main_system")
-    ref = meta.get("reference") or {}
     var = view.get("variant_scores") or {}
     parts: List[str] = []
     if lang == "ru":
@@ -206,13 +184,14 @@ def method_notes(view: dict, expl: dict | None = None) -> str:
         else:
             parts.append("Основные оценки дала система OCEAN-AI на весах MuPTA, обученных на русскоязычных участниках; "
                          "своя модель MM-PSYCHE показана как второе мнение и в основные оценки не входит.")
-        parts.append(f"Уровни черт и буквы MBTI считаются по положению оценки среди {ref.get('label_ru', '')}, "
-                     "отдельно для каждой системы: это предварительная опорная группа.")
+        parts.append("Уровни черт и буквы MBTI считаются по самой оценке системы на шкале от 0 до 1 с серединой 0.5, "
+                     "отдельно для каждой системы.")
     else:
         parts.append("Оценки — среднее двух систем, OCEAN-AI (веса First Impressions V2) и своей модели MM-PSYCHE; обе "
                      "на шкале First Impressions V2.")
-        parts.append("Уровни черт и буквы MBTI — относительно оценок наблюдателей в обучающей выборке First "
-                     "Impressions V2 (6000 роликов).")
+        parts.append("Уровни черт и буквы MBTI считаются по самой оценке на шкале от 0 до 1 с серединой 0.5; процентили "
+                     "на полосках — относительно оценок наблюдателей в обучающей выборке First Impressions V2 "
+                     "(6000 роликов).")
 
     # stability over the segments the main system scored
     tl = [t for t in (view.get("timeline") or []) if t.get("scores")]
@@ -245,8 +224,8 @@ def method_notes(view: dict, expl: dict | None = None) -> str:
             diff = None
         if diff is not None and diff > 0:
             parts.append(f"Своя модель обучена на англоязычных роликах First Impressions V2, и на русской речи её числа "
-                         f"в среднем на {diff:.2f} ниже, чем у OCEAN-AI; поэтому каждая система сравнивается со своей "
-                         "опорной группой, а не по числам.")
+                         f"в среднем на {diff:.2f} ниже, чем у OCEAN-AI: это разница шкал двух систем, поэтому их оценки "
+                         "не усредняются, а тип MBTI каждой показан отдельно.")
     return " ".join(parts)
 
 

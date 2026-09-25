@@ -1,4 +1,5 @@
-"""MBTI notation of Big Five (design 4, 5, 7; tests 1-14 of design 13.1)."""
+"""MBTI notation of Big Five (design 4, 5, 7; tests 1-14 of design 13.1; change of 2026-09-26: the customer's formula
+on the absolute score 0…1 for both systems and both languages, no reference group)."""
 from __future__ import annotations
 
 import copy
@@ -12,8 +13,8 @@ from pathlib import Path
 
 from samples import english, rep
 
-from bs3 import mbti, refnorms, scores
-from bs3.norms import TRAIT_KEYS, load_norms
+from bs3 import mbti, scores
+from bs3.norms import TRAIT_KEYS
 
 DOC = {"extraversion": 0.72, "openness": 0.61, "agreeableness": 0.48, "conscientiousness": 0.55,
        "emotional_stability": 0.67}
@@ -34,14 +35,13 @@ def test_document_example_raw():
     assert _conf(r) == [0.44, 0.22, 0.04, 0.10]
     assert [r["axes"][ax]["borderline"] for ax in mbti.AXES] == [False, True, True, True]
     assert r["neuroticism"]["value"] == 0.33
-    cfg = mbti.load_config()
-    cfg["method"] = "raw"
-    for system, lang in (("oceanai", "ru"), ("mean", "en")):
-        m = mbti.mbti_for(system, DOC, lang, cfg)
+    for system, lang in (("oceanai", "ru"), ("mm", "ru"), ("mean", "en"), ("oceanai", "en")):
+        m = mbti.mbti_for(system, DOC, lang)
         assert m["type"] == "EXXX" and m["type_strict"] == "ENTJ" and m["type_name"] == "Руководитель"
         assert [m["axes"][ax]["confidence"] for ax in mbti.AXES] == [0.44, 0.22, 0.04, 0.10]
-        assert m["neuroticism"]["value"] == 0.33
-        assert m["axes"]["EI"]["threshold_raw"] == 0.5
+        assert [m["axes"][ax]["value"] for ax in mbti.AXES] == [0.72, 0.61, 0.48, 0.55]
+        assert all(m["axes"][ax]["threshold"] == 0.5 for ax in mbti.AXES)
+        assert m["neuroticism"]["value"] == 0.33 and m["neuroticism"]["level"] == "ниже среднего"
 
 
 # 2
@@ -95,68 +95,37 @@ def test_degenerate_inputs():
 # 6
 def test_neuroticism():
     raw = {**DOC, "emotional_stability": 0.30}
-    cfg = mbti.load_config()
-    cfg["method"] = "raw"
-    assert mbti.mbti_for("oceanai", raw, "ru", cfg)["neuroticism"]["value"] == 0.70
+    n = mbti.mbti_for("oceanai", raw, "ru")["neuroticism"]
+    assert n["value"] == 0.70 and n["level"] == "выше среднего" and "position" not in n
     b = rep("B")["variant_scores"]["oceanai"]
     m = mbti.mbti_for("oceanai", b, "ru")
-    p_es = refnorms.position("oceanai", "ru", "emotional_stability", b["emotional_stability"])
-    assert m["neuroticism"]["position"] == round(1 - p_es, 3)
     assert m["neuroticism"]["value"] == round(1 - b["emotional_stability"], 3)
     mirror = {"high": "low", "above": "below", "mid": "mid", "below": "above", "low": "high"}
     for i in range(101):
         p = i / 100
         assert scores.level(1 - p) == mirror[scores.level(p)], p
-    assert "ниже типичного" in m["neuroticism_note"] and "0." not in m["neuroticism_note"]
+    assert "средний уровень" in m["neuroticism_note"] and "0." not in m["neuroticism_note"]
 
 
 # 7
-def test_refnorms():
-    q = load_norms()["quantiles"]
-    for k in TRAIT_KEYS:
-        # deviation from design 13.1 item 7 (median -> 0.5 within 0.01): FIV2 labels are discrete (steps of about
-        # 0.01), up to 3 quantiles around the median share one value and norms.percentile (design 4.3: p =
-        # percentile / 100, the same percentile the page and the PDF print) maps a tied value to its last quantile,
-        # so the median lies at 50-53%
-        assert round(abs(refnorms.position("mean", "en", k, q[k][50]) - 0.5), 6) <= 0.03
-        mid = (q[k][49] + q[k][51]) / 2
-        assert round(abs(refnorms.position("mean", "en", k, mid) - 0.5), 6) <= 0.03
-    grid = [i / 200 for i in range(201)]
-    for system, lang in (("oceanai", "ru"), ("mm", "ru"), ("oceanai", "en")):
-        for k in TRAIT_KEYS:
-            ps = [refnorms.position(system, lang, k, v) for v in grid]
-            assert all(b >= a for a, b in zip(ps, ps[1:])), (system, lang, k)
-    assert refnorms.position("oceanai", "ru", "extraversion", 0.7298) == 13 / 14
-    assert refnorms.position("oceanai", "ru", "extraversion", 0.5) == 1 / 14
-    assert refnorms.position("oceanai", "ru", "extraversion", 0.99) == 13 / 14
-    assert refnorms.position("mm", "ru", "openness", 0.0) == 1 / 14
-    assert refnorms.position("oceanai", "ru", "extraversion", None) is None
-    assert refnorms.position("oceanai", "ru", "extraversion", float("nan")) is None
-    assert refnorms.position("oceanai", "ru", "extraversion", "abc") is None
-    # equal values share their mean rank
-    assert refnorms.rank_position([0.1, 0.2, 0.2, 0.3], 0.2) == 2.5 / 5
-    assert refnorms.rank_position([0.1, 0.2, 0.2, 0.3], 0.15) == 1.75 / 5
-    # the frozen file
-    d = refnorms.load_ru_prov()
-    assert d["id"] == "ru_prov_2026-09-25" and d["n"] == 13 and d["kind"] == "provisional"
-    assert set(d["sources"]) == {"oceanai", "mm"}
-    for s in ("oceanai", "mm"):
-        assert set(d["sources"][s]) == set(TRAIT_KEYS)
-        for k in TRAIT_KEYS:
-            vals = d["sources"][s][k]
-            assert len(vals) == 13 and vals == sorted(vals) and all(round(v, 4) == v for v in vals)
-    text = json.dumps({k: v for k, v in d.items() if k != "cutoff_job"})
-    assert "20260" not in text
-    st = refnorms.agreement_stats()
-    assert st["n"] == 13 and st["letters_same"] == {"EI": 5, "SN": 7, "TF": 3, "JP": 3}
-    assert st["spearman"] == {"openness": 0.11, "conscientiousness": -0.34, "extraversion": -0.45,
-                              "agreeableness": -0.31, "emotional_stability": -0.6}
-    ds = refnorms.describe("ref:ru_prov_2026-09-25")
-    assert ds["n"] == 13 and ds["label_ru"] == "13 русских роликов, обработанных системой до 25.09.2026"
-    assert refnorms.describe("fiv2")["kind"] == "norm" and refnorms.describe("fiv2")["n"] == 6000
-    assert refnorms.reference_for("oceanai", "ru") == "ru_prov_2026-09-25"
-    assert refnorms.reference_for("mean", "en") == "fiv2"
-    assert abs(refnorms.value_at("oceanai", "ru", "extraversion", 0.5) - 0.6487) < 1e-9
+def test_absolute_scale_config():
+    """No reference group: method "raw", thresholds 0.5, the same letters for any system and language."""
+    cfg = mbti.load_config()
+    assert cfg["method"] == "raw" and cfg["raw_thresholds"] == {"EI": 0.5, "SN": 0.5, "TF": 0.5, "JP": 0.5}
+    for key in ("references", "ru_prov_file", "thresholds"):
+        assert key not in cfg, key
+    assert cfg["borderline"] == 0.15 and mbti.SCHEMA_VERSION == 2 and mbti.METHOD == "raw"
+    b = rep("B")["variant_scores"]
+    for system in ("oceanai", "mm"):
+        types = {mbti.mbti_for(system, b[system], lang)["type"] for lang in ("ru", "en")}
+        assert len(types) == 1, system
+        m = mbti.mbti_for(system, b[system], "ru")
+        for ax in mbti.AXES:
+            a = m["axes"][ax]
+            assert a["value"] == round(b[system][a["trait"]], 3)
+            assert set(a) <= {"trait", "value", "threshold", "letter", "confidence", "borderline", "word", "missing",
+                              "clipped"}
+        assert "reference" not in m
 
 
 # 8
@@ -206,7 +175,7 @@ def test_segments_old_and_new_formats():
     sec3 = mbti.build_section(scores.clean_view(r), computed_at="t")
     assert len([e for e in sec3["timeline"] if e.get("type_strict")]) == 26
     lane2 = sec3["second"][0]["timeline"]
-    assert len(lane2) == 33 and all(e["type_strict"] == "ISTJ" for e in lane2)
+    assert len(lane2) == 33 and all(e["type_strict"] == "ISTP" for e in lane2)
     assert sec3["second"][0]["stability"]["EI"] == {"same": 33, "of": 33}
     # no segments at all
     r = rep("B")
@@ -226,16 +195,20 @@ def test_get_mbti_is_pure():
         loaded = json.loads(before_text)
         snapshot = copy.deepcopy(loaded)
         mb = mbti.get_mbti(loaded, scores.clean_view(loaded))
-        assert mb["computed_on_render"] is True and mb["schema_version"] == 1
+        assert mb["computed_on_render"] is True and mb["schema_version"] == 2
         assert loaded == snapshot and "mbti" not in loaded
         mb2 = mbti.get_mbti(loaded)                                   # the view is built inside
         assert mb2["type"] == mb["type"] and loaded == snapshot
         time.sleep(0.01)
         assert f.stat().st_mtime_ns == before_mtime and f.read_text(encoding="utf-8") == before_text
         assert sorted(os.listdir(d)) == ["result.json"]
-    saved = {**r, "mbti": {"schema_version": 1, "type": "SAVED"}}
+    saved = {**r, "mbti": {"schema_version": 2, "type": "SAVED"}}
     got = mbti.get_mbti(saved, scores.clean_view(saved))
-    assert got == {"schema_version": 1, "type": "SAVED"} and "computed_on_render" not in got
+    assert got == {"schema_version": 2, "type": "SAVED"} and "computed_on_render" not in got
+    # a section of schema 1 (letters by the position in the reference group) is not shown: computed anew
+    old = {**r, "mbti": {"schema_version": 1, "type": "EXFJ"}}
+    got = mbti.get_mbti(old, scores.clean_view(old))
+    assert got["type"] == "ENFJ" and got["computed_on_render"] is True
     no_bf = {"model": {"lang": "ru", "primary": "oceanai"}, "traits": {}, "variant_scores": {}}
     assert mbti.get_mbti(no_bf) is None
 
@@ -267,19 +240,21 @@ def _p(m):
 def test_golden_sample_a():
     v = scores.clean_view(rep("A"))
     mb = mbti.build_section(v, computed_at="t")
-    assert mb["type"] == "ISTP" and mb["type_strict"] == "ISTP" and mb["type_name"] == "Мастер" and mb["x_count"] == 0
-    assert _p(mb) == [0.071, 0.071, 0.071, 0.143]
-    assert [mb["axes"][ax]["confidence"] for ax in mbti.AXES] == [0.86, 0.86, 0.86, 0.71]
-    assert all(mb["axes"][ax]["word"] == "отчётливо" for ax in mbti.AXES)
-    assert [scores.level(v["traits"][k]["position"]) for k in TRAIT_KEYS] == ["low"] * 5
-    assert mb["neuroticism"]["position"] == 0.929 and mb["neuroticism"]["level"] == "заметно выше типичного"
+    assert mb["type"] == "XNFJ" and mb["type_strict"] == "ENFJ" and mb["type_name"] == "Наставник" and mb["x_count"] == 1
+    assert mb["alternatives"] == ["INFJ"]
+    assert _p(mb) == [0.556, 0.651, 0.669, 0.653]
+    assert [mb["axes"][ax]["confidence"] for ax in mbti.AXES] == [0.11, 0.3, 0.34, 0.31]
+    assert [mb["axes"][ax]["word"] for ax in mbti.AXES] == ["на границе", "умеренно", "умеренно", "умеренно"]
+    assert [scores.level(v["traits"][k]["score"]) for k in TRAIT_KEYS] == ["above", "above", "mid", "above", "mid"]
+    assert mb["neuroticism"] == {"value": 0.644, "level": "средний уровень",
+                                 "note": "шкала не имеет соответствия в MBTI, приводится отдельно"}
     s = mb["second"][0]
-    assert s["source"] == "own_model" and s["type"] == "XXXJ" and s["type_strict"] == "ENFJ"
-    assert _p(s) == [0.586, 0.598, 0.523, 0.729]
-    assert mb["agreement"]["axes"] == {"EI": "border", "SN": "border", "TF": "border", "JP": "differ"}
+    assert s["source"] == "own_model" and s["type"] == "IXXX" and s["type_strict"] == "ISTJ"
+    assert _p(s) == [0.311, 0.415, 0.475, 0.505]
+    assert mb["agreement"]["axes"] == {"EI": "border", "SN": "border", "TF": "border", "JP": "border"}
     assert mb["agreement"]["n_agree"] == 0
     assert v["view_meta"]["segments_without_primary"] == [16]
-    assert mb["modal_types"] == [["ISTP", 17]]
+    assert mb["modal_types"] == [["ENFJ", 17]]
     assert all(mb["stability"][ax] == {"same": 17, "of": 17} for ax in mbti.AXES)
     assert round(v["traits"]["extraversion"]["score"], 3) == 0.556
     assert "timeline" not in s
@@ -288,52 +263,51 @@ def test_golden_sample_a():
 def test_golden_sample_b():
     v = scores.clean_view(rep("B"))
     mb = mbti.build_section(v, computed_at="t")
-    assert mb["type"] == "EXFJ" and mb["type_strict"] == "ESFJ" and mb["type_name"] == "Попечитель"
-    assert mb["alternatives"] == ["ENFJ"] and mb["x_count"] == 1
-    assert _p(mb) == [0.929, 0.429, 0.929, 0.929]
-    assert [mb["axes"][ax]["confidence"] for ax in mbti.AXES] == [0.86, 0.14, 0.86, 0.86]
-    assert mb["axes"]["SN"]["borderline"] and mb["axes"]["SN"]["word"] == "на границе"
-    assert mb["axes"]["EI"]["raw_score"] == 0.730 and mb["axes"]["EI"]["threshold_raw"] == 0.649
-    assert [scores.level(v["traits"][k]["position"]) for k in TRAIT_KEYS] == ["mid", "high", "high", "high", "above"]
-    assert mb["neuroticism"]["position"] == 0.286 and mb["neuroticism"]["level"] == "ниже типичного"
-    assert mb["neuroticism_note"] == "Шкала нейротизма (ниже типичного) в MBTI не выражается, приводится отдельно"
+    assert mb["type"] == "ENFJ" and mb["type_strict"] == "ENFJ" and mb["type_name"] == "Наставник"
+    assert mb["alternatives"] == [] and mb["x_count"] == 0
+    assert _p(mb) == [0.73, 0.712, 0.868, 0.755]
+    assert [mb["axes"][ax]["confidence"] for ax in mbti.AXES] == [0.46, 0.42, 0.74, 0.51]
+    assert [mb["axes"][ax]["word"] for ax in mbti.AXES] == ["умеренно", "умеренно", "отчётливо", "умеренно"]
+    assert not any(mb["axes"][ax]["borderline"] for ax in mbti.AXES)
+    assert [scores.level(v["traits"][k]["score"]) for k in TRAIT_KEYS] == ["above", "above", "above", "high", "mid"]
+    assert mb["neuroticism"]["value"] == 0.47 and mb["neuroticism"]["level"] == "средний уровень"
+    assert mb["neuroticism_note"] == "Шкала нейротизма (средний уровень) в MBTI не выражается, приводится отдельно"
     s = mb["second"][0]
-    assert s["type"] == "ISXX" and s["type_strict"] == "ISTJ"
-    assert _p(s) == [0.214, 0.143, 0.429, 0.571]
-    assert mb["agreement"]["axes"] == {"EI": "differ", "SN": "border", "TF": "border", "JP": "border"}
+    assert s["type"] == "ISXX" and s["type_strict"] == "ISTP"
+    assert _p(s) == [0.252, 0.343, 0.454, 0.476]
+    assert mb["agreement"]["axes"] == {"EI": "differ", "SN": "differ", "TF": "border", "JP": "border"}
     assert mb["agreement"]["n_agree"] == 0
     assert mb["segments_total"] == 33 and mb["segments_used"] == 26
-    assert mb["modal_types"] == [["ESFJ", 16], ["ENFJ", 10]]
-    assert mb["stability"] == {"EI": {"same": 26, "of": 26}, "SN": {"same": 16, "of": 26},
-                               "TF": {"same": 26, "of": 26}, "JP": {"same": 26, "of": 26}}
-    assert mb["reference"]["id"] == "ru_prov_2026-09-25" and mb["reference"]["kind"] == "provisional"
+    assert mb["modal_types"] == [["ENFJ", 26]]
+    assert all(mb["stability"][ax] == {"same": 26, "of": 26} for ax in mbti.AXES)
+    assert "reference" not in mb and all("reference" not in x for x in mb["second"])
     assert mb["reliability"]["EI"] == "высокая (r≈0.74)" and mb["reliability_r"]["TF"] == 0.44
-    assert mb["computed_by"] == "BS Profiler 3.0 3.0.0a1" and mb["method"] == "position" and mb["llm"] is None
+    assert mb["computed_by"] == "BS Profiler 3.0 3.0.0a1" and mb["method"] == "raw" and mb["llm"] is None
+    assert mb["schema_version"] == 2
     assert mb["source"] == "ocean_ai" and mb["role"] == "main" and s["role"] == "second_opinion"
 
 
 def test_fact_card_and_journal_lines():
     mb = mbti.build_section(scores.clean_view(rep("B")), computed_at="t")
-    assert mbti.fact_card(mb) == ("Тип MBTI · OCEAN-AI", "EXFJ",
-                                  "ближайший ESFJ «Попечитель» · пороги предварительные · своя модель: ISXX")
+    assert mbti.fact_card(mb) == ("Тип MBTI · OCEAN-AI", "ENFJ", "«Наставник» · своя модель: ISXX")
     lines = mbti.journal_lines(mb)
-    assert lines[0] == ("Тип MBTI (OCEAN-AI, пороги предварительные): EXFJ, ближайший ESFJ «Попечитель», "
-                        "возможен ENFJ; нейротизм — ниже типичного")
-    assert lines[1] == ("Второе мнение MBTI (своя модель): ISXX, ближайший ISTJ; уверенно совпадают 0 осей из 4 "
-                        "(E–I ≠, S–N ≈, T–F ≈, J–P ≈)")
+    assert lines[0] == "Тип MBTI (OCEAN-AI): ENFJ «Наставник»; нейротизм — средний уровень"
+    assert lines[1] == ("Второе мнение MBTI (своя модель): ISXX, ближайший ISTP; уверенно совпадают 0 осей из 4 "
+                        "(E–I ≠, S–N ≠, T–F ≈, J–P ≈)")
     a = mbti.build_section(scores.clean_view(rep("A")), computed_at="t")
     label, value, note = mbti.fact_card(a)
-    assert value == "ISTP" and note.startswith("«Мастер»") and note.endswith("своя модель: XXXJ")
-    assert mbti.journal_lines(a)[1].startswith("Второе мнение MBTI (своя модель): XXXJ, тип не выражен")
+    assert value == "XNFJ" and note.startswith("ближайший ENFJ «Наставник»") and note.endswith("своя модель: IXXX")
+    assert mbti.journal_lines(a)[1].startswith("Второе мнение MBTI (своя модель): IXXX, тип не выражен")
     assert mbti.fact_card(None) is None
     for text in [*lines, note]:
-        assert "сегмент" not in text and "определяет тип" not in text
+        assert "сегмент" not in text and "определяет тип" not in text and "предварительн" not in text
 
 
 def test_english_section():
     v = scores.clean_view(english("B"))
     mb = mbti.build_section(v, computed_at="t")
-    assert mb["source"] == "mean" and mb["reference"]["id"] == "fiv2" and mb["reference"]["kind"] == "norm"
+    assert mb["source"] == "mean" and "reference" not in mb and mb["method"] == "raw"
+    assert mb["type"] == "XXFJ" and mb["type_strict"] == "ENFJ"                   # the mean of the two systems
     assert [s["source"] for s in mb["second"]] == ["ocean_ai", "own_model"]
     assert mb["agreement"]["pair"] == ["ocean_ai", "own_model"]
     label, _, note = mbti.fact_card(mb)

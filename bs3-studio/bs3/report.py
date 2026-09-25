@@ -61,18 +61,14 @@ def mmss_labels(text) -> str:
 def build_report(video: str | Path, result: dict, *, backend: str, corpus: str, lang: str,
                  asr_model: str | None, modalities=("audio", "video", "text"),
                  pool_lang: str | None = None, primary: str | None = None) -> dict:
-    """`pool_lang`: report percentiles against the pool of processed videos of that language (see pool.py) instead
-    of the FIV2 train labels; used when the main score is on a scale other than FIV2 (OCEAN-AI MuPTA for Russian).
-    `primary`: the ensemble member that supplied the main score (None = mean of the members)."""
+    """`pool_lang`: the main score is on a scale other than FIV2 (OCEAN-AI MuPTA for Russian): the traits get the score
+    only, with no percentile (FIV2 norms do not apply, and no group of processed videos is compared with — change of
+    2026-09-26). `primary`: the ensemble member that supplied the main score (None = mean of the members)."""
     traits = {}
     for k in TRAIT_KEYS:
         s = result["scores"][k]
         t = {"score": round(s, 4), "name_ru": RU_NAMES[k]}
-        if pool_lang:
-            from . import pool as _pool
-            pct, n = _pool.percentile(k, s, pool_lang)
-            t["percentile"], t["percentile_ref"] = pct, _pool.label(pool_lang, n)
-        else:
+        if not pool_lang:
             t["percentile"] = t["percentile_vs_fiv2"] = percentile(k, s)
             t["percentile_ref"] = FIV2_REF
         traits[k] = t

@@ -31,8 +31,8 @@ def _add_common(p, lang_choices=("en", "ru")):
                    help="ensemble: comma-separated subset of oceanai,mm,scene (default oceanai,mm = best on FIV2 test)")
     p.add_argument("--primary", default="auto",
                    help="ensemble: member giving the main score (auto = oceanai for --lang ru, mean otherwise; "
-                        "mean | oceanai | mm | scene). With a primary member, percentiles are taken against the pool "
-                        "of processed videos of that language (~/bs/pool), not FIV2")
+                        "mean | oceanai | mm | scene). With a primary member the report gives the scores without "
+                        "percentiles (FIV2 norms apply only to the FIV2 scale)")
     p.add_argument("--ollama-model", default="qwen2.5vl:7b",
                    help="mm: Ollama vision model for behaviour descriptions (qwen3-vl:30b gives the same accuracy, 3x heavier)")
     p.add_argument("--lang", default="en", choices=list(lang_choices),

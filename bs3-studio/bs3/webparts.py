@@ -41,9 +41,6 @@ SECOND_TITLES = {"mm": "своя модель MM-PSYCHE", "oceanai": "OCEAN-AI",
 MODALITY_HEADS = {"face": ("Лицо", "кадры"), "audio": ("Голос", "CLAP"), "audio_whisper": ("Голос", "Whisper"),
                   "audio_xlsr": ("Голос", "XLS-R"), "audio_w2v_emo": ("Голос", "wav2vec2"), "text": ("Речь", "текст"),
                   "behavior": ("Поведение", "описание"), "scene": ("Сцена", "SSL-MEPR")}
-# below this many videos a pool percentile is too coarse for a number: the position is given in words, without a tick
-SMALL_POOL = 20
-
 NOTE = "font-size:13px;opacity:.75;line-height:1.45"           # footnotes and card notes (13 px minimum)
 SUB = "display:block;font-size:13px;font-weight:400;opacity:.75"  # second line of a table header (units, model)
 
@@ -133,96 +130,53 @@ def _legend(items: list[str]) -> str:
             + "".join(f"<span>{it}</span>" for it in items) + "</div>")
 
 
-def _is_ref(ref: str | None) -> bool:
-    """`percentile_ref = "ref:<id>"`: a frozen reference group of refnorms (clean_view of Russian jobs)."""
-    return (ref or "").startswith("ref:")
-
-
-def _pool_size(ref: str | None) -> int | None:
-    if _is_ref(ref):
-        from .refnorms import describe
-        return int(describe(ref[4:])["n"])
-    m = re.search(r"N=(\d+)", ref or "")
-    return int(m.group(1)) if m and "пула" in (ref or "") else None
+def _is_fiv2(ref: str | None) -> bool:
+    """A percentile against the First Impressions V2 norms (6000 clips of that dataset). Percentiles against the pool
+    of processed videos ("пула …") or a group of them ("ref:…") are never shown (change of 2026-09-26)."""
+    r = ref or ""
+    return "First Impressions V2" in r or "FIV2" in r
 
 
 def _pct_phrase(pct, ref: str | None) -> tuple[str, bool]:
-    """Position relative to the reference group in words, and whether a percentile tick may be drawn.
-    «выше, чем у 72% людей в FIV2»; for a small group no percentage is given («выше, чем у большинства из 13
-    русских роликов», cuts 65/35 — the same words as the characterization), because with a handful of videos it only
-    looks precise."""
-    ref = ref or ""
-    if _is_ref(ref):
-        from .refnorms import describe
-        from .scores import position_phrase
-        info = describe(ref[4:])
-        if pct is None:
-            return "мало роликов для сравнения", False
-        p = max(0.0, min(100.0, float(pct)))
-        if info["kind"] == "norm" or int(info["n"]) >= SMALL_POOL:
-            if 45 <= p <= 55:
-                return f"примерно посередине среди {info['group_ru']}", True
-            return (f"выше, чем у {p:.0f}% {info['group_ru']}" if p > 50
-                    else f"ниже, чем у {100 - p:.0f}% {info['group_ru']}"), True
-        return position_phrase(p / 100.0, info), False
-    if "пула" in ref:
-        group = ("русских роликов" if "русских" in ref else "английских роликов" if "английских" in ref
-                 else "обработанных роликов")
-    else:
-        group = "людей в FIV2"
-    if pct is None:
-        return "мало роликов для сравнения", False
+    """(the FIV2 percentile in words, whether a percentile tick may be drawn): «выше, чем у 72% людей в FIV2»;
+    ("", False) for anything that is not a FIV2 percentile (Russian speech shows the score only)."""
+    if pct is None or not _is_fiv2(ref):
+        return "", False
     p = max(0.0, min(100.0, float(pct)))
-    n = _pool_size(ref)
-    if n is not None and n < SMALL_POOL:
-        if p >= 65:
-            return f"выше, чем у большинства из {n} {group}", False
-        if p <= 35:
-            return f"ниже, чем у большинства из {n} {group}", False
-        return f"примерно посередине среди {n} {group}", False
+    group = "людей в FIV2"
     if 45 <= p <= 55:
         return f"примерно посередине среди {group}", True
     return (f"выше, чем у {p:.0f}% {group}" if p > 50 else f"ниже, чем у {100 - p:.0f}% {group}"), True
 
 
 def _ref_ru(ref: str) -> str:
-    """percentile_ref from result.json (genitive, reads after «относительно») without technical English words; for a
-    frozen reference group ("ref:<id>") the whole footnote of refnorms.describe."""
-    if _is_ref(ref):
-        from .refnorms import describe
-        return describe(ref[4:])["footnote_ru"]
+    """percentile_ref from result.json (genitive, reads after «относительно») without technical English words."""
     r = re.sub(r",\s*своя модель\s*$", "", ref or "")
     return r.replace("train First Impressions V2", "обучающей выборки First Impressions V2").replace(
         "train FIV2", "обучающей выборки FIV2")
 
 
-TICK_NOTE = ("Риска на полоске показывает, у какой доли опорной группы оценка ниже: риска посередине — типичный "
-             "уровень группы, правее — выше, чем у большинства.")
+TICK_NOTE = ("Риска на полоске — процентиль в First Impressions V2: у какой доли людей этого датасета оценка ниже; "
+             "риска посередине — медиана датасета.")
+SCALE_NOTE = "Длина полоски — оценка системы от 0 до 1; уровни черт и буквы MBTI считаются по этой же шкале, середина — 0.5."
 
 
 def _bar_html(traits: dict, interview: dict | None) -> str:
     items = [(k, traits[k]) for k in TRAIT_KEYS] + ([("interview", interview)] if interview else [])
-    groups: dict[str, list[str]] = {}          # reference group (display text) -> item keys, for the footnote
-    small_pool = None
-    no_pct = False                              # the pool is below MIN_POOL: no position at all
+    groups: dict[str, list[str]] = {}          # FIV2 reference (display text) -> item keys, for the footnote
     any_tick = False
-    footnotes = set()                           # complete footnotes of frozen reference groups ("ref:<id>")
     rows = []
     for k, t in items:
         pct = t.get("percentile", t.get("percentile_vs_fiv2"))
-        ref = t.get("percentile_ref", "train FIV2")
-        groups.setdefault(_ref_ru(ref), []).append(k)
+        ref = t.get("percentile_ref", "train FIV2" if pct is not None else "")
         phrase, tick_ok = _pct_phrase(pct, ref)
-        n = _pool_size(ref)
-        if _is_ref(ref):
-            footnotes.add(_ref_ru(ref))         # says itself what it covers and why there are no percentages
-        elif n is not None and (n < SMALL_POOL or pct is None):
-            small_pool = n
-            no_pct = no_pct or pct is None
-        any_tick = any_tick or (tick_ok and pct is not None)
+        if phrase:
+            groups.setdefault(_ref_ru(ref), []).append(k)
+        any_tick = any_tick or tick_ok
         score = float(t["score"])
         fill = PAL["interview_fill"] if k == "interview" else PAL["main_fill"]
-        row = _score_row(TRAIT_TITLES[k], score, f"{score:.2f} · {phrase}", fill, pct if tick_ok else None)
+        text = f"{score:.2f}" + (f" · {phrase}" if phrase else "")
+        row = _score_row(TRAIT_TITLES[k], score, text, fill, pct if tick_ok else None)
         if k == "interview":           # a separate label of the own model: set off from the five traits
             row = (f"<div style='margin-top:14px;padding-top:2px;border-top:1px dashed {PAL['track_outline']}'>{row}</div>")
         rows.append(row)
@@ -230,32 +184,18 @@ def _bar_html(traits: dict, interview: dict | None) -> str:
     if interview:
         legend.append(_swatch(PAL["interview_fill"]) + "«собеседование», оценка 0…1")
     if any_tick:
-        legend.append(_tick_swatch() + "положение в опорной группе")
-    notes = []
+        legend.append(_tick_swatch() + "процентиль в First Impressions V2")
+    notes = [SCALE_NOTE]
     for ref, keys in groups.items():
-        if ref in footnotes:
-            notes.append(ref)
-            continue
         if len(keys) == len(items) and len(groups) == 1:
-            subject = "Все оценки"
+            subject = "Все процентили"
         elif set(keys) == set(TRAIT_KEYS):
-            subject = "Пять черт"
+            subject = "Процентили пяти черт"
         elif keys == ["interview"]:
-            subject = "«Собеседование»"
+            subject = "Процентиль «собеседования»"
         else:
-            subject = ", ".join(ROW_TITLES[k] for k in keys)
-        n = _pool_size(ref)
-        if n is not None:
-            # «пула обработанных русских роликов (N=5)» -> «среди обработанных русских роликов (сейчас их 5)»
-            m = re.search(r"обработанных\s+(.+?)\s*\(N=", ref)
-            where = f"среди обработанных {m.group(1) if m else 'роликов'} (сейчас их {n})"
-        else:
-            where = f"относительно {ref}"
-        notes.append(f"{subject} — {where}.")
-    if small_pool is not None:
-        videos = f"Роликов в сравнении пока {small_pool}"
-        notes.append(videos + (": этого мало для процентов, поэтому положение описано словами и риска не ставится."
-                               if not no_pct else ": этого мало, положение появится, когда роликов станет больше."))
+            subject = "Процентили: " + ", ".join(ROW_TITLES[k] for k in keys)
+        notes.append(f"{subject} — относительно {ref}.")
     if any_tick:
         notes.append(TICK_NOTE)
     return ("<div style='max-width:640px'>" + "".join(rows) + _scale_row() + _legend(legend) +
@@ -276,10 +216,9 @@ def _members_html(rep: dict) -> str:
         others = [m for m in var if m != main]
         if not others:
             return ""
-        # Russian speech: the second opinion is placed among the same frozen group of Russian videos as the main score
-        # (refnorms), in words; one system — one «level» on the page
-        ru_ref = model.get("lang") == "ru"
-        where = (" (положение среди тех же русских роликов)" if ru_ref
+        # Russian speech: the score only (no percentile of any group); otherwise the FIV2 percentile as in 2.0
+        ru = model.get("lang") == "ru"
+        where = (" (своя шкала, обучена на First Impressions V2)" if ru
                  else " (шкала First Impressions V2, сравнение с людьми из этого датасета)")
         title = "Второе мнение: " + ", ".join(SECOND_TITLES.get(m, MEMBER_TITLES.get(m, m)) for m in others) + where
         rows = ""
@@ -289,26 +228,21 @@ def _members_html(rep: dict) -> str:
                 rows += f"<div style='font-weight:600;font-size:14px;margin-top:8px'>{MEMBER_TITLES.get(m, m)}</div>"
             for k in TRAIT_KEYS:
                 s = float(var[m][k])
-                if ru_ref:
-                    from .refnorms import position, reference_for
-                    p = position(m, "ru", k, s)
-                    pct = None if p is None else round(100 * p, 1)
-                    phrase, tick_ok = _pct_phrase(pct, "ref:" + reference_for(m, "ru"))
-                else:
-                    pct = percentile(k, s)
-                    phrase, tick_ok = _pct_phrase(pct, "train FIV2")
+                pct = None if ru else percentile(k, s)
+                phrase, tick_ok = _pct_phrase(pct, "train FIV2")
                 any_tick = any_tick or tick_ok
                 # neutral fill (theme text colour at .55): blue stays reserved for the main score, as on the radar
-                rows += _score_row(TRAIT_TITLES[k], s, f"{s:.2f} · {phrase}", PAL["second_fill"], pct if tick_ok else None,
+                text = f"{s:.2f}" + (f" · {phrase}" if phrase else "")
+                rows += _score_row(TRAIT_TITLES[k], s, text, PAL["second_fill"], pct if tick_ok else None,
                                    height=8, radius=5, bold=False, fill_extra="opacity:.55")
         legend = [_swatch(PAL["second_fill"], "opacity:.55") + "второе мнение, оценка 0…1"]
         if any_tick:
-            legend.append(_tick_swatch() + "положение среди людей FIV2")
+            legend.append(_tick_swatch() + "процентиль в First Impressions V2")
         body = rows + _scale_row() + _legend(legend)
         note = (f"Основная оценка ({MEMBER_TITLES.get(main, main)}) — в полосках над этой рамкой. "
                 "Второе мнение считается на другой шкале: "
                 "модель обучена на англоязычных влогерах FIV2, поэтому на русских роликах её значения систематически "
-                "ниже. Сравнивайте положение в группе и порядок черт, а не сами числа.")
+                "ниже. Сравнивайте порядок черт, а не сами числа.")
     else:
         title = "Участники ансамбля: итоговая оценка — их среднее"
         head = ["Модель"] + [TRAIT_TITLES_2L[k] for k in TRAIT_KEYS]

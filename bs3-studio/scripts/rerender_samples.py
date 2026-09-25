@@ -15,11 +15,14 @@ For every job:
    header and «Коротко»; the first key fact is the MBTI card; the MBTI panels carry the agreement line; the main system
    has a letter strip; the own model of an old job gets C18; segments without the main system are gaps on the
    timeline chart and are named by C13 in «Как получены оценки»; «Краткие выводы» appears nowhere; result.json of
-   the copy gets no `mbti` section;
+   the copy gets no `mbti` section; nothing on the page mentions a group of processed videos (reference group,
+   position, «типичный», percentiles of Russian speech), and the characterization does not compare the two systems
+   (change of 2026-09-26);
 4. webapp.export_pdf runs on the copy: the PDF is built; its text (pdftotext) contains «Характеристика личности»,
    «Тип MBTI (перевод шкал Big Five)», «Как получены оценки», «BS Profiler 3.0 · стр.», the type of the main system
    and, in the appendix «Значения по отрезкам», the type of every typed segment; it does not contain «Краткие
-   выводы», «сегмент» (outside the transcript, which is the person's own speech) or the name of the old version; it
+   выводы», «сегмент» (outside the transcript, which is the person's own speech), the name of the old version or
+   anything about a group of processed videos; it
    has at most 2 pages more than the PDF of the old version in the source job (when there is one);
 5. sha256 of the source job is taken again and must not have changed.
 
@@ -40,19 +43,25 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from import_job import import_job, tree_sha256  # noqa: E402
 
-# golden values of the design samples (design 13.2): types, agreement, the clean extraversion, segments without
-# OCEAN-AI and the summary of the letter strip
+# golden values of the design samples (design 13.2, recomputed for the absolute scale of 2026-09-26): types,
+# agreement, the clean extraversion, segments without OCEAN-AI and the summary of the letter strip
 EXPECT = {
-    "A": {"type": "ISTP", "type_strict": "ISTP", "alternatives": [], "second": ("XXXJ", "ENFJ"),
-          "agreement": {"EI": "border", "SN": "border", "TF": "border", "JP": "differ"},
-          "extraversion": "0.56", "dropped": [16], "header": ["ISTP", "«Мастер»"],
-          "strip": "ISTP во всех 17 отрезках с оценкой; все четыре оси совпадают с итогом во всех отрезках"},
-    "B": {"type": "EXFJ", "type_strict": "ESFJ", "alternatives": ["ENFJ"], "second": ("ISXX", "ISTJ"),
-          "agreement": {"EI": "differ", "SN": "border", "TF": "border", "JP": "border"},
-          "extraversion": "0.73", "dropped": [10, 11, 12, 14, 15, 26, 33], "header": ["«Попечитель»", "ось S–N на границе"],
-          "strip": "ESFJ в 16 из 26 отрезков с оценкой, ENFJ — в 10; ось S–N совпадает с итогом в 16 из 26 отрезков, "
-                   "остальные оси — во всех"},
+    "A": {"type": "XNFJ", "type_strict": "ENFJ", "alternatives": ["INFJ"], "second": ("IXXX", "ISTJ"),
+          "agreement": {"EI": "border", "SN": "border", "TF": "border", "JP": "border"},
+          "extraversion": "0.56", "dropped": [16], "header": ["ENFJ", "«Наставник»", "ось E–I на границе"],
+          "strip": "ENFJ во всех 17 отрезках с оценкой; все четыре оси совпадают с итогом во всех отрезках"},
+    "B": {"type": "ENFJ", "type_strict": "ENFJ", "alternatives": [], "second": ("ISXX", "ISTP"),
+          "agreement": {"EI": "differ", "SN": "differ", "TF": "border", "JP": "border"},
+          "extraversion": "0.73", "dropped": [10, 11, 12, 14, 15, 26, 33], "header": ["ENFJ", "«Наставник»"],
+          "strip": "ENFJ во всех 26 отрезках с оценкой; все четыре оси совпадают с итогом во всех отрезках"},
 }
+# nothing about a group of processed videos anywhere (change of 2026-09-26)
+# («на русских роликах её значения ниже» about the scale of the own model is not a group: it stays)
+RELATIVE = re.compile(r"опорн|положени[ея] (?:в|среди|оценки)|типичн|\d+ русск\w* ролик|среди (?:тех же )?русских|"
+                      r"обработанных (?:русских|системой)|предварительн|большинства из|сейчас их \d|проверка на \d",
+                      re.I)
+# the characterization does not compare the two systems (change of 2026-09-26)
+NO_SYSTEMS = re.compile(r"Согласие двух систем|Вторая система|Второе мнение|Системы по отдельности|противоположно")
 PAGE_CSS = ("body{font-family:system-ui,sans-serif;max-width:1100px;margin:24px auto;padding:0 16px;color:#1f2937;"
             "background:#fff;--block-background-fill:#fff}h2{font-size:17px;margin:28px 0 10px}"
             "section{border:1px solid #808080;border-radius:8px;padding:12px 14px}")
@@ -77,7 +86,8 @@ def _page(title: str, blocks: list[tuple[str, str]]) -> str:
 
 PDF_MUST = ("Характеристика личности", "Тип MBTI (перевод шкал Big Five)", "Как получены оценки", "BS Profiler 3.0 · стр.")
 PDF_MUST_NOT = (("Краткие выводы", re.compile(r"Краткие выводы")), ("сегмент", re.compile(r"сегмент", re.I)),
-                ("the name of the old version", re.compile(r"BS\s+2\.0")))
+                ("the name of the old version", re.compile(r"BS\s+2\.0")),
+                ("a group of processed videos", RELATIVE), ("«Согласие двух систем»", re.compile(r"Согласие двух систем")))
 MAX_EXTRA_PAGES = 2
 
 
@@ -162,6 +172,11 @@ def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path |
     i_head, i_short = char.find("border-bottom:1px solid"), char.find("<b>Коротко.</b>")
     c.ok(0 <= i_head < i_short, "characterization starts with the header, then «Коротко»")
     c.ok("определяет тип" not in char and "сегмент" not in char, "no «определяет тип», no «сегмент» in the text")
+    c.ok(not NO_SYSTEMS.search(char), "the characterization does not compare the two systems")
+    for name, h in (("characterization", char), ("key facts", facts), ("bars", bars), ("method", method),
+                    ("types", types), ("strip", strip), ("read", read)):
+        m_rel = RELATIVE.search(re.sub(r"<[^>]+>", " ", h))
+        c.ok(m_rel is None, f"nothing about a group of processed videos in {name}" + (f": «{m_rel.group(0)}»" if m_rel else ""))
     stem = Path(rep.get("original_file_name") or "").stem
     c.ok(not stem or stem not in char, "no file name in the characterization")
     # key facts: the type card first
@@ -215,7 +230,7 @@ def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path |
              f"agreement {mb['agreement']['axes']}")
         c.ok(dropped == exp["dropped"], f"segments without OCEAN-AI {dropped}")
         m = re.search(r"Экстраверсия</b> <span[^>]*>([^<]*)<", bars)
-        c.ok(bool(m) and m.group(1).startswith(exp["extraversion"] + " · "), f"extraversion bar {m and m.group(1)}")
+        c.ok(bool(m) and m.group(1) == exp["extraversion"], f"extraversion bar shows the score only: {m and m.group(1)}")
         for h in exp["header"]:
             c.ok(h in char[:i_short], f"header shows {h}")
         c.ok(exp["strip"] in strip, "strip summary as in design 13.2")

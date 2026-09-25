@@ -1,4 +1,5 @@
-"""Clean scores (design 6.1, 5.2, 13.1 test_view): scores.clean_view, levels and position phrases."""
+"""Clean scores (design 6.1, 5.2, 13.1 test_view): scores.clean_view and the level bands of the absolute scale
+(change of 2026-09-26: no reference group, Russian speech shows the scores only)."""
 from __future__ import annotations
 
 import copy
@@ -28,7 +29,7 @@ def test_clean_view_sample_b_gaps():
     assert meta["main_system"] == "oceanai" and meta["main_source"] == "ocean_ai" and meta["lang"] == "ru"
     assert meta["segments_total"] == 33 and meta["segments_used"] == 26
     assert meta["segments_without_primary"] == gaps and meta["primary_missing"] is False
-    assert meta["reference"]["id"] == "ru_prov_2026-09-25" and meta["reference"]["n"] == 13
+    assert "reference" not in meta
 
 
 def test_clean_view_spread_recomputed():
@@ -42,12 +43,20 @@ def test_clean_view_spread_recomputed():
     assert max(a[k] for k in TRAIT_KEYS) <= 0.0375
 
 
-def test_clean_view_positions_ru():
-    v = scores.clean_view(rep("B"))
-    e = v["traits"]["extraversion"]
-    assert abs(e["position"] - 13 / 14) < 1e-4
-    assert e["percentile"] == round(100 * 13 / 14, 1)
-    assert e["percentile_ref"] == "ref:ru_prov_2026-09-25"
+def test_clean_view_ru_has_no_percentiles():
+    """Older Russian jobs carry percentiles against the pool of processed videos: the view drops them (and any
+    position); nothing on the page may show them."""
+    r = rep("B")
+    for k in TRAIT_KEYS:
+        r["traits"][k].update({"percentile": 62.5, "percentile_ref": "пула обработанных русских роликов (N=5)",
+                               "position": 0.9})
+    r["interview"] = {"score": 0.41, "percentile": 30.0, "percentile_vs_fiv2": 30.0,
+                      "percentile_ref": "train First Impressions V2 (6000 клипов), своя модель"}
+    v = scores.clean_view(r)
+    for k in TRAIT_KEYS:
+        assert set(v["traits"][k]) & set(scores.RELATIVE_KEYS) == set(), k
+    assert v["interview"] == {"score": 0.41}
+    assert r["traits"]["extraversion"]["percentile"] == 62.5                 # the original is not changed
 
 
 def test_clean_view_does_not_change_rep():
@@ -72,7 +81,10 @@ def test_clean_view_english_keeps_traits():
         assert "percentile_ref" not in v["traits"][k] or v["traits"][k]["percentile_ref"] == r["traits"][k].get("percentile_ref")
     assert [t["scores"] for t in v["timeline"]] == [t["scores"] for t in r["timeline"]]
     assert v["scores_std_across_segments"] == r["scores_std_across_segments"]
-    assert v["view_meta"]["main_system"] == "mean" and v["view_meta"]["reference"]["id"] == "fiv2"
+    assert v["view_meta"]["main_system"] == "mean" and "reference" not in v["view_meta"]
+    r["traits"]["extraversion"].update({"percentile": 72.0, "percentile_ref": "train First Impressions V2 (6000 клипов)"})
+    e = scores.clean_view(r)["traits"]["extraversion"]
+    assert e["percentile"] == 72.0 and e["percentile_ref"].startswith("train First Impressions V2")   # FIV2 stays
 
 
 def test_clean_view_primary_missing_falls_back_to_own_model():
@@ -95,22 +107,29 @@ def test_segment_ok_formats():
 
 
 def test_levels_and_bands():
+    """The five bands of the absolute score (edges in scores.py): high >= 0.80, above 0.65-0.80, mid 0.35-0.65
+    (exactly the MBTI borderline zone), below 0.20-0.35, low <= 0.20."""
     L = scores.level
-    assert L(0.85) == "high" and L(0.8499) == "above" and L(0.65) == "above" and L(0.6499) == "mid"
-    assert L(0.5) == "mid" and L(0.3501) == "mid" and L(0.35) == "below" and L(0.1501) == "below"
-    assert L(0.15) == "low" and L(0.0) == "low" and L(1.0) == "high" and L(None) is None
-    assert scores.level_phrase(0.9) == "заметно выше типичного"
-    assert scores.level_phrase(0.3) == "ниже типичного"
+    assert L(0.80) == "high" and L(0.7999) == "above" and L(0.65) == "above" and L(0.6499) == "mid"
+    assert L(0.5) == "mid" and L(0.3501) == "mid" and L(0.35) == "below" and L(0.2001) == "below"
+    assert L(0.20) == "low" and L(0.0) == "low" and L(1.0) == "high" and L(None) is None
+    assert L(float("nan")) is None and L("abc") is None and L(1.3) == "high" and L(-0.2) == "low"
+    assert scores.level_phrase(0.9) == "высокий уровень" and scores.level_phrase(0.73) == "выше среднего"
+    assert scores.level_phrase(0.5) == "средний уровень" and scores.level_phrase(0.3) == "ниже среднего"
+    assert scores.level_phrase(0.1) == "низкий уровень"
     assert set(scores.LEVELS_RU) == {"high", "above", "mid", "below", "low"}
+    assert scores.score_text(0.7298) == "0.73" and scores.score_text(None) is None
 
 
-def test_position_phrases():
-    ref = "ru_prov_2026-09-25"
-    assert scores.position_phrase(0.929, ref) == "выше, чем у большинства из 13 русских роликов"
-    assert scores.position_phrase(0.2, ref) == "ниже, чем у большинства из 13 русских роликов"
-    assert scores.position_phrase(0.6, ref) == "примерно посередине среди 13 русских роликов"
-    assert scores.position_phrase(0.72, "fiv2") == "выше, чем у 72% людей в First Impressions V2"
-    assert scores.position_phrase(0.30, "fiv2") == "ниже, чем у 70% людей в First Impressions V2"
-    assert scores.position_phrase(0.53, "fiv2") == "примерно посередине"
-    for p in (0.1, 0.5, 0.9):
-        assert "сегмент" not in scores.position_phrase(p, ref)
+def test_levels_agree_with_the_letters():
+    """A value with a confident MBTI letter is never «средний уровень»; one in the borderline zone always is."""
+    from bs3 import mbti
+    for i in range(1001):
+        v = i / 1000
+        a = mbti.bigfive_to_mbti({"extraversion": v})["axes"]["EI"]
+        assert (scores.level(v) == "mid") == a["borderline"], v
+        if not a["borderline"]:
+            assert scores.level(v) in (("high", "above") if a["letter"] == "E" else ("below", "low")), v
+    for v in (0.35, 0.65, 0.2, 0.8, 0.15, 0.85):
+        a = mbti.bigfive_to_mbti({"extraversion": v})["axes"]["EI"]
+        assert (scores.level(v) == "mid") == a["borderline"], v

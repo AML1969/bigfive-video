@@ -6,7 +6,8 @@ task T28, optional).
 Not needed for showing or re-rendering: the page and the PDF compute the section on the fly (mbti.get_mbti, which
 never writes). This script is the explicit way to store it. It refuses any job outside ~/bs3_data/web_jobs (in
 particular the jobs of 2.0 under ~/bs2_data, which 3.0 never writes); old jobs are brought over with import_job.py
-first. A job that already has a section of schema 1 is left as it is unless --force is given. A job without Big Five
+first. A job that already has a section of the current schema (2) is left as it is unless --force is given; an
+older section (schema 1, letters by the position in a reference group) is replaced. A job without Big Five
 scores gets no section (design 7.1) and its file is not touched.
 """
 from __future__ import annotations
@@ -32,7 +33,7 @@ def _inside(path: Path, root: Path) -> bool:
 
 def add_mbti(job, *, root: Path = JOBS_ROOT, force: bool = False) -> str:
     """Store the section in <job>/result.json; returns what was done ('written', 'kept', 'no Big Five')."""
-    from bs3.mbti import build_section
+    from bs3.mbti import SCHEMA_VERSION, build_section
     from bs3.scores import clean_view
 
     job = Path(job).expanduser()
@@ -43,7 +44,7 @@ def add_mbti(job, *, root: Path = JOBS_ROOT, force: bool = False) -> str:
         raise AddRefused(f"not a finished job (no result.json): {job}")
     rep = json.loads(res_path.read_text(encoding="utf-8"))
     saved = rep.get("mbti")
-    if isinstance(saved, dict) and saved.get("schema_version") == 1 and not force:
+    if isinstance(saved, dict) and saved.get("schema_version") == SCHEMA_VERSION and not force:
         return "kept"
     sec = build_section(clean_view(rep))
     if sec is None:

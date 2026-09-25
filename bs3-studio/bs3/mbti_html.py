@@ -1,7 +1,7 @@
 """HTML of the tab «Тип MBTI» and of the short emotion paragraph (design 10.3, 5.5–5.7; task T18).
 
 - `types_html(mb)` — the panels of the systems side by side (on a narrow screen one under the other): letters of the
-  type, its name, the type with the borderline axes, four axis tracks with the position p in the reference group, the
+  type, its name, the type with the borderline axes, four axis tracks with the score on 0…1 (the borderline zone 0.35–0.65 shaded), the
   agreement of the second system axis by axis, neuroticism on its own track, and the agreement line under the panels;
 - `strip_html(mb)` — the letter strip «Тип по ходу ролика»: one column per segment, letters as text (bold — clear,
   normal — moderate, dashed frame — on the border, «—» on hatching — no score), the summary line and C8 (C18, C19);
@@ -19,15 +19,13 @@ from . import caveats
 from .mbti import AXES, AXIS_LABEL, SIGN, agreement_line, load_config
 from .norms import RU_NAMES
 from .palette import HTML as PAL
-from .scores import level_phrase, plural_ru
+from .scores import level_phrase, plural_ru, score_text
 from .webparts import NOTE, table_html, th_text
 
 OUTLINE = PAL["track_outline"]
 HATCH = "repeating-linear-gradient(45deg,rgba(128,128,128,.25) 0 3px,transparent 3px 6px)"
 AGREE_RU = {"agree": "совпадает", "differ": "расходится", "border": "на границе у одной из систем"}
 TEXT14 = "font-size:14px;line-height:1.5"
-PILL = (f"display:inline-block;font-size:13px;font-weight:400;line-height:1.35;border:1px solid {OUTLINE};"
-        "border-radius:999px;padding:2px 10px;margin-left:8px;vertical-align:1px")
 # 5.5: axis, Big Five scale, direction, correspondence of the scales (r from config/mbti.json)
 TABLE_ROWS = (("EI", "Экстраверсия", "выше → E"), ("SN", "Открытость опыту", "выше → N"),
               ("TF", "Доброжелательность", "выше → F"), ("JP", "Добросовестность", "выше → J"))
@@ -49,8 +47,8 @@ def _e(s) -> str:
 
 
 def _lang(mb: dict | None) -> str:
-    ref = (mb or {}).get("reference") or {}
-    return "ru" if ref.get("kind") == "provisional" or str(ref.get("id", "")).startswith("ru_") else "en"
+    """English speech has the mean of the two systems as its main type; Russian speech one of the systems."""
+    return "en" if (mb or {}).get("source") == "mean" else "ru"
 
 
 def _mmss(sec) -> str:
@@ -105,7 +103,8 @@ def _loose_line(item: dict, names: dict) -> str:
 
 
 def _track(p, marker: str, aria: str) -> str:
-    """12 px track with the middle zone 35–65 % (dashed edges), the middle mark and a 14 px marker at p."""
+    """12 px track with the borderline zone 0.35–0.65 (dashed edges), the middle mark 0.5 and a 14 px marker at the
+    score p."""
     mark = ""
     if p is not None:
         left = max(0.0, min(100.0, float(p) * 100))
@@ -124,7 +123,7 @@ def _poles(left: str, right: str) -> str:
             f"<span>{_e(left)}</span><span style='text-align:right'>{_e(right)}</span></div>")
 
 
-def _axis_row(ax: str, a: dict, cfg: dict, marker: str, norm: bool, agree: str | None) -> str:
+def _axis_row(ax: str, a: dict, cfg: dict, marker: str, agree: str | None) -> str:
     trait, high, low = cfg["axes"][ax]
     poles = cfg.get("pole_names_ru") or {}
     corr = (cfg.get("correspondence") or {}).get(ax) or {}
@@ -133,14 +132,14 @@ def _axis_row(ax: str, a: dict, cfg: dict, marker: str, norm: bool, agree: str |
         head, word, lvl = "нет данных", "", ""
     else:
         word = a.get("word") or ""
-        if norm and word in ("отчётливо", "умеренно"):
+        if word in ("отчётливо", "умеренно"):
             word += f" ({float(a.get('confidence') or 0):.2f})"
         if a.get("borderline"):
             head = f"X (ближе к {a.get('letter')})"
         else:
             head = str(a.get("letter"))
         lp = level_phrase(p)
-        lvl = f"{RU_NAMES[trait]} {lp}" if lp else ""
+        lvl = f"{RU_NAMES[trait]} {score_text(p)} — {lp}" if lp else ""
     parts = [head, word, lvl] + ([f"соответствие шкал r ≈ {corr['r']}"] if corr.get("r") is not None else [])
     sub = " · ".join(x for x in parts if x)
     sign = (f"<div style='font-size:13px;margin-top:2px'><b>{_e(SIGN[agree])}</b> {_e(AGREE_RU[agree])}</div>"
@@ -155,23 +154,21 @@ def _neuro_row(item: dict, marker: str) -> str:
     if not n or not n.get("level"):
         return ""
     return (f"<div style='margin-top:12px;padding-top:6px;border-top:1px dashed {OUTLINE}'>"
-            f"{_poles('низкий', 'высокий')}{_track(n.get('position'), marker, 'Нейротизм: ' + n['level'])}"
+            f"{_poles('низкий', 'высокий')}{_track(n.get('value'), marker, 'Нейротизм: ' + n['level'])}"
             f"<div style='{TEXT14}'>Нейротизм — {_e(n['level'])}. В MBTI этой шкалы нет, поэтому он приводится "
             "отдельно.</div></div>")
 
 
 def _panel(item: dict, lang: str, main: bool, cfg: dict, agree: dict | None) -> str:
     names = cfg.get("type_names_ru") or {}
-    norm = (item.get("reference") or {}).get("kind") == "norm"
     marker = f"background:{PAL['main_fill']}" if main else "background:currentColor;opacity:.55"
-    pill = f"<span style='{PILL}'>пороги предварительные</span>" if (main and not norm) else ""
     x = int(item.get("x_count") or 0)
     name = item.get("type_name") if x <= 2 else None
-    rows = "".join(_axis_row(ax, (item.get("axes") or {}).get(ax) or {"missing": True}, cfg, marker, norm,
+    rows = "".join(_axis_row(ax, (item.get("axes") or {}).get(ax) or {"missing": True}, cfg, marker,
                              (agree or {}).get(ax)) for ax in AXES)
     return (f"<div style='border:1px solid {OUTLINE};border-radius:8px;padding:12px;min-width:0'>"
             f"<div style='font-size:15px;font-weight:600;line-height:1.4;margin-bottom:8px'>"
-            f"{_e(_panel_title(item, lang, main))}{pill}</div>"
+            f"{_e(_panel_title(item, lang, main))}</div>"
             f"<div style='display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline'>{_letters(item, 40)}"
             + (f"<span style='font-size:18px;font-weight:600'>«{_e(name)}»</span>" if name else "") + "</div>"
             f"<div style='{TEXT14};margin-top:6px'>{_e(_loose_line(item, names))}</div>"

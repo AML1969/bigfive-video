@@ -25,10 +25,9 @@ SELF = Path(__file__).resolve()
 # forbidden everywhere (code, comments, data)
 HARD = [re.compile(r"\bimport\s+bs2\b"), re.compile(r"\bfrom\s+bs2\b"), re.compile(r"BS2_")]
 # the 2.0 work dir: never in the package, the tests or the unit; only the offline scripts that read old 2.0 jobs
-# (design 4.4 and 13.3: freeze the reference group, import and re-render sample jobs, refuse to write there) name it
+# (design 13.3: import and re-render sample jobs, refuse to write there) name it
 BS2_DATA = re.compile(r"bs2_data")
-BS2_DATA_READERS = {"scripts/freeze_ru_norms.py", "scripts/import_job.py", "scripts/rerender_samples.py",
-                    "scripts/add_mbti.py"}
+BS2_DATA_READERS = {"scripts/import_job.py", "scripts/rerender_samples.py", "scripts/add_mbti.py"}
 # allowed only in documentation positions (the 3.0 docs say it is independent of BS 2.0 on :7870)
 SOFT = [re.compile(r"(?<![\d.])7870(?!\d)"), re.compile(r"BS 2\.0")]
 SKIP_DIRS = {"__pycache__", ".git"}

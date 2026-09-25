@@ -22,12 +22,14 @@ def test_result_lines_b():
     lines = journal.result_lines(r)
     assert lines[0].startswith("Итог (OCEAN-AI, веса MuPTA): ") and "экстраверсия 0.73" in lines[0]
     assert lines[1].startswith("Второе мнение (своя модель): ")
-    assert ("Тип MBTI (OCEAN-AI, пороги предварительные): EXFJ, ближайший ESFJ «Попечитель», возможен ENFJ; "
-            "нейротизм — ниже типичного") in lines
-    assert ("Второе мнение MBTI (своя модель): ISXX, ближайший ISTJ; уверенно совпадают 0 осей из 4 "
-            "(E–I ≠, S–N ≈, T–F ≈, J–P ≈)") in lines
+    assert "Тип MBTI (OCEAN-AI): ENFJ «Наставник»; нейротизм — средний уровень" in lines
+    assert ("Второе мнение MBTI (своя модель): ISXX, ближайший ISTP; уверенно совпадают 0 осей из 4 "
+            "(E–I ≠, S–N ≠, T–F ≈, J–P ≈)") in lines
     short = [ln for ln in lines if ln.startswith("Характеристика (коротко): ")]
-    assert len(short) == 1 and "ESFJ" in short[0]
+    assert len(short) == 1 and "ENFJ" in short[0] and "Вторая система" not in short[0]
+    for ln in lines:
+        for w in ("предварительн", "типичн", "опорн", "русских роликов"):
+            assert w not in ln, (w, ln)
     assert lines[-1] == "Папка: /tmp/job"
     assert not any("Краткие выводы" in ln for ln in lines)
     assert "mbti" not in r                                        # the entry never stores the computed section
@@ -43,5 +45,5 @@ def test_result_writes_entry():
         finally:
             journal.PATH = old
     assert "РЕЗУЛЬТАТ" in text and "обработка 1:05" in text
-    assert "    Тип MBTI (OCEAN-AI, пороги предварительные): EXFJ" in text
+    assert "    Тип MBTI (OCEAN-AI): ENFJ" in text
     assert "Характеристика (коротко): " in text and "Краткие выводы" not in text
