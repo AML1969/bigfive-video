@@ -133,16 +133,38 @@ def _legend(items: list[str]) -> str:
             + "".join(f"<span>{it}</span>" for it in items) + "</div>")
 
 
+def _is_ref(ref: str | None) -> bool:
+    """`percentile_ref = "ref:<id>"`: a frozen reference group of refnorms (clean_view of Russian jobs)."""
+    return (ref or "").startswith("ref:")
+
+
 def _pool_size(ref: str | None) -> int | None:
+    if _is_ref(ref):
+        from .refnorms import describe
+        return int(describe(ref[4:])["n"])
     m = re.search(r"N=(\d+)", ref or "")
     return int(m.group(1)) if m and "пула" in (ref or "") else None
 
 
 def _pct_phrase(pct, ref: str | None) -> tuple[str, bool]:
     """Position relative to the reference group in words, and whether a percentile tick may be drawn.
-    «выше, чем у 72% людей в FIV2»; for a small pool of processed videos no percentage is given
-    («ниже, чем у большинства из 4 русских роликов»), because with a handful of videos it only looks precise."""
+    «выше, чем у 72% людей в FIV2»; for a small group no percentage is given («выше, чем у большинства из 13
+    русских роликов», cuts 65/35 — the same words as the characterization), because with a handful of videos it only
+    looks precise."""
     ref = ref or ""
+    if _is_ref(ref):
+        from .refnorms import describe
+        from .scores import position_phrase
+        info = describe(ref[4:])
+        if pct is None:
+            return "мало роликов для сравнения", False
+        p = max(0.0, min(100.0, float(pct)))
+        if info["kind"] == "norm" or int(info["n"]) >= SMALL_POOL:
+            if 45 <= p <= 55:
+                return f"примерно посередине среди {info['group_ru']}", True
+            return (f"выше, чем у {p:.0f}% {info['group_ru']}" if p > 50
+                    else f"ниже, чем у {100 - p:.0f}% {info['group_ru']}"), True
+        return position_phrase(p / 100.0, info), False
     if "пула" in ref:
         group = ("русских роликов" if "русских" in ref else "английских роликов" if "английских" in ref
                  else "обработанных роликов")
@@ -153,9 +175,9 @@ def _pct_phrase(pct, ref: str | None) -> tuple[str, bool]:
     p = max(0.0, min(100.0, float(pct)))
     n = _pool_size(ref)
     if n is not None and n < SMALL_POOL:
-        if p > 60:
+        if p >= 65:
             return f"выше, чем у большинства из {n} {group}", False
-        if p < 40:
+        if p <= 35:
             return f"ниже, чем у большинства из {n} {group}", False
         return f"примерно посередине среди {n} {group}", False
     if 45 <= p <= 55:
@@ -164,7 +186,11 @@ def _pct_phrase(pct, ref: str | None) -> tuple[str, bool]:
 
 
 def _ref_ru(ref: str) -> str:
-    """percentile_ref from result.json (genitive, reads after «относительно») without technical English words."""
+    """percentile_ref from result.json (genitive, reads after «относительно») without technical English words; for a
+    frozen reference group ("ref:<id>") the whole footnote of refnorms.describe."""
+    if _is_ref(ref):
+        from .refnorms import describe
+        return describe(ref[4:])["footnote_ru"]
     r = re.sub(r",\s*своя модель\s*$", "", ref or "")
     return r.replace("train First Impressions V2", "обучающей выборки First Impressions V2").replace(
         "train FIV2", "обучающей выборки FIV2")
@@ -180,6 +206,7 @@ def _bar_html(traits: dict, interview: dict | None) -> str:
     small_pool = None
     no_pct = False                              # the pool is below MIN_POOL: no position at all
     any_tick = False
+    footnotes = set()                           # complete footnotes of frozen reference groups ("ref:<id>")
     rows = []
     for k, t in items:
         pct = t.get("percentile", t.get("percentile_vs_fiv2"))
@@ -187,7 +214,9 @@ def _bar_html(traits: dict, interview: dict | None) -> str:
         groups.setdefault(_ref_ru(ref), []).append(k)
         phrase, tick_ok = _pct_phrase(pct, ref)
         n = _pool_size(ref)
-        if n is not None and (n < SMALL_POOL or pct is None):
+        if _is_ref(ref):
+            footnotes.add(_ref_ru(ref))         # says itself what it covers and why there are no percentages
+        elif n is not None and (n < SMALL_POOL or pct is None):
             small_pool = n
             no_pct = no_pct or pct is None
         any_tick = any_tick or (tick_ok and pct is not None)
@@ -204,6 +233,9 @@ def _bar_html(traits: dict, interview: dict | None) -> str:
         legend.append(_tick_swatch() + "положение в опорной группе")
     notes = []
     for ref, keys in groups.items():
+        if ref in footnotes:
+            notes.append(ref)
+            continue
         if len(keys) == len(items) and len(groups) == 1:
             subject = "Все оценки"
         elif set(keys) == set(TRAIT_KEYS):
@@ -236,13 +268,20 @@ def _members_html(rep: dict) -> str:
     var = rep.get("variant_scores") or {}
     if not var:
         return ""
-    primary = (rep.get("model") or {}).get("primary")
+    model = rep.get("model") or {}
+    primary = model.get("primary")
+    # a clean view (scores.clean_view) names the system its main scores come from: the own model when OCEAN-AI gave none
+    main = (rep.get("view_meta") or {}).get("main_system") or primary
     if primary:
-        others = [m for m in var if m != primary]
+        others = [m for m in var if m != main]
         if not others:
             return ""
-        title = ("Второе мнение: " + ", ".join(SECOND_TITLES.get(m, MEMBER_TITLES.get(m, m)) for m in others)
-                 + " (шкала First Impressions V2, сравнение с людьми из этого датасета)")
+        # Russian speech: the second opinion is placed among the same frozen group of Russian videos as the main score
+        # (refnorms), in words; one system — one «level» on the page
+        ru_ref = model.get("lang") == "ru"
+        where = (" (положение среди тех же русских роликов)" if ru_ref
+                 else " (шкала First Impressions V2, сравнение с людьми из этого датасета)")
+        title = "Второе мнение: " + ", ".join(SECOND_TITLES.get(m, MEMBER_TITLES.get(m, m)) for m in others) + where
         rows = ""
         any_tick = False
         for m in others:
@@ -250,8 +289,14 @@ def _members_html(rep: dict) -> str:
                 rows += f"<div style='font-weight:600;font-size:14px;margin-top:8px'>{MEMBER_TITLES.get(m, m)}</div>"
             for k in TRAIT_KEYS:
                 s = float(var[m][k])
-                pct = percentile(k, s)
-                phrase, tick_ok = _pct_phrase(pct, "train FIV2")
+                if ru_ref:
+                    from .refnorms import position, reference_for
+                    p = position(m, "ru", k, s)
+                    pct = None if p is None else round(100 * p, 1)
+                    phrase, tick_ok = _pct_phrase(pct, "ref:" + reference_for(m, "ru"))
+                else:
+                    pct = percentile(k, s)
+                    phrase, tick_ok = _pct_phrase(pct, "train FIV2")
                 any_tick = any_tick or tick_ok
                 # neutral fill (theme text colour at .55): blue stays reserved for the main score, as on the radar
                 rows += _score_row(TRAIT_TITLES[k], s, f"{s:.2f} · {phrase}", PAL["second_fill"], pct if tick_ok else None,
@@ -260,7 +305,7 @@ def _members_html(rep: dict) -> str:
         if any_tick:
             legend.append(_tick_swatch() + "положение среди людей FIV2")
         body = rows + _scale_row() + _legend(legend)
-        note = (f"Основная оценка ({MEMBER_TITLES.get(primary, primary)}) — в полосках над этой рамкой. "
+        note = (f"Основная оценка ({MEMBER_TITLES.get(main, main)}) — в полосках над этой рамкой. "
                 "Второе мнение считается на другой шкале: "
                 "модель обучена на англоязычных влогерах FIV2, поэтому на русских роликах её значения систематически "
                 "ниже. Сравнивайте положение в группе и порядок черт, а не сами числа.")

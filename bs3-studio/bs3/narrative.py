@@ -36,11 +36,16 @@ def _pool_size(ref: str):
 
 
 def _pct_phrase(t: dict, what: str = "роликов") -> str:
-    """Same wording as the score bars: a percentage for large reference groups, words for a small pool."""
+    """Same wording as the score bars: a percentage for large reference groups, words for a small pool (cuts 65/35,
+    the same as the level bands of the characterization). `percentile_ref = "ref:<id>"` (clean_view of Russian jobs)
+    names a frozen reference group of refnorms."""
     pct = t.get("percentile")
     if pct is None:
         return ""
     ref = t.get("percentile_ref", "")
+    if ref.startswith("ref:"):
+        from .scores import position_phrase
+        return position_phrase(max(0.0, min(100.0, float(pct))) / 100.0, ref[4:]) or ""
     if "пула" in ref:
         group = "русских роликов" if "русских" in ref else ("английских роликов" if "английских" in ref else "обработанных роликов")
     else:
@@ -48,9 +53,9 @@ def _pct_phrase(t: dict, what: str = "роликов") -> str:
     p = max(0.0, min(100.0, float(pct)))
     n = _pool_size(ref)
     if "пула" in ref and n is not None and n < SMALL_POOL:
-        if p > 60:
+        if p >= 65:
             return f"выше, чем у большинства из {n} {group}"
-        if p < 40:
+        if p <= 35:
             return f"ниже, чем у большинства из {n} {group}"
         return f"примерно посередине среди {n} {group}"
     if 45 <= p <= 55:
@@ -181,6 +186,67 @@ def build_narrative(rep: dict, expl: dict | None = None) -> str:
         diff = float(np.mean([var["oceanai"][k] - var["mm"][k] for k in TRAIT_KEYS]))
         parts.append(f"Своя модель, обученная на англоязычных влогерах, оценивает те же черты в среднем на {diff:.2f} ниже: "
                      "это разница шкал двух систем, а не противоречие в выводах.")
+    return " ".join(parts)
+
+
+def method_notes(view: dict, expl: dict | None = None) -> str:
+    """«Как получены оценки» (design 9): where the scores come from, the reference group, how stable the scores are
+    over the video, the segments without the main system (C13) and, for Russian speech, why the two systems are not
+    compared by their numbers. Built on the clean view (scores.clean_view); replaces the Big Five part of the 2.0
+    summary. `expl` is accepted for the page and the PDF, which call it with the explanation at hand."""
+    from . import caveats
+    meta = view.get("view_meta") or {}
+    lang, main = meta.get("lang", "en"), meta.get("main_system")
+    ref = meta.get("reference") or {}
+    var = view.get("variant_scores") or {}
+    parts: List[str] = []
+    if lang == "ru":
+        if meta.get("primary_missing"):
+            parts.append(caveats.text("C20"))
+        else:
+            parts.append("Основные оценки дала система OCEAN-AI на весах MuPTA, обученных на русскоязычных участниках; "
+                         "своя модель MM-PSYCHE показана как второе мнение и в основные оценки не входит.")
+        parts.append(f"Уровни черт и буквы MBTI считаются по положению оценки среди {ref.get('label_ru', '')}, "
+                     "отдельно для каждой системы: это предварительная опорная группа.")
+    else:
+        parts.append("Оценки — среднее двух систем, OCEAN-AI (веса First Impressions V2) и своей модели MM-PSYCHE; обе "
+                     "на шкале First Impressions V2.")
+        parts.append("Уровни черт и буквы MBTI — относительно оценок наблюдателей в обучающей выборке First "
+                     "Impressions V2 (6000 роликов).")
+
+    # stability over the segments the main system scored
+    tl = [t for t in (view.get("timeline") or []) if t.get("scores")]
+    std = view.get("scores_std_across_segments") or view.get("scores_std") or {}
+    if tl and std:
+        n = len(tl)
+        if lang == "ru":
+            who = "OCEAN-AI" if main == "oceanai" else "своей модели"
+            count = f"{n} {plural_ru(n, ('отрезок', 'отрезка', 'отрезков'))} с оценкой {who}"
+        else:
+            count = f"{n} {plural_ru(n, ('отрезок', 'отрезка', 'отрезков'))}"
+        worst = max(TRAIT_KEYS, key=lambda k: std.get(k, 0))
+        if std.get(worst, 0) <= 0.05:
+            parts.append(f"По ходу ролика ({count}) оценки устойчивы: разброс не больше ±{std[worst]:.2f}.")
+        else:
+            parts.append(f"По ходу ролика ({count}) оценки в целом устойчивы, сильнее всего колеблется "
+                         f"{_name(worst)} (±{std[worst]:.2f}).")
+        for t, z_ in odd_segments(view)[:2]:
+            parts.append(f"Заметно отличается отрезок {seg_label(t['start'], t['end'])}: оценки "
+                         f"{'выше' if z_ > 0 else 'ниже'} остального ролика.")
+
+    dropped = meta.get("segments_without_primary") or []
+    if dropped:
+        parts.append(caveats.c13(len(dropped), int(meta.get("segments_total") or len(dropped))))
+
+    if lang == "ru" and main == "oceanai" and isinstance(var.get("oceanai"), dict) and isinstance(var.get("mm"), dict):
+        try:
+            diff = float(np.mean([float(var["oceanai"][k]) - float(var["mm"][k]) for k in TRAIT_KEYS]))
+        except (KeyError, TypeError, ValueError):
+            diff = None
+        if diff is not None and diff > 0:
+            parts.append(f"Своя модель обучена на англоязычных роликах First Impressions V2, и на русской речи её числа "
+                         f"в среднем на {diff:.2f} ниже, чем у OCEAN-AI; поэтому каждая система сравнивается со своей "
+                         "опорной группой, а не по числам.")
     return " ".join(parts)
 
 

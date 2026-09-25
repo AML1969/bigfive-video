@@ -1,0 +1,528 @@
+"""«Характеристика личности» — the main text of BS Profiler 3.0 (design 8).
+
+Deterministic templates over the clean numbers (scores.clean_view) and the MBTI section (mbti.get_mbti); every phrase
+comes from config/lexicon_ru.json (the trait texts of 8.5, the short phrases of 8.6 and the paragraph templates of
+8.4), every caveat from caveats.py. No language model, no raw 0…1 scores in the text: levels and positions are said
+in words relative to the reference group. The text is not stored in result.json; it is built on every display.
+
+Structure: a header (letters of the type, its name, labels) and eight paragraphs, each with a bold lead —
+«Коротко», «Основа описания», four traits (O, C, E, A in the order of |p − 0.5|), emotional stability with
+neuroticism, «Типология MBTI», «Что видно в поведении на записи» (only when there are observations), «Согласие двух
+систем», «Границы вывода».
+
+`build(view, mb) -> Character`; `Character.html()`, `.plain()`, `.short_plain()`, `.pdf_paragraphs()`,
+`.pdf_header()`.
+"""
+from __future__ import annotations
+
+import copy
+import html as _html
+import json
+import re
+from dataclasses import dataclass, field
+from importlib import resources
+
+from . import caveats, refnorms
+from .norms import TRAIT_KEYS
+from .scores import level, level_phrase, position_phrase
+
+AXES = ("EI", "SN", "TF", "JP")
+AXIS_LABEL = {"EI": "E–I", "SN": "S–N", "TF": "T–F", "JP": "J–P"}
+AXIS_OF = {"extraversion": "EI", "openness": "SN", "agreeableness": "TF", "conscientiousness": "JP"}
+MBTI_TRAITS = tuple(k for k in TRAIT_KEYS if k in AXIS_OF)          # O, C, E, A in the order of TRAIT_KEYS
+SIDE_CUT = 0.15
+OUTLINE = "#808080"                                                  # palette.HTML track_outline, 3:1 on both themes
+
+_lex: dict | None = None
+
+
+def load_lexicon() -> dict:
+    """config/lexicon_ru.json (a copy)."""
+    global _lex
+    if _lex is None:
+        with resources.files("bs3").joinpath("config/lexicon_ru.json").open("r", encoding="utf-8") as f:
+            _lex = json.load(f)
+    return copy.deepcopy(_lex)
+
+
+def _plural(n, one: str, few: str, many: str) -> str:
+    return caveats._plural(n, one, few, many)
+
+
+def _join(items: list[str]) -> str:
+    """«a», «a и b», «a, b и c»."""
+    items = [i for i in items if i]
+    if len(items) <= 1:
+        return "".join(items)
+    return ", ".join(items[:-1]) + " и " + items[-1]
+
+
+def _num(x) -> float | None:
+    from .scores import _num as n
+    return n(x)
+
+
+def _side(p) -> str | None:
+    v = _num(p)
+    if v is None:
+        return None
+    d = round(v - 0.5, 9)
+    return "above" if d >= SIDE_CUT else ("below" if d <= -SIDE_CUT else "mid")
+
+
+def _q(name: str | None) -> str:
+    return f" («{name}»)" if name else ""
+
+
+def words(text: str) -> int:
+    """Number of words (tokens with at least one letter or digit)."""
+    return sum(1 for t in text.split() if re.search(r"\w", t))
+
+
+@dataclass
+class Character:
+    """The characterization: header and paragraphs [{"key", "lead", "text"}]."""
+    header: dict
+    paragraphs: list[dict] = field(default_factory=list)
+    lang: str = "ru"
+
+    # ---------------------------------------------------------------------------------------------- plain text
+    def header_plain(self) -> str:
+        h = self.header
+        head = h["letters_text"] + (f" «{h['name']}»" if h.get("name") else "")
+        return " · ".join([head] + [t for t, _ in h["labels"]]) if head else " · ".join(t for t, _ in h["labels"])
+
+    def plain(self) -> str:
+        parts = [self.header_plain()]
+        for p in self.paragraphs:
+            parts.append((p["lead"] + " " + p["text"]).strip())
+        return "\n\n".join(parts) + "\n"
+
+    def short_plain(self) -> str:
+        """The paragraph «Коротко» as plain text, without its lead (for the journal)."""
+        return next((p["text"] for p in self.paragraphs if p["key"] == "short"), "")
+
+    def paragraph(self, key: str) -> dict | None:
+        return next((p for p in self.paragraphs if p["key"] == key), None)
+
+    def word_count(self) -> int:
+        return words(self.plain())
+
+    # ---------------------------------------------------------------------------------------------- HTML
+    def html(self) -> str:
+        e = lambda s: _html.escape(s, quote=False)
+        h = self.header
+        letters = ""
+        if h["letters"]:
+            spans = []
+            for ch, border in h["letters"]:
+                if border:
+                    spans.append(f"<span style='opacity:.55;text-decoration:underline 2px dashed {OUTLINE};"
+                                 f"text-underline-offset:6px'>{e(ch)}</span>")
+                else:
+                    spans.append(e(ch))
+            letters = (f"<span aria-label='{_html.escape(h['aria'])}' style='font-size:36px;font-weight:700;"
+                       f"letter-spacing:.06em;line-height:1.1'>{''.join(spans)}</span>")
+        name = (f"<span style='font-size:18px;font-weight:600'>«{e(h['name'])}»</span>" if h.get("name") else "")
+        pill = ("display:inline-block;font-size:13px;line-height:1.35;border:1px {style} " + OUTLINE +
+                ";border-radius:999px;padding:2px 10px")
+        labels = "".join(f"<span style='{pill.format(style='dashed' if dashed else 'solid')}'>{e(t)}</span>"
+                         for t, dashed in h["labels"])
+        head = (f"<div style='display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;"
+                f"border-bottom:1px solid {OUTLINE};padding-bottom:10px;margin-bottom:12px'>{letters}{name}"
+                f"<span style='display:flex;flex-wrap:wrap;gap:6px 8px;align-items:baseline'>{labels}</span></div>")
+        body = "".join(f"<p style='margin:0 0 10px'><b>{e(p['lead'])}</b> {e(p['text'])}</p>" for p in self.paragraphs)
+        return (f"<div class='bs3-char-text' style='font-size:15px;line-height:1.55;max-width:75ch'>{head}{body}</div>")
+
+    # ---------------------------------------------------------------------------------------------- PDF
+    def pdf_header(self) -> dict:
+        """{"letters": [(letter, borderline)], "name", "labels": [text]} for one header line of the PDF."""
+        return {"letters": list(self.header["letters"]), "name": self.header.get("name"),
+                "labels": [t for t, _ in self.header["labels"]]}
+
+    def pdf_paragraphs(self) -> list[dict]:
+        """[{"key", "lead", "text", "markdown"}]: `markdown` is «**lead** text» for fpdf2 multi_cell(markdown=True)."""
+        out = []
+        for p in self.paragraphs:
+            out.append({**p, "markdown": f"**{p['lead']}** {p['text']}"})
+        return out
+
+
+def placeholder_html() -> str:
+    """What the window shows before an analysis."""
+    t = load_lexicon()["templates"]["placeholder"]
+    return f"<div class='bs3-char-text' style='font-size:15px;line-height:1.55;opacity:.75'>{_html.escape(t)}</div>"
+
+
+# ------------------------------------------------------------------------------------------------------ build ---
+
+def _positions(view: dict) -> dict:
+    tr = view.get("traits") or {}
+    return {k: _num((tr.get(k) or {}).get("position")) for k in TRAIT_KEYS}
+
+
+def _system_positions(view: dict, system: str, lang: str) -> dict | None:
+    sc = (view.get("variant_scores") or {}).get(system)
+    if not isinstance(sc, dict):
+        return None
+    ps = {k: refnorms.position(system, lang, k, sc.get(k)) for k in TRAIT_KEYS}
+    return ps if any(v is not None for v in ps.values()) else None
+
+
+def _comparison(view: dict, lang: str, main: str) -> tuple[dict | None, dict | None]:
+    """(positions of the side compared as «main», positions of the other side) for the agreement of the systems: ru —
+    the main system and the second opinion; en — OCEAN-AI and the own model separately."""
+    if lang == "ru":
+        other = next((s for s in ("oceanai", "mm") if s != main), None)
+        second = _system_positions(view, other, lang) if other else None
+        return (_positions(view), second) if second else (None, None)
+    a, b = _system_positions(view, "oceanai", lang), _system_positions(view, "mm", lang)
+    return (a, b) if a and b else (None, None)
+
+
+def _header(mb: dict | None, lang: str, T: dict, ps: dict) -> dict:
+    H = T["header"]
+    labels: list[tuple[str, bool]] = []
+    if not mb:
+        labels.append((H["no_type"], False))
+        es = ps.get("emotional_stability")
+        if es is not None:
+            labels.append((H["neuroticism"].format(level=level_phrase(1.0 - es)), False))
+        return {"letters": [], "letters_text": "", "name": None, "labels": labels, "aria": ""}
+    x = int(mb.get("x_count") or 0)
+    axes = mb.get("axes") or {}
+    if x <= 2:
+        word = mb.get("type_strict") or ""
+        letters = [(ch, bool((axes.get(ax) or {}).get("borderline"))) for ch, ax in zip(word, AXES)]
+        name = mb.get("type_name")
+    else:
+        word = mb.get("type") or ""
+        letters = [(ch, False) for ch in word]
+        name = None
+    labels.append((H["source"].get(mb.get("source"), H["source"]["ocean_ai"]), False))
+    border_axes = [ax for ax in AXES if (axes.get(ax) or {}).get("borderline")]
+    if x >= 3:
+        labels.append((H["not_expressed"].format(x=x), False))
+    else:
+        labels += [(H["axis_border"].format(axis=AXIS_LABEL[ax]), True) for ax in border_axes]
+    neuro = mb.get("neuroticism")
+    if neuro and neuro.get("level"):
+        labels.append((H["neuroticism"].format(level=neuro["level"]), False))
+    if (mb.get("reference") or {}).get("kind") == "provisional":
+        labels.append((H["provisional"], False))
+    aria = f"Тип {word}" + ("".join(f", ось {AXIS_LABEL[ax]} на границе" for ax in border_axes) if x <= 2 else "")
+    return {"letters": letters, "letters_text": word, "name": name, "labels": labels, "aria": aria}
+
+
+def _p_short(mb, lang, T, lex, ps) -> str:
+    S = T["short"]
+    out = []
+    ranked = sorted((k for k in MBTI_TRAITS if ps.get(k) is not None and level(ps[k]) != "mid"),
+                    key=lambda k: -round(abs(ps[k] - 0.5), 9))[:2]
+    phrases = []
+    for k in ranked:
+        lv = level(ps[k])
+        pole = "high" if lv in ("high", "above") else "low"
+        phrases.append((lex["short_adverbs"][lv], lex["short"][k][pole]))
+    if len(phrases) == 2:
+        out.append(S["standout_two"].format(a1=phrases[0][0], p1=phrases[0][1], a2=phrases[1][0], p2=phrases[1][1]))
+    elif phrases:
+        out.append(S["standout_one"].format(a1=phrases[0][0], p1=phrases[0][1]))
+    else:
+        out.append(S["standout_none"])
+    if mb:
+        x = int(mb.get("x_count") or 0)
+        strict, loose, name = mb.get("type_strict"), mb.get("type"), _q(mb.get("type_name"))
+        border = [AXIS_LABEL[ax] for ax in AXES if ((mb.get("axes") or {}).get(ax) or {}).get("borderline")]
+        if x == 0:
+            out.append(S["mbti_x0"].format(S=strict, name=name))
+        elif x == 1:
+            out.append(S["mbti_x1"].format(S=strict, name=name, axis=border[0] if border else ""))
+        elif x == 2:
+            out.append(S["mbti_x2"].format(S=strict, name=name, T=loose))
+        else:
+            out.append(S["mbti_x3"].format(T=loose))
+        neuro = mb.get("neuroticism")
+        if neuro and neuro.get("level"):
+            out.append(S["neuroticism"].format(level=neuro["level"]))
+        agr = mb.get("agreement")
+        second = mb.get("second") or []
+        if agr and second:
+            ax = agr.get("axes") or {}
+            differ = [AXIS_LABEL[a] for a in AXES if ax.get(a) == "differ"]
+            border2 = [AXIS_LABEL[a] for a in AXES if ax.get(a) == "border"]
+            sys_mode = lang != "ru"
+            if not differ and not border2:
+                out.append(S["systems_same" if sys_mode else "second_same"])
+            elif not differ:
+                out.append(S["systems_border" if sys_mode else "second_border"].format(axes=_axes_by(border2)))
+            elif sys_mode and len(second) >= 2:
+                out.append(S["systems_differ"].format(axes=_axes_by(differ), T1=second[0].get("type"),
+                                                      T2=second[1].get("type")))
+            else:
+                out.append(S["second_differ"].format(axes=_axes_by(differ), T2=second[0].get("type")))
+    elif ps.get("emotional_stability") is not None:
+        out.append(S["neuroticism"].format(level=level_phrase(1.0 - ps["emotional_stability"])))
+    return " ".join(out)
+
+
+def _axes_by(labels: list[str]) -> str:
+    """«оси E–I» / «осям E–I и T–F» (after «по»)."""
+    return ("оси " if len(labels) == 1 else "осям ") + _join(labels)
+
+
+def _p_basis(view, mb, lang, T) -> str:
+    B = T["basis"]
+    meta = view.get("view_meta") or {}
+    total = int(meta.get("segments_total") or 0)
+    n = int(meta.get("segments_used") or 0)
+    if total <= 1 or n <= 0:
+        where = B["where_whole"]
+    else:
+        where = B["where_segments"].format(n=n, segments=_plural(n, "отрезку", "отрезкам", "отрезкам"))
+    if lang != "ru":
+        return B["en"].format(where=where)
+    ref = meta.get("reference") or {}
+    system = B["system"].get(meta.get("main_system"), B["system"]["oceanai"])
+    return B["ru"].format(system=system, where=where, group=ref.get("label_ru", ""))
+
+
+def _p_trait(k, view, mb, lang, T, lex, ps, cmp_main, cmp_other) -> dict | None:
+    p = ps.get(k)
+    if p is None:
+        return None
+    Tr = T["trait"]
+    ref = (view.get("view_meta") or {}).get("reference") or {}
+    lv = level(p)
+    lead = Tr["lead"].format(title=lex["names"][k]["title"], level=level_phrase(p))
+    paren = [position_phrase(p, ref)]
+    if mb:
+        a = (mb.get("axes") or {}).get(AXIS_OF[k]) or {}
+        if a.get("borderline") or a.get("missing"):
+            paren.append(Tr["border"].format(axis=AXIS_LABEL[AXIS_OF[k]]))
+        else:
+            paren.append(Tr["letter"].format(letter=a.get("letter"), word=a.get("word")))
+    entry = lex["levels"][k][lv]
+    body = entry[:1] if lv == "mid" else entry
+    text = f"({'; '.join(paren)}). " + " ".join(body)
+    if cmp_main and cmp_other:
+        s1, s2 = _side(cmp_main.get(k)), _side(cmp_other.get(k))
+        if {s1, s2} == {"above", "below"}:
+            text += " " + (Tr["opposite"] if lang == "ru" else Tr["opposite_systems"])
+    return {"key": f"trait:{k}", "lead": lead, "text": text}
+
+
+def _p_stability(view, mb, lang, T, lex, ps) -> dict | None:
+    p = ps.get("emotional_stability")
+    if p is None:
+        return None
+    St = T["stability"]
+    ref = (view.get("view_meta") or {}).get("reference") or {}
+    lead = St["lead"].format(es=level_phrase(p), n=level_phrase(1.0 - p))
+    text = (f"({position_phrase(p, ref)}). " + " ".join(lex["levels"]["emotional_stability"][level(p)]) + " "
+            + St["separate"] + " " + caveats.text("C11"))
+    return {"key": "stability", "lead": lead, "text": text}
+
+
+def _p_mbti(mb, T, type_names) -> str:
+    M = T["mbti"]
+    x = int(mb.get("x_count") or 0)
+    strict, loose, name = mb.get("type_strict"), mb.get("type"), _q(mb.get("type_name"))
+    border = [AXIS_LABEL[ax] for ax in AXES if ((mb.get("axes") or {}).get(ax) or {}).get("borderline")]
+    out = []
+    if x == 0:
+        out.append(M["x0"].format(S=strict, name=name))
+    elif x == 1:
+        alts = mb.get("alternatives") or []
+        s = M["x1"].format(S=strict, name=name, axis=border[0] if border else "", T=loose,
+                           A=alts[0] if alts else "", name_a=_q(type_names.get(alts[0])) if alts else "")
+        if not alts:                                   # a missing trait: no flipped type to offer
+            s = s.split(":")[0] + "."
+        out.append(s)
+    elif x == 2:
+        out.append(M["x2"].format(S=strict, name=name, axis1=border[0] if border else "",
+                                  axis2=border[1] if len(border) > 1 else "", T=loose))
+    else:
+        out.append(M["x3"].format(count=M["count"]["4" if x >= 4 else "3"], T=loose, S=strict))
+    out.append(M["basis"])
+    st = mb.get("stability")
+    if st:
+        n = max(int((st.get(ax) or {}).get("of") or 0) for ax in AXES)
+        unstable = [ax for ax in AXES if st.get(ax) and st[ax]["same"] < st[ax]["of"]]
+        if not unstable:
+            out.append(M["stable_all"].format(n=n, segments=_plural(n, "отрезке", "отрезках", "отрезках")))
+        else:
+            first = unstable[0]
+            s = M["part_first"].format(axis=AXIS_LABEL[first], k=st[first]["same"], n=st[first]["of"],
+                                       segments=_plural(st[first]["of"], "отрезка", "отрезков", "отрезков"))
+            for ax in unstable[1:]:
+                s += M["part_more"].format(axis=AXIS_LABEL[ax], k=st[ax]["same"])
+            if len(unstable) < len([ax for ax in AXES if st.get(ax)]):
+                s += M["part_rest"]
+            out.append(s + ".")
+    return " ".join(out)
+
+
+def _p_behavior(view, T, ps) -> str:
+    Bh = T["behavior"]
+    an = view.get("analyses") or {}
+    out = []
+    sp = an.get("speech") or {}
+    wpm = _num(sp.get("words_per_min_speech"))
+    if wpm:
+        tempo = "fast" if wpm > 160 else ("calm" if wpm >= 110 else "slow")
+        n = int(round(wpm))
+        pause = _num(sp.get("pause_share"))
+        pauses = "" if pause is None else Bh["pauses"]["few" if pause * 100 < 10 else ("some" if pause * 100 < 25
+                                                                                         else "many")]
+        out.append(Bh["tempo"].format(tempo=Bh["tempo_words"][tempo], wpm=n,
+                                      words=_plural(n, "слово", "слова", "слов"), pauses=pauses))
+    vo = (an.get("voice") or {}).get("mean") or {}
+    arousal = _num(vo.get("arousal"))
+    if arousal is not None:
+        v = "low" if arousal < 0.4 else ("high" if arousal > 0.6 else "mid")
+        out.append(Bh["voice"].format(voice=Bh["voice_words"][v]))
+    fa = (an.get("face") or {}).get("mean") or {}
+    fa = {k: _num(v) for k, v in fa.items() if _num(v) is not None}
+    if fa:
+        k, v = max(fa.items(), key=lambda kv: kv[1])
+        caution = Bh["face_caution"] if k in ("sad", "fear", "sadness") else ""
+        out.append(Bh["face"].format(expression=Bh["face_names"].get(k, k), share=int(round(100 * v)),
+                                     caution=caution))
+    te = (an.get("emotions_text") or {}).get("mean") or {}
+    te = {k: _num(v) for k, v in te.items() if _num(v) is not None}
+    if te:
+        if te.get("neutral", 0.0) >= 0.6:
+            out.append(Bh["tone_neutral"])
+        else:
+            k, v = max(te.items(), key=lambda kv: kv[1])
+            out.append(Bh["tone_top"].format(emotion=Bh["tone_names"].get(k, k), share=int(round(100 * v))))
+    lv = level(ps.get("extraversion"))
+    if lv and arousal is not None and wpm:
+        if lv in ("high", "above") and arousal < 0.4 and wpm < 110:
+            out.append(Bh["check_high"])
+        elif lv in ("low", "below") and arousal > 0.6 and wpm > 160:
+            out.append(Bh["check_low"])
+    if not out:
+        return ""
+    return " ".join(out + [Bh["closing"]])
+
+
+def _p_agreement(view, mb, lang, T, lex, cmp_main, cmp_other) -> str:
+    A = T["agreement"]
+    second = (mb or {}).get("second") or []
+    agr = (mb or {}).get("agreement")
+    if not (cmp_main and cmp_other and second and agr):
+        return A["none"]
+    sys_mode = lang != "ru"
+    groups = {"same": [], "mid": [], "opposite": []}
+    for k in TRAIT_KEYS:
+        s1, s2 = _side(cmp_main.get(k)), _side(cmp_other.get(k))
+        if s1 is None or s2 is None:
+            continue
+        if s1 == s2:
+            groups["same"].append(k)
+        elif "mid" in (s1, s2):
+            groups["mid"].append(k)
+        else:
+            groups["opposite"].append(k)
+    names = lex["names"]
+    rest = []
+    if groups["mid"]:
+        rest.append(A["mid"].format(traits=_join([names[k]["dat"] for k in groups["mid"]])))
+    if groups["opposite"]:
+        key = "opposite_one" if len(groups["opposite"]) == 1 else "opposite_many"
+        rest.append(A[key].format(traits=_join([names[k]["dat"] for k in groups["opposite"]])))
+    who = A["who_systems" if sys_mode else "who"]
+    if groups["same"]:
+        s = f"{who} " + A["same_systems" if sys_mode else "same"].format(
+            traits=_join([names[k]["acc"] for k in groups["same"]]))
+        if rest:
+            s += "; " + "; ".join(rest)
+    else:
+        s = f"{who} " + A["hardly_systems" if sys_mode else "hardly"] + ": " + "; ".join(rest)
+    sentences = [s + "."]
+
+    def nearest(m):
+        return A["nearest"].format(S=m.get("type_strict")) if m.get("type") != m.get("type_strict") else ""
+
+    if sys_mode and len(second) >= 2:
+        t = A["type_systems"].format(T1=second[0].get("type"), nearest1=nearest(second[0]),
+                                     T2=second[1].get("type"), nearest2=nearest(second[1]))
+    else:
+        t = A["type"].format(T2=second[0].get("type"), nearest2=nearest(second[0]))
+    ax = agr.get("axes") or {}
+    agree = [AXIS_LABEL[a] for a in AXES if ax.get(a) == "agree"]
+    differ = [AXIS_LABEL[a] for a in AXES if ax.get(a) == "differ"]
+    border = [AXIS_LABEL[a] for a in AXES if ax.get(a) == "border"]
+    clauses = []
+    if differ:
+        clauses.append(A["differ"].format(axes=_axes_by(differ)))
+    if border:
+        clauses.append(A["border"].format(axes=(_join(border) if clauses else _axes_by(border))))
+    if agree:
+        letters = (A["letters_one"].format(axes=agree[0]) if len(agree) == 1 else
+                   A["letters_many"].format(k=len(agree), axes=_join(agree)))
+        t += "; " + letters + ("; " + ", ".join(clauses) if clauses else "")
+    else:
+        t += "; " + A["letters_none"] + (": " + ", ".join(clauses) if clauses else "")
+    sentences.append(t + ".")
+    if lang == "ru":
+        n = int(refnorms.agreement_stats().get("n") or 0)
+        if n:
+            sentences.append(A["ru_tail"].format(n=n, videos=_plural(n, "ролике", "роликах", "роликах")))
+    return " ".join(sentences)
+
+
+def _p_limits(view) -> str:
+    meta = view.get("view_meta") or {}
+    parts = [caveats.text("C14"), caveats.text("C15")]
+    dropped = meta.get("segments_without_primary") or []
+    if dropped:
+        parts.append(caveats.c13(len(dropped), int(meta.get("segments_total") or len(dropped))))
+    if int(meta.get("segments_total") or 0) <= 1:
+        parts.append(caveats.text("C19"))
+    if meta.get("primary_missing"):
+        parts.append(caveats.text("C20"))
+    parts.append(caveats.text("C12"))
+    return " ".join(parts)
+
+
+def build(view: dict, mb: dict | None) -> Character:
+    """The characterization of a clean view (scores.clean_view) with its MBTI section (mbti.get_mbti; None when the
+    job has no Big Five)."""
+    lex = load_lexicon()
+    T = lex["templates"]
+    L = T["leads"]
+    meta = view.get("view_meta") or {}
+    lang = meta.get("lang", "ru")
+    main = meta.get("main_system", "oceanai")
+    ps = _positions(view)
+    header = _header(mb, lang, T, ps)
+    if all(v is None for v in ps.values()):
+        paragraphs = [{"key": "no_scores", "lead": L["no_scores"], "text": caveats.text("C21")},
+                      {"key": "limits", "lead": L["limits"], "text": _p_limits(view)}]
+        return Character(header=header, paragraphs=paragraphs, lang=lang)
+    cmp_main, cmp_other = _comparison(view, lang, main)
+    from .mbti import load_config
+    type_names = load_config().get("type_names_ru") or {}
+
+    paragraphs = [{"key": "short", "lead": L["short"], "text": _p_short(mb, lang, T, lex, ps)},
+                  {"key": "basis", "lead": L["basis"], "text": _p_basis(view, mb, lang, T)}]
+    order = sorted((k for k in MBTI_TRAITS if ps.get(k) is not None), key=lambda k: -round(abs(ps[k] - 0.5), 9))
+    for k in order:
+        para = _p_trait(k, view, mb, lang, T, lex, ps, cmp_main, cmp_other)
+        if para:
+            paragraphs.append(para)
+    st = _p_stability(view, mb, lang, T, lex, ps)
+    if st:
+        paragraphs.append(st)
+    if mb:
+        paragraphs.append({"key": "mbti", "lead": L["mbti"], "text": _p_mbti(mb, T, type_names)})
+    beh = _p_behavior(view, T, ps)
+    if beh:
+        paragraphs.append({"key": "behavior", "lead": L["behavior"], "text": beh})
+    paragraphs.append({"key": "agreement", "lead": L["agreement"],
+                       "text": _p_agreement(view, mb, lang, T, lex, cmp_main, cmp_other)})
+    paragraphs.append({"key": "limits", "lead": L["limits"], "text": _p_limits(view)})
+    return Character(header=header, paragraphs=paragraphs, lang=lang)
