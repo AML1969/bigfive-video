@@ -22,8 +22,10 @@ STOP = ("диагноз", "расстройств", "патолог", "норм�
         "тревожн", "является", "склонен", "сегмент")
 PRONOUNS = ("он", "она", "его", "её", "ее", "ему", "ей", "него", "неё", "нему", "ней")
 GOLDEN = Path(__file__).resolve().parent / "golden"
-# the verbatim design texts (8.4-8.6, caveats of 11) give about 720-770 words for the two samples, more than the
-# 400-550 the design estimated; the upper bound leaves room for the longest combination (see the stage notes)
+# deviation from design 8.2 (test bound 150-650): the verbatim design texts (8.4-8.6, caveats of 11) give about
+# 720-790 words for the two samples, more than the 400-550 the design estimated, and risk 14.10 allows no further
+# levers; the upper bound leaves room for the longest combination. Back to 650 once the owner shortens the texts
+# (e.g. at the proofreading of the lexicon, decision 16.6)
 MIN_WORDS, MAX_WORDS = 150, 850
 
 # numbers only (voice, speech, face and text-emotion means of the two samples), no identities
@@ -85,7 +87,7 @@ def _cases() -> dict:
 
 def test_lexicon_complete_and_follows_the_rules():
     lex = C.load_lexicon()
-    assert lex["lexicon_version"] == 2          # 2: proofreading of task T25
+    assert lex["lexicon_version"] == 3          # 2: proofreading of task T25; 3: position phrase of ES in its lead
     assert set(lex["levels"]) == set(TRAIT_KEYS)
     for k in TRAIT_KEYS:
         assert set(lex["levels"][k]) == set(LEVELS), k
@@ -192,7 +194,9 @@ def test_sample_b_matches_the_design_example():
     for k in ("conscientiousness", "agreeableness"):
         assert "противоположно" not in ch.paragraph(f"trait:{k}")["text"]
     st = ch.paragraph("stability")
-    assert st["lead"] == "Эмоциональная устойчивость — выше типичного; нейротизм, соответственно, — ниже типичного"
+    assert st["lead"] == ("Эмоциональная устойчивость — выше типичного (выше, чем у большинства из 13 русских роликов); "
+                          "нейротизм, соответственно, — ниже типичного")
+    assert not st["text"].startswith("(")
     typ = ch.paragraph("mbti")["text"]
     assert typ.startswith("В нотации MBTI ближе всего тип ESFJ («Попечитель»), но ось S–N на границе, поэтому точнее "
                           "записать EXFJ: возможен и тип ENFJ («Наставник»).")
@@ -290,7 +294,7 @@ def test_html_and_pdf_forms():
 
 def test_golden_texts():
     """Verbatim comparison with tests/golden/char_A.txt, char_B.txt (task T25: saved after the proofreading of
-    lexicon_version 2, from the same inputs as here). A lexicon or template change must regenerate them on purpose."""
+    lexicon_version 2, regenerated for lexicon_version 3, from the same inputs as here). A lexicon or template change must regenerate them on purpose."""
     for name in ("A", "B"):
         path = GOLDEN / f"char_{name}.txt"
         assert path.is_file(), f"missing golden text {path.name}"

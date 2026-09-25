@@ -318,8 +318,11 @@ def _p_stability(view, mb, lang, T, lex, ps) -> dict | None:
         return None
     St = T["stability"]
     ref = (view.get("view_meta") or {}).get("reference") or {}
-    lead = St["lead"].format(es=level_phrase(p), n=level_phrase(1.0 - p))
-    text = (f"({position_phrase(p, ref)}). " + " ".join(lex["levels"]["emotional_stability"][level(p)]) + " "
+    # the position phrase describes emotional stability, so it stands right after its level, not after neuroticism
+    # (design 8.4 p. 4 puts it after the neuroticism level, where it reads as a contradiction: «нейротизм — заметно
+    # выше типичного (ниже, чем у большинства …)»)
+    lead = St["lead"].format(es=level_phrase(p), pos=position_phrase(p, ref), n=level_phrase(1.0 - p))
+    text = (" ".join(lex["levels"]["emotional_stability"][level(p)]) + " "
             + St["separate"] + " " + caveats.text("C11"))
     return {"key": "stability", "lead": lead, "text": text}
 

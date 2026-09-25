@@ -20,7 +20,7 @@ import math
 
 from . import caveats
 from .mbti import AXES, AXIS_LABEL, agreement_line, load_config
-from .mbti_html import TABLE_NOTE, TABLE_ROWS, summary_line
+from .mbti_html import TABLE_NOTE, TABLE_ROWS, corr_cell, summary_line
 from .pdf_report import NOTE_GREY, TEXT_W_MM, Report
 
 FRAME_GREY = 130                 # dashed frames and rules, as the #808080 outline of the page
@@ -200,7 +200,7 @@ def _axis_table(pdf: Report, systems: list[dict], agr: dict | None, cfg: dict) -
         if agr:
             row.append(AGREE_PDF.get((agr.get("axes") or {}).get(ax), "—"))
         c = corr.get(ax) or {}
-        row.append(f"{c.get('label', '')}, r ≈ {c.get('r')}" if c.get("r") is not None else "—")
+        row.append(corr_cell(c) if c.get("r") is not None else "—")
         rows.append(row)
     row = ["—", "Нейротизм"] + [((s.get("neuroticism") or {}).get("level") or "—") for s in systems]
     rows.append(row + (["—"] if agr else []) + ["в MBTI не выражается"])

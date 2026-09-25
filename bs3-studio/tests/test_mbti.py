@@ -114,8 +114,10 @@ def test_neuroticism():
 def test_refnorms():
     q = load_norms()["quantiles"]
     for k in TRAIT_KEYS:
-        # FIV2 labels are discrete (steps of about 0.01): up to 3 quantiles around the median share one value and
-        # norms.percentile maps a tied value to its last quantile, so the median lies at 50-53%, not exactly at 50%
+        # deviation from design 13.1 item 7 (median -> 0.5 within 0.01): FIV2 labels are discrete (steps of about
+        # 0.01), up to 3 quantiles around the median share one value and norms.percentile (design 4.3: p =
+        # percentile / 100, the same percentile the page and the PDF print) maps a tied value to its last quantile,
+        # so the median lies at 50-53%
         assert round(abs(refnorms.position("mean", "en", k, q[k][50]) - 0.5), 6) <= 0.03
         mid = (q[k][49] + q[k][51]) / 2
         assert round(abs(refnorms.position("mean", "en", k, mid) - 0.5), 6) <= 0.03
@@ -336,3 +338,6 @@ def test_english_section():
     assert mb["agreement"]["pair"] == ["ocean_ai", "own_model"]
     label, _, note = mbti.fact_card(mb)
     assert label == "Тип MBTI · среднее двух систем" and "предварительные" not in note
+    lines = mbti.journal_lines(mb)
+    assert lines[1].startswith("MBTI по системе (OCEAN-AI): ") and lines[2].startswith("MBTI по системе (своя модель): ")
+    assert not any("Второе мнение" in ln for ln in lines)

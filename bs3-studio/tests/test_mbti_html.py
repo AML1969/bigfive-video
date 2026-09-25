@@ -88,7 +88,7 @@ def test_read():
     for code in ("C3", "C4", "C5", "C9", "C16"):
         assert caveats.text(code) in h, code
     assert caveats.c6("ru") in h and caveats.c7("ru") in h
-    for s in ("высокая, r ≈ 0.74", "высокая, r ≈ 0.72", "средняя, r ≈ 0.44", "средняя, r ≈ 0.49", "в MBTI не выражается",
+    for s in ("высокое, r ≈ 0.74", "высокое, r ≈ 0.72", "среднее, r ≈ 0.44", "среднее, r ≈ 0.49", "в MBTI не выражается",
               "McCrae, Costa, 1989"):
         assert s in h, s
     assert caveats.c6("en") in mbti_html.read_html(_mb(english("B")))

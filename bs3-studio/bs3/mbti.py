@@ -441,6 +441,9 @@ def journal_lines(mb: dict | None) -> list[str]:
     lines = [line]
     agr = mb.get("agreement") or {}
     second = mb.get("second") or []
+    # ru: the other system is a second opinion; en: the main type is the mean, and both systems are listed separately
+    # (design 5.6), as in the characterization («Системы по отдельности»)
+    per_system = mb.get("source") == "mean"
     for i, s in enumerate(second):
         t = s.get("type")
         if s.get("x_count", 0) == 0:
@@ -449,7 +452,8 @@ def journal_lines(mb: dict | None) -> list[str]:
             words = f"{t}, тип не выражен (формально ближайший {s.get('type_strict')})"
         else:
             words = f"{t}, ближайший {s.get('type_strict')}"
-        ln = f"Второе мнение MBTI ({SOURCE_RU.get(s.get('source'), s.get('source'))}): {words}"
+        ln = (f"{'MBTI по системе' if per_system else 'Второе мнение MBTI'} "
+              f"({SOURCE_RU.get(s.get('source'), s.get('source'))}): {words}")
         if agr and i == len(second) - 1:
             n = agr.get("n_agree", 0)
             marks = ", ".join(f"{AXIS_LABEL[a]} {SIGN[agr['axes'][a]]}" for a in AXES)

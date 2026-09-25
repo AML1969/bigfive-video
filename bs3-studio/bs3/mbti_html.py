@@ -31,8 +31,17 @@ PILL = (f"display:inline-block;font-size:13px;font-weight:400;line-height:1.35;b
 # 5.5: axis, Big Five scale, direction, correspondence of the scales (r from config/mbti.json)
 TABLE_ROWS = (("EI", "Экстраверсия", "выше → E"), ("SN", "Открытость опыту", "выше → N"),
               ("TF", "Доброжелательность", "выше → F"), ("JP", "Добросовестность", "выше → J"))
+# the config keeps the labels of `reliability` (design 4.6, 7.1: «высокая (r≈0.74)», agreeing with «надёжность»); the
+# reader's table 5.5 has the column «Соответствие шкал», so there the words agree with «соответствие»
+CORR_WORD = {"высокая": "высокое", "средняя": "среднее", "низкая": "низкое"}
 TABLE_NOTE = ("Корреляции шкал MBTI и NEO-PI в самоотчётах (McCrae, Costa, 1989; воспроизведено Furnham, 1996, и "
               "Furnham и соавт., 2003). Это соответствие шкал, а не точность оценки по видео.")
+
+
+def corr_cell(c: dict) -> str:
+    """«высокое, r ≈ 0.74»: one cell of the column «Соответствие шкал» (design 5.5)."""
+    label = str(c.get("label", ""))
+    return f"{CORR_WORD.get(label, label)}, r ≈ {c.get('r')}"
 
 
 def _e(s) -> str:
@@ -319,7 +328,7 @@ def read_html(mb: dict | None) -> str:
     rows = []
     for ax, scale, direction in TABLE_ROWS:
         c = corr.get(ax) or {}
-        rows.append([AXIS_LABEL[ax], scale, direction, f"{c.get('label', '')}, r ≈ {c.get('r')}"])
+        rows.append([AXIS_LABEL[ax], scale, direction, corr_cell(c)])
     rows.append(["—", "Нейротизм (= 1 − эмоциональная стабильность)", "—", "в MBTI не выражается"])
     head = [th_text("Ось MBTI"), th_text("Шкала Big Five"), th_text("Направление"), th_text("Соответствие шкал")]
     lang = _lang(mb) if mb else "ru"

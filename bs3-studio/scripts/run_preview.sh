@@ -14,5 +14,5 @@ for i in $(seq 1 30); do
   code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://localhost:$PORT/" || true)
   [ "$code" = "200" ] && break
 done
-grep -a "preview job" "$HOME/bs3_data/logs/preview.log"
+grep -aE "preview job|refused" "$HOME/bs3_data/logs/preview.log"
 echo "http://localhost:$PORT -> HTTP ${code:-000}"
