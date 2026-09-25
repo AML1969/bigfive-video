@@ -2,8 +2,9 @@
 
 - nothing under bs2-studio/ and bs/ differs from the tag v3-base (the last commit before the 3.0 scaffold), neither in
   commits nor in the working tree;
-- no file of bs3-studio/ (except README.md) imports bs2 or names its work dir or variables; the 2.0 port and name may
-  appear only in documentation (comments, docstrings, the project description), never in code;
+- no file of bs3-studio/ (except README.md) imports bs2 or names its variables; its work dir is named only by the
+  offline scripts that read old 2.0 jobs; the 2.0 port and name may appear only in documentation (comments,
+  docstrings, the project description), never in code;
 - the 3.0 work dirs lie under ~/bs3_data; the product name and version come from bs3/__init__.py.
 """
 from __future__ import annotations
@@ -22,7 +23,12 @@ REPO = ROOT.parent
 SELF = Path(__file__).resolve()
 
 # forbidden everywhere (code, comments, data)
-HARD = [re.compile(r"\bimport\s+bs2\b"), re.compile(r"\bfrom\s+bs2\b"), re.compile(r"bs2_data"), re.compile(r"BS2_")]
+HARD = [re.compile(r"\bimport\s+bs2\b"), re.compile(r"\bfrom\s+bs2\b"), re.compile(r"BS2_")]
+# the 2.0 work dir: never in the package, the tests or the unit; only the offline scripts that read old 2.0 jobs
+# (design 4.4 and 13.3: freeze the reference group, import and re-render sample jobs, refuse to write there) name it
+BS2_DATA = re.compile(r"bs2_data")
+BS2_DATA_READERS = {"scripts/freeze_ru_norms.py", "scripts/import_job.py", "scripts/rerender_samples.py",
+                    "scripts/add_mbti.py"}
 # allowed only in documentation positions (the 3.0 docs say it is independent of BS 2.0 on :7870)
 SOFT = [re.compile(r"(?<![\d.])7870(?!\d)"), re.compile(r"BS 2\.0")]
 SKIP_DIRS = {"__pycache__", ".git"}
@@ -93,6 +99,8 @@ def test_no_bs2_references_in_bs3_studio():
             for rx in HARD:
                 if rx.search(line):
                     bad.append(f"{rel}:{i}: {line.strip()[:120]}")
+            if BS2_DATA.search(line) and rel not in BS2_DATA_READERS:
+                bad.append(f"{rel}:{i}: {line.strip()[:120]}")
             if any(rx.search(line) for rx in SOFT):
                 if rel.endswith(".py") and doc_lines is None:
                     doc_lines = _py_doc_lines(text)
