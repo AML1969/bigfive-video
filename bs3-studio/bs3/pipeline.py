@@ -241,5 +241,14 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, lang: str = "r
     rep["timings_sec"]["total_wall"] = round(time.time() - t0, 1)
     rep["narrative"] = build_narrative(rep, expl)
     rep["job_dir"] = str(job)
+    # ---- MBTI section (design 7.2): computed once from the clean scores; a failure is logged, the job goes on
+    try:
+        from .mbti import build_section
+        from .scores import clean_view
+        mb = build_section(clean_view(rep))
+        if mb is not None:
+            rep["mbti"] = mb
+    except Exception as e:  # noqa: BLE001
+        log.warning("mbti section failed: %s", str(e).splitlines()[0][:160] if str(e) else type(e).__name__)
     (job / "result.json").write_text(json.dumps(rep, ensure_ascii=False, indent=2), encoding="utf-8")
     return rep

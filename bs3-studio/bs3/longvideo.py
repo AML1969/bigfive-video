@@ -151,7 +151,8 @@ class LongVideoAnalyzer:
             seg_results.append(r)
             timeline.append({"segment": i, "start": round(s, 1), "end": round(e, 1), "scores": r["scores"],
                              "transcript": seg_text, "behavior_description": r.get("behavior_description", ""),
-                             "members_used": r.get("members_used"), "file": str(seg_path)})
+                             "members_used": r.get("members_used"), "variants": r.get("variants"),
+                             "primary_used": r.get("primary_used"), "file": str(seg_path)})
             if r.get("behavior_description"):
                 descs.append(f"[{s:.0f}–{e:.0f} с] {r['behavior_description']}")
             log.info("segment %d/%d %.0f-%.0fs: %s", i, len(segs), s, e,
@@ -165,6 +166,14 @@ class LongVideoAnalyzer:
         # key is averaged over the segments that actually have it (NaN elsewhere)
         keys = list(TRAIT_KEYS) + sorted({k for r in seg_results for k in r["scores"]} - set(TRAIT_KEYS))
         mat = np.array([[r["scores"].get(k, np.nan) for k in keys] for r in seg_results], dtype=float)   # [S, K]
+        # 3.0 (design 6.3): when the main system scored at least one segment, the five traits of segments it did not
+        # score are left out of the mean and the spread (they hold another system's numbers on another scale);
+        # "interview" is not masked. If the main system scored nothing, the behaviour of 2.0 is kept.
+        primary = seg_results[0].get("primary")
+        if primary and any(r.get("primary_used") for r in seg_results):
+            for i, r in enumerate(seg_results):
+                if r.get("primary_used") is None:
+                    mat[i, : len(TRAIT_KEYS)] = np.nan
         have = ~np.isnan(mat)
         wk = np.where(have, w[:, None], 0.0)
         wk = wk / np.maximum(wk.sum(axis=0, keepdims=True), 1e-12)
@@ -173,7 +182,9 @@ class LongVideoAnalyzer:
         std = {k: float(np.nanstd(mat[:, i])) if have[:, i].any() else 0.0 for i, k in enumerate(keys)}
         # representative segment = closest to the mean profile on the five traits (used for explanations)
         core = mat[:, : len(TRAIT_KEYS)]
-        rep_pos = int(np.argmin(((core - mean_vec[: len(TRAIT_KEYS)]) ** 2).sum(axis=1)))
+        dist = np.nansum((core - mean_vec[: len(TRAIT_KEYS)]) ** 2, axis=1)
+        dist[np.isnan(core).all(axis=1)] = np.inf
+        rep_pos = int(np.argmin(dist))
         rep_idx = ok[rep_pos]["segment"] - 1
         # per-member means over the segments where that member produced a score (a member may skip a segment)
         variants = {}

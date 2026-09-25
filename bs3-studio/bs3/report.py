@@ -4,7 +4,7 @@ import datetime as _dt
 import re
 from pathlib import Path
 
-from . import __version__
+from . import PRODUCT, __version__
 from .norms import RU_NAMES, TRAIT_KEYS, percentile
 
 DISCLAIMER = ("Apparent personality as perceived by observers (First Impressions V2 style); "
@@ -93,7 +93,7 @@ def build_report(video: str | Path, result: dict, *, backend: str, corpus: str, 
         **extra,
         "transcript": result.get("transcript", ""),
         "modalities_used": list(modalities),
-        "model": {"name": "bs-bigfive", "version": __version__, "backend": backend, "corpus": corpus,
+        "model": {"name": "bs-bigfive", "version": __version__, "product": PRODUCT, "backend": backend, "corpus": corpus,
                   "lang": lang, "asr_model": asr_model, "primary": primary,
                   "trained_on": "FIV2 train" if corpus == "fi" else "MuPTA",
                   "scale": ("MuPTA (OCEAN-AI, русская речь)" if primary == "oceanai" and lang == "ru"
