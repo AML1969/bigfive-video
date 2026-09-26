@@ -1,11 +1,13 @@
-"""HTML of the tab «Тип MBTI» and of the short emotion paragraph (design 10.3, 5.5–5.7; task T18).
+"""HTML of the tab «Тип MBTI» and of the short emotion paragraph (design 10.3, 5.5–5.7; task T18; 3.1: one model).
 
-- `types_html(mb)` — the panel of the model that ran (one model since 3.1): letters of the type, its name, the type
-  with the borderline axes, four axis tracks with the score on 0…1 (the borderline zone 0.35–0.65 shaded) and
-  neuroticism on its own track;
-- `strip_html(mb)` — the letter strip «Тип по ходу ролика»: one column per segment, letters as text (bold — clear,
-  normal — moderate, dashed frame — on the border, «—» on hatching — no score), the summary line and C8 (C19);
-- `read_html(mb)` — «Как читать тип MBTI»: the correspondence table 5.5 and the caveats C3, C4, C5, C6, C7, C9, C16;
+- `types_html(mb)` — the one panel of the model that ran, titled «OCEAN-AI, веса MuPTA» or «AMLAI 1.0»: letters of the
+  type, its name, the type with the borderline axes, four axis tracks with the score on 0…1 (the borderline zone
+  0.35–0.65 shaded) and neuroticism on its own track;
+- `strip_html(mb)` — the letter strip «Тип по ходу ролика» of that model: one column per segment, letters as text
+  (bold — clear, normal — moderate, dashed frame — on the border, «—» on hatching — no score), the summary line and
+  C8 (C19);
+- `read_html(mb)` — «Как читать тип MBTI»: the correspondence table 5.5 and the caveats C3, C4, C5, C6, C7, C9, C16
+  (READ_CAVEATS; C7 says the type is that of the one chosen model);
 - `emo_intro_html(view)` — «Эмоции и голос: коротко»: the text-emotion and voice sentences in one paragraph.
 
 No new colours (design 13.4): outlines are palette.HTML track_outline, the marker main_fill. Text colours come from
@@ -16,13 +18,15 @@ from __future__ import annotations
 import html as _html
 
 from . import caveats
-from .mbti import AXES, AXIS_LABEL, border_text, load_config
+from .mbti import AXES, AXIS_LABEL, border_text, load_config, source_title
 from .norms import RU_NAMES
 from .palette import HTML as PAL
 from .scores import LEVELS_RU, level_phrase, plural_ru, score_text
 from .webparts import NOTE, table_html, th_text
 
 OUTLINE = PAL["track_outline"]
+# the caveats of «Как читать тип MBTI» (design 11), in this order, on the page and in section 2 of the PDF
+READ_CAVEATS = ("C3", "C4", "C5", "C6", "C7", "C9", "C16")
 HATCH = "repeating-linear-gradient(45deg,rgba(128,128,128,.25) 0 3px,transparent 3px 6px)"
 TEXT14 = "font-size:14px;line-height:1.5"
 # 5.5: axis, Big Five scale, direction, correspondence of the scales (r from config/mbti.json)
@@ -45,23 +49,15 @@ def _e(s) -> str:
     return _html.escape(str(s), quote=True)
 
 
-def _lang(mb: dict | None) -> str:
-    """English speech has the mean of the two systems as its main type; Russian speech one of the systems."""
-    return "en" if (mb or {}).get("source") == "mean" else "ru"
-
-
 def _mmss(sec) -> str:
     s = int(round(float(sec or 0)))
     return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}" if s >= 3600 else f"{s // 60}:{s % 60:02d}"
 
 
-def _panel_title(item: dict, lang: str, main: bool) -> str:
-    src = item.get("source")
-    if lang != "ru":
-        return {"mean": "Итог: среднее двух систем", "ocean_ai": "OCEAN-AI (веса First Impressions V2)",
-                "own_model": "Своя модель (First Impressions V2)"}.get(src, str(src))
-    name = {"ocean_ai": "OCEAN-AI (веса MuPTA)", "own_model": "Своя модель"}.get(src, str(src))
-    return name + (" — основная оценка" if main else " — второе мнение")
+def panel_title(mb: dict) -> str:
+    """«OCEAN-AI, веса MuPTA» / «AMLAI 1.0»: the model whose type the panel and the strip show (one model, 3.1)."""
+    title = source_title(mb)
+    return title + (", веса MuPTA" if mb.get("source") == "ocean_ai" else "")
 
 
 def _letters(item: dict, size: int) -> str:
@@ -157,15 +153,15 @@ def _neuro_row(item: dict, marker: str) -> str:
             "отдельно.</div></div>")
 
 
-def _panel(item: dict, lang: str, main: bool, cfg: dict) -> str:
+def _panel(item: dict, cfg: dict) -> str:
     names = cfg.get("type_names_ru") or {}
-    marker = f"background:{PAL['main_fill']}" if main else "background:currentColor;opacity:.55"
+    marker = f"background:{PAL['main_fill']}"
     x = int(item.get("x_count") or 0)
     name = item.get("type_name") if x <= 2 else None
     rows = "".join(_axis_row(ax, (item.get("axes") or {}).get(ax) or {"missing": True}, cfg, marker) for ax in AXES)
     return (f"<div style='border:1px solid {OUTLINE};border-radius:8px;padding:12px;min-width:0'>"
             f"<div style='font-size:15px;font-weight:600;line-height:1.4;margin-bottom:8px'>"
-            f"{_e(_panel_title(item, lang, main))}</div>"
+            f"{_e(panel_title(item))}</div>"
             f"<div style='display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline'>{_letters(item, 40)}"
             + (f"<span style='font-size:18px;font-weight:600'>«{_e(name)}»</span>" if name else "") + "</div>"
             f"<div style='{TEXT14};margin-top:6px'>{_e(_loose_line(item, names))}</div>"
@@ -173,17 +169,17 @@ def _panel(item: dict, lang: str, main: bool, cfg: dict) -> str:
 
 
 def types_html(mb: dict | None) -> str:
-    """«Тип MBTI»: the panel of the model that ran (5.6; one model since 3.1); C21 without Big Five."""
+    """«Тип MBTI»: the one panel of the model that ran (5.6; 3.1), C20 under it when the recorded model gave no scores
+    and the job's other model is shown; C21 without Big Five."""
     if not mb:
         return f"<p style='{TEXT14};margin:0'>{_e(caveats.text('C21'))}</p>"
     cfg = load_config()
-    lang = _lang(mb)
-    panels = [_panel(mb, lang, True, cfg)]
     tail = ""
-    if lang == "ru" and mb.get("source") == "own_model" and mb.get("primary_missing"):
+    if mb.get("source") == "own_model" and mb.get("primary_missing"):
         tail = f"<p style='{NOTE};margin:8px 0 0'>{_e(caveats.text('C20'))}</p>"
+    # the grid keeps the panel's width rule on a phone (min(320px, 100%)) and leaves room for nothing else: one model
     return ("<div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:12px'>"
-            + "".join(panels) + "</div>" + tail)
+            + _panel(mb, cfg) + "</div>" + tail)
 
 
 # --------------------------------------------------------------------------------------------- letter strip ---
@@ -234,11 +230,13 @@ def _seg_word(n: int) -> str:
     return plural_ru(n, "отрезка", "отрезков", "отрезков")
 
 
-def summary_line(item: dict, who: str) -> str:
-    """«Основная система: ESFJ в 16 из 26 отрезков с оценкой, ENFJ — в 10; ось S–N совпадает с итогом в 16 из 26
-    отрезков, остальные оси — во всех.» The types and the agreement with the whole video are those of the strict
-    letters; when an axis was on the border in some segments the line says «строгий тип» / «строгие буквы» and adds
-    in how many («ось E–I на границе во всех 17 отрезках, S–N — в 8»)."""
+def summary_line(item: dict, who: str | None = None) -> str:
+    """«OCEAN-AI: ESFJ в 16 из 26 отрезков с оценкой, ENFJ — в 10; ось S–N совпадает с итогом в 16 из 26 отрезков,
+    остальные оси — во всех.» `who` defaults to the title of the model the section describes. The types and the
+    agreement with the whole video are those of the strict letters; when an axis was on the border in some segments
+    the line says «строгий тип» / «строгие буквы» and adds in how many («ось E–I на границе во всех 17 отрезках,
+    S–N — в 8»)."""
+    who = who or source_title(item)
     modal = item.get("modal_types") or []
     entries = item.get("timeline") or []
     n = sum(1 for e in entries if e.get("type_strict"))
@@ -276,15 +274,12 @@ def strip_html(mb: dict | None) -> str:
     C19 for a video analysed as one segment."""
     if not mb:
         return ""
-    main_who = "Основная система"
     entries = mb.get("timeline") or []
     total = int(mb.get("segments_total") or len(entries) or 1)
     if total <= 1 or not entries:
         return f"<p style='{TEXT14};margin:0'>{_e(caveats.text('C19'))}</p>"
-    title_main = ("OCEAN-AI — основная оценка" if mb.get("source") == "ocean_ai" else
-                  "Своя модель — основная оценка" if mb.get("source") == "own_model" else str(mb.get("source")))
-    body = _lane(entries, title_main, "OCEAN-AI" if mb.get("source") == "ocean_ai" else "основной системы")
-    summary = summary_line(mb, main_who)
+    body = _lane(entries, panel_title(mb), source_title(mb))
+    summary = summary_line(mb)
     return (body + f"<div style='{NOTE};margin-top:6px'>{_e(LEGEND)}</div>"
             + (f"<p style='{TEXT14};margin:10px 0 0'>{_e(summary)}</p>" if summary else "")
             + f"<p style='{NOTE};margin:8px 0 0'>{_e(caveats.text('C8'))}</p>")
@@ -292,8 +287,9 @@ def strip_html(mb: dict | None) -> str:
 
 # ------------------------------------------------------------------------------------------- how to read ---
 
-def read_html(mb: dict | None) -> str:
-    """«Как читать тип MBTI»: the correspondence table (5.5) and the caveats C3, C4, C5, C6, C7, C9, C16."""
+def read_html(mb: dict | None = None) -> str:
+    """«Как читать тип MBTI»: the correspondence table (5.5) and the caveats READ_CAVEATS; the same for any job
+    (`mb` is accepted for the callers of 3.0)."""
     cfg = load_config()
     corr = cfg.get("correspondence") or {}
     rows = []
@@ -302,9 +298,7 @@ def read_html(mb: dict | None) -> str:
         rows.append([AXIS_LABEL[ax], scale, direction, corr_cell(c)])
     rows.append(["—", "Нейротизм (= 1 − эмоциональная стабильность)", "—", "в MBTI не выражается"])
     head = [th_text("Ось MBTI"), th_text("Шкала Big Five"), th_text("Направление"), th_text("Соответствие шкал")]
-    lang = _lang(mb) if mb else "ru"
-    texts = [caveats.text("C3"), caveats.text("C4"), caveats.text("C5"), caveats.c6(lang), caveats.c7(lang),
-             caveats.text("C9"), caveats.text("C16")]
+    texts = [caveats.text(c) for c in READ_CAVEATS]
     return (table_html(head, rows, wrap_first=True)
             + f"<p style='{NOTE};margin:8px 0 12px'>{_e(TABLE_NOTE)}</p>"
             + "".join(f"<p style='{TEXT14};margin:0 0 8px'>{_e(t)}</p>" for t in texts))

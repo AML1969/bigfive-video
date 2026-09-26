@@ -193,23 +193,16 @@ def fig_radar(rep: dict, theme: str = "dark"):
     theta = [_RADAR_LABEL[k] for k in TRAIT_KEYS]
     full = [RU_TITLES[k] for k in TRAIT_KEYS]
     main = [rep["traits"][k]["score"] for k in TRAIT_KEYS]
+    # one model per analysis (3.1): the trace is named after it («OCEAN-AI, веса MuPTA» / «AMLAI 1.0»)
+    from .webparts import model_title
+    name = model_title((rep.get("view_meta") or {}).get("main_system") or (rep.get("model") or {}).get("selected"))
     fig = go.Figure()
     fig.add_trace(go.Scatterpolar(
         r=main + main[:1], theta=theta + theta[:1], customdata=full + full[:1], mode="lines+markers", fill="toself",
-        fillcolor=R["main_fill"], name="Основная оценка", line=dict(color=R["main"], width=2.5),
+        fillcolor=R["main_fill"], name=name, line=dict(color=R["main"], width=2.5),
         marker=dict(symbol="circle", size=7, color=R["main"]),
-        hovertemplate="Основная оценка<br>%{customdata}: %{r:.2f}<extra></extra>"))
-    var = rep.get("variant_scores") or {}
-    primary = (rep.get("model") or {}).get("primary")
-    for m, v in var.items():
-        if m != primary and primary:
-            vals = [v[k] for k in TRAIT_KEYS]
-            fig.add_trace(go.Scatterpolar(
-                r=vals + vals[:1], theta=theta + theta[:1], customdata=full + full[:1], mode="lines+markers",
-                name="Второе мнение (своя модель, шкала FIV2)", line=dict(color=R["second"], width=2, dash="dash"),
-                marker=dict(symbol="diamond", size=8, color=R["second"]),
-                hovertemplate="Второе мнение<br>%{customdata}: %{r:.2f}<extra></extra>"))
-    _base(fig, theme, "Профиль Big Five", "итоговые оценки по шкале от 0 до 1", height=450, plot_h=330,
+        hovertemplate=name + "<br>%{customdata}: %{r:.2f}<extra></extra>"))
+    _base(fig, theme, "Профиль Big Five", "оценки модели по шкале от 0 до 1", height=450, plot_h=330,
           hovermode="closest", margin=dict(l=80, r=80, t=30, b=40))
     # spokes run counterclockwise from 0° (Открытость) every 72°; the scale sits at 180°, halfway between
     # Экстраверсия (144°) and Доброжелательность (216°), so its labels are horizontal and cross no spoke.

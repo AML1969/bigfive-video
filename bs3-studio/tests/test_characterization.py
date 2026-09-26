@@ -9,6 +9,7 @@ determinism, and the verbatim golden texts tests/golden/char_A.txt, char_B.txt (
 from __future__ import annotations
 
 import copy
+import json
 import re
 from pathlib import Path
 
@@ -86,8 +87,14 @@ def _cases() -> dict:
 def test_lexicon_complete_and_follows_the_rules():
     lex = C.load_lexicon()
     # 2: proofreading of task T25; 3: position phrase of ES in its lead; 4: absolute scale, no reference group;
-    # 5: band edges of the printed score, short phrases per level, «эмоциональная стабильность» as everywhere
-    assert lex["lexicon_version"] == 5
+    # 5: band edges of the printed score, short phrases per level, «эмоциональная стабильность» as everywhere;
+    # 6: one model (3.1): «AMLAI 1.0» instead of «своя модель», no mean of two systems, no English basis
+    assert lex["lexicon_version"] == 6
+    assert set(lex["templates"]["header"]["source"]) == {"ocean_ai", "own_model"}
+    assert set(lex["templates"]["basis"]["system"]) == {"oceanai", "mm"} and "en" not in lex["templates"]["basis"]
+    text = json.dumps(lex, ensure_ascii=False).lower()
+    for w in ("своя модель", "своей модели", "mm-psyche", "двух систем", "английск"):
+        assert w not in text, w
     assert set(lex["levels"]) == set(TRAIT_KEYS)
     for k in TRAIT_KEYS:
         assert set(lex["levels"][k]) == set(LEVELS), k
@@ -200,7 +207,7 @@ def test_sample_b():
     assert [p["key"] for p in ch.paragraphs] == [
         "short", "basis", "trait:agreeableness", "trait:conscientiousness", "trait:extraversion", "trait:openness",
         "stability", "mbti", "behavior", "limits"]
-    assert "по 26 отрезкам записи" in ch.paragraph("basis")["text"]
+    assert "по оценкам модели OCEAN-AI (веса MuPTA) по 26 отрезкам записи" in ch.paragraph("basis")["text"]
     e = ch.paragraph("trait:extraversion")
     assert e["lead"] == "Экстраверсия — выше среднего"
     assert e["text"].startswith("(0.73; в MBTI — буква E, умеренно). ")
@@ -220,7 +227,7 @@ def test_sample_b():
                           "кадров). По содержанию речь в основном нейтральна по эмоциональной окраске. Сдержанный голос "
                           "и неторопливая речь не вполне согласуются с оценкой экстраверсии — стоит посмотреть запись.")
     lim = ch.paragraph("limits")["text"]
-    assert "В 7 отрезках из 33 система OCEAN-AI не дала оценки" in lim
+    assert "В 7 отрезках из 33 модель OCEAN-AI не дала оценки" in lim
     assert lim.endswith("а не пересказывают эпизоды этого ролика.")
     assert "ISXX" not in ch.plain() and "ISTP" not in ch.plain()        # the second system is not in the text
 
@@ -274,13 +281,23 @@ def test_special_cases():
     assert ch.paragraph("stability")["lead"].endswith("нейротизм, соответственно, — низкий уровень.")
     _, mb, ch = _build(cases["primary_missing"])
     assert mb["source"] == "own_model"
-    assert "MBTI по своей модели" in ch.header_plain()
-    assert "по оценкам своей модели MM-PSYCHE" in ch.paragraph("basis")["text"]
-    assert "Основная система OCEAN-AI не дала оценок по этому ролику" in ch.paragraph("limits")["text"]
+    assert "MBTI по AMLAI 1.0" in ch.header_plain()
+    assert "по оценкам модели AMLAI 1.0 по 33 отрезкам записи" in ch.paragraph("basis")["text"]
+    assert "Модель OCEAN-AI не дала оценок по этому ролику" in ch.paragraph("limits")["text"]
+    assert "своя модель" not in ch.plain().lower() and "MM-PSYCHE" not in ch.plain()
+    # a 3.1 job of AMLAI 1.0: its name in the header and the basis, no C20 (nothing was missing)
+    r = _with_analyses(rep("B"), "B")
+    r["model"].update({"selected": "mm", "primary": "mm"})
+    r["variant_scores"] = {"mm": r["variant_scores"]["mm"]}
+    for t in r["timeline"]:
+        t["members_used"] = ["mm"]
+    _, mb, ch = _build(r)
+    assert "MBTI по AMLAI 1.0" in ch.header_plain() and "по оценкам модели AMLAI 1.0" in ch.paragraph("basis")["text"]
+    assert "OCEAN-AI" not in ch.plain()
     # an older English job is read as OCEAN-AI (3.1: no mean of two systems)
     _, mb, ch = _build(cases["en"])
     assert mb["source"] == "ocean_ai" and "MBTI по OCEAN-AI" in ch.header_plain()
-    assert "среднему двух систем" not in ch.plain() and "по оценкам OCEAN-AI" in ch.paragraph("basis")["text"]
+    assert "среднему двух систем" not in ch.plain() and "по оценкам модели OCEAN-AI (веса MuPTA)" in ch.paragraph("basis")["text"]
     assert "от 0 до 1" in ch.paragraph("basis")["text"]
 
 
@@ -317,8 +334,8 @@ def test_html_and_pdf_forms():
 
 def test_golden_texts():
     """Verbatim comparison with tests/golden/char_A.txt, char_B.txt (task T25: saved after the proofreading of
-    lexicon_version 2, regenerated for lexicon_version 3, 4 (the absolute scale) and 5 (printed band edges) from the
-    same inputs as here). A lexicon or template change must regenerate them on purpose."""
+    lexicon_version 2, regenerated for lexicon_version 3, 4 (the absolute scale), 5 (printed band edges) and 6 (one
+    model, 3.1) from the same inputs as here). A lexicon or template change must regenerate them on purpose."""
     for name in ("A", "B"):
         path = GOLDEN / f"char_{name}.txt"
         assert path.is_file(), f"missing golden text {path.name}"

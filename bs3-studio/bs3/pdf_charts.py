@@ -178,16 +178,13 @@ def _hide_spines(ax, *sides: str) -> None:
 
 # ---------------------------------------------------------------- Big Five profile (radar)
 def _radar_chart(plt, rep: dict, out_dir: Path) -> Optional[str]:
-    """Print version of charts.fig_radar: the main score filled blue, the second opinion slate and dashed on top; the
-    spokes run counterclockwise from 0° (Открытость on the right) every 72°, the scale sits at 180°."""
+    """Print version of charts.fig_radar: the score of the one model that ran, filled blue (3.1: no second opinion);
+    the spokes run counterclockwise from 0° (Открытость on the right) every 72°, the scale sits at 180°."""
     import matplotlib.patheffects as pe
+    from .webparts import model_title
     traits = rep.get("traits") or {}
     if not all(k in traits for k in TRAIT_KEYS):
         return None
-    model = rep.get("model") or {}
-    primary = model.get("primary")
-    var = rep.get("variant_scores") or {}
-    second = next((v for m, v in var.items() if primary and m != primary and all(k in v for k in TRAIT_KEYS)), None)
     fig = plt.figure(figsize=(WIDTH_MM["profile"] / 25.4, HEIGHT_MM["profile"] / 25.4), layout="constrained")
     ax = fig.add_subplot(projection="polar")
     ang = [2 * math.pi * i / len(TRAIT_KEYS) for i in range(len(TRAIT_KEYS))]
@@ -205,19 +202,11 @@ def _radar_chart(plt, rep: dict, out_dir: Path) -> Optional[str]:
     ax.grid(color=GRID, lw=0.5)
     ax.spines["polar"].set_color(AXIS); ax.spines["polar"].set_linewidth(0.8)
     main = [float(traits[k]["score"]) for k in TRAIT_KEYS]
-    if primary == "oceanai" and model.get("lang") == "ru":
-        main_label = "Основная оценка (OCEAN-AI, шкала MuPTA)"
-    elif primary:
-        main_label = "Основная оценка"
-    else:
-        main_label = "Итоговая оценка (среднее двух систем)" if len(var) == 2 else "Итоговая оценка"
+    main_label = "Оценка модели " + model_title((rep.get("view_meta") or {}).get("main_system")
+                                               or (rep.get("model") or {}).get("selected"))
     ax.plot(closed, main + main[:1], color=RADAR_PDF["main"], lw=SERIES_LW, marker="o", ms=SERIES_MS, label=main_label,
             zorder=3, clip_on=False)
     ax.fill(closed, main + main[:1], color=RADAR_PDF["main"], alpha=0.14, lw=0, zorder=2)
-    if second:
-        vals = [float(second[k]) for k in TRAIT_KEYS]
-        ax.plot(closed, vals + vals[:1], color=RADAR_PDF["second"], lw=1.3, dashes=(4, 2), marker="D", ms=3.2,
-                label="Второе мнение (своя модель, шкала FIV2)", zorder=4, clip_on=False)
     fig.suptitle("Профиль Big Five", x=0.02, ha="left", fontsize=9.5)
     h, lab = ax.get_legend_handles_labels()
     fig.legend(h, lab, loc="outside lower center", ncols=1, handlelength=2.2)
@@ -606,7 +595,7 @@ def _modalities_chart(plt, expl: dict | None, out_dir: Path) -> Optional[str]:
     ax.set_ylim(len(keys) - 0.5, -0.5)
     ax.set_xlim(0, 1); ax.set_xticks([0, .2, .4, .6, .8, 1]); ax.xaxis.set_major_formatter(PercentFormatter(1.0, decimals=0))
     _hide_spines(ax, "top", "right", "left")
-    ax.set_title("Вклад модальностей в оценку своей модели")
+    ax.set_title("Вклад модальностей в оценку модели AMLAI 1.0")
     handles = [Patch(facecolor=_mod_colour(m), edgecolor=OUTLINE, lw=0.4) for m in mods]
     _fig_legend(fig, handles, [MOD_LEGEND.get(m, m) for m in mods], handlelength=1.6, columnspacing=1.6)
     p = out_dir / "chart_modalities.png"

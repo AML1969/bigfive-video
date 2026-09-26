@@ -21,7 +21,7 @@ from . import DEFAULT_MODEL, MODEL_TITLES, PRODUCT, PRODUCT_SLUG, caveats, chara
 from .charts import (EMO_RU, VOICE_RU, fig_emotion_bars, fig_emotions_timeline, fig_face_expr, fig_radar,
                      fig_speech_timeline, fig_traits_timeline, fig_voice_timeline, plot_html as _plot_html)
 from .mbti import fact_card, get_mbti
-from .narrative import method_notes
+from .narrative import NO_EXPLAIN_RU, method_notes
 from .narrative2 import fix_counts, key_facts, plural_ru
 from .norms import TRAIT_KEYS
 from .palette import (ACCENT, BUTTON_PRIMARY, BUTTON_PRIMARY_HOVER, BUTTON_STOP, BUTTON_STOP_HOVER, CARD_TINT,
@@ -30,14 +30,11 @@ from .pipeline import Studio, run_analysis
 from .report import fmt_secs, mmss_labels, seg_label
 from .ru_texts import ensure_russian_job, transcript_shown, vocabulary_shown
 from .scores import clean_view, data_json
-from .webparts import (MEMBER_TITLES, NOTE, TRAIT_TITLES, _bar_html, _contrib_html, _members_html, _words_text,
-                       table_html, th_text)
+from .webparts import NOTE, TRAIT_TITLES, _bar_html, _contrib_html, _words_text, model_line, table_html, th_text
 
 log = logging.getLogger("bs3.web")
-# which OCEAN-AI weights were used, for the «Участники ансамбля» box
-CORPUS_RU = {"mupta": "веса OCEAN-AI MuPTA для русской речи", "fi": "веса OCEAN-AI First Impressions V2 для английской речи"}
-# the tab «Данные» of a Russian job whose result.json carries 2.0 fields that 3.0 does not use (scores.data_json)
-DATA_TRIMMED = "В result.json ниже не показаны устаревшие поля версии 2.0, которые 3.0 не использует; файл не изменён."
+# the tab «Данные» of a Russian job whose result.json carries 2.0 fields that 3.x does not use (scores.data_json)
+DATA_TRIMMED = "В result.json ниже не показаны устаревшие поля версии 2.0, которые 3.1 не использует; файл не изменён."
 # metric cards: 1 px outline 3:1 on every background, light tint (palette.CARD_TINT, the background check_palette.py
 # measures the card text and the outline on) so label, value and note read as one card
 CARDS = "display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px"
@@ -178,16 +175,26 @@ FRAMES_CSS = (
     "</style>")
 
 
+NO_FRAMES_OCEANAI = ("Ключевых кадров нет: модель OCEAN-AI не строит объяснений, ключевые кадры есть только для модели "
+                     "AMLAI 1.0.")
+NO_FRAMES_MM = "Ключевые кадры не построены: лицо в кадре не найдено или объяснения не удалось посчитать."
+
+
 def _frames_html(rep: dict, max_side: int = 640) -> str:
     """Key frames embedded as data-URI JPEGs. gr.Gallery depends on Gradio serving files from the job folder, which
-    proved unreliable in this setup (images arrive broken); inline images always render. Click enlarges a frame."""
+    proved unreliable in this setup (images arrive broken); inline images always render. Click enlarges a frame.
+    Key frames belong to AMLAI 1.0: an OCEAN-AI job shows one line instead (also an older job that carries the frames
+    of the second model of 3.0, since the page shows one model), a job of AMLAI 1.0 without frames says why."""
     import base64
     import io
     from PIL import Image
 
+    main = (rep.get("view_meta") or {}).get("main_system") or (rep.get("model") or {}).get("selected")
+    if main != "mm":
+        return f"<p style='font-size:14px'>{NO_FRAMES_OCEANAI}</p>"
     paths = [p for p in rep.get("key_frames") or [] if Path(p).exists()]
     if not paths:
-        return "<p style='font-size:14px'>Ключевые кадры не построены (объяснения отключены или лицо не найдено).</p>"
+        return f"<p style='font-size:14px'>{NO_FRAMES_MM}</p>"
     # frames come from the representative segment of a long video, otherwise from the whole video (no timeline): the
     # moment is then counted from 0, the same rule as in the PDF
     tl_all = rep.get("timeline") or []
@@ -236,7 +243,7 @@ def _frames_html(rep: dict, max_side: int = 640) -> str:
     where = f" (отрезок {seg_label(seg['start'], seg['end'])})" if seg else ""
     return (FRAMES_CSS + "<div class='bs3-kf' style='display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));"
             f"gap:12px'>{''.join(figs)}</div>"
-            f"<p style='{NOTE};margin-top:10px'>Кадры, сильнее всего повлиявшие на оценку своей модели{where}. "
+            f"<p style='{NOTE};margin-top:10px'>Кадры, сильнее всего повлиявшие на оценку модели AMLAI 1.0{where}. "
             + ("Рамкой на кадре отмечено найденное лицо, подпись под кадром — момент ролика (минуты:секунды"
                + (", после запятой — десятые доли секунды" if tenths else "") + "). " if timed else
                "Рамкой на кадре отмечено найденное лицо, подпись под кадром — его номер. ")
@@ -246,6 +253,17 @@ def _frames_html(rep: dict, max_side: int = 640) -> str:
 N_PAGE = 27            # values of page_outputs: 22 of 2.0 (index 3 is now the characterization) + 5 new blocks
 
 
+def model_text(view: dict, rep: dict, mb: dict | None) -> str:
+    """«Модель и время обработки» (tab «Данные», 3.1): one line with the model that ran and its scores, one with the
+    processing time, then the notes of the render (C22 for a type computed on display, DATA_TRIMMED)."""
+    lines = [model_line(view), f"Обработка заняла {fmt_secs((rep.get('timings_sec') or {}).get('total_wall', 0))}."]
+    if mb and mb.get("computed_on_render"):
+        lines.append(caveats.text("C22"))
+    if data_json(rep)[1]:
+        lines.append(DATA_TRIMMED)
+    return "\n".join(lines)
+
+
 def page_outputs(rep: dict) -> tuple:
     """Everything the result page shows for a finished job, in the order of the output blocks after the status line
     (without the PDF button). Jobs processed before the Russian texts existed get them here, stored back.
@@ -253,9 +271,11 @@ def page_outputs(rep: dict) -> tuple:
     Design 10.5: the numbers come from the clean view (scores.clean_view), the MBTI section from mbti.get_mbti (the
     saved one, or computed now and never written), the characterization from characterization.build. The first 22
     values keep their places (index 2 — the key facts with the type card first, index 3 — the characterization), then
-    five new ones: «Как получены оценки», «Эмоции и голос: коротко», the MBTI panels, the letter strip and «Как читать
-    тип MBTI». The «Данные» tab shows result.json as it lies on disk, except that for Russian speech the 2.0 fields
-    that 3.0 does not use (percentiles, the stored 2.0 summary) are left out, with a note (scores.data_json)."""
+    five new ones: «Как получены оценки», «Эмоции и голос: коротко», the MBTI panel, the letter strip and «Как читать
+    тип MBTI». One model everywhere (3.1): the bars, the panel and the strip are the model recorded in the job; the
+    tab «Объяснения» of an OCEAN-AI job shows one note (narrative.NO_EXPLAIN_RU) in its first block. The «Данные» tab
+    shows result.json as it lies on disk, except that for Russian speech the 2.0 fields that 3.x does not use
+    (percentiles, the stored 2.0 summary) are left out, with a note (scores.data_json)."""
     job = Path(rep["job_dir"])
     expl_path = job / "explain" / "explanation.json"
     expl = json.loads(expl_path.read_text(encoding="utf-8")) if expl_path.exists() else None
@@ -264,35 +284,26 @@ def page_outputs(rep: dict) -> tuple:
     mb = get_mbti(rep, view)
     ch = characterization.build(view, mb)
     lang = (rep.get("model") or {}).get("lang", "ru")
-    members = view.get("variant_scores") or {}
     main = (view.get("view_meta") or {}).get("main_system")
-    primary = (view.get("model") or {}).get("primary")
-    role = lambda m: " — основная оценка" if m == main else (" — второе мнение" if primary else "")
-    member_txt = "\n".join(f"{MEMBER_TITLES.get(m, m)}{role(m)}: "
-                           + ", ".join(f"{TRAIT_TITLES[k].lower()} {v[k]:.2f}" for k in TRAIT_KEYS if k in v) + "."
-                           for m, v in members.items())
-    # model.corpus of an ensemble is a technical descriptor; the OCEAN-AI weights follow the language
-    weights = CORPUS_RU["mupta" if (rep.get("model") or {}).get("lang") == "ru" else "fi"] if "oceanai" in members else ""
-    member_txt += (f"\nОбработка заняла {fmt_secs((rep.get('timings_sec') or {}).get('total_wall', 0))}"
-                   + (f"; {weights}." if weights else "."))
-    if mb and mb.get("computed_on_render"):
-        member_txt += "\n" + caveats.text("C22")
-    data, data_trimmed = data_json(rep)
-    if data_trimmed:
-        member_txt += "\n" + DATA_TRIMMED
-    # English speech: the Russian translation with a one-line note (the original stays in result.json)
+    # explanations exist for AMLAI 1.0 only: an OCEAN-AI job says so once, in the first block of the tab, and the
+    # other blocks stay empty (an older job may carry the explanation and the behaviour description of the second
+    # model of 3.0; the page shows one model)
+    own = main == "mm"
+    contrib = _contrib_html(expl) if own else f"<p style='font-size:14px;margin:0'>{NO_EXPLAIN_RU}</p>"
+    data, _ = data_json(rep)
+    # the transcript block; an older job processed as English shows its Russian translation with a one-line note
     note, transcript = transcript_shown(rep)
     # fill=True: charts in a row of two windows grow to the height of the window next to them (see APP_CSS)
     out = (_plot_html(fig_radar, view, fill=True),
-           _bar_html(view["traits"], view.get("interview")) + _members_html(view),
+           _bar_html(view["traits"], view.get("interview")),
            _facts_html(view, mb), ch.html(), _plot_html(fig_traits_timeline, view),
            _plot_html(fig_emotions_timeline, view), _plot_html(fig_voice_timeline, view, fill=True),
            _plot_html(fig_speech_timeline, view, fill=True), _plot_html(fig_emotion_bars, view),
            _segments_table(view), _speech_html(view),
            "\n\n".join(t for t in (note, transcript) if t), _face_html(view), _plot_html(fig_face_expr, view),
-           _frames_html(view), _contrib_html(expl),
-           _words_text(expl, rep, lang, expl_path) if expl else "",
-           mmss_labels(rep.get("behavior_description_ru") or ""), member_txt,
+           _frames_html(view), contrib,
+           _words_text(expl, rep, lang, expl_path) if (expl and own) else "",
+           mmss_labels(rep.get("behavior_description_ru") or "") if own else "", model_text(view, rep, mb),
            json.dumps(data, ensure_ascii=False, indent=2), str(job / "result.json"), str(job),
            # new in 3.0 (design 10.3, 10.5)
            mbti_html.method_html(method_notes(view, expl)), mbti_html.emo_intro_html(view),
@@ -345,6 +356,7 @@ def analysis_error_ru(e: BaseException) -> str:
 
 
 STATUS_LABELS = {"running": "Идёт обработка", "done": "Готово", "stopped": "Остановлено", "error": "Ошибка"}
+FOOTER_CAVEATS = ("C1", "C2", "C10", "C3")      # «Как читать результаты» at the foot of the page (design 11)
 
 
 def _live_desc(state: dict) -> str:
@@ -401,7 +413,10 @@ APP_CSS += (f".gradio-container{{--color-accent:{ACCENT['light']}}}"
 # result.json: the code viewer colours its tokens with fixed pale hues (2.0-2.8:1 on white), so the file is shown in the
 # theme text colour. Both themes, although the dark hues do reach 4.5:1: one grey page, and the same block either way
 APP_CSS += ".bs3-json .cm-content span{color:inherit!important}"
-VIDEO_H = 300          # height of the video window before it is stretched (gr.Video height)
+# height of the video window (gr.Video height). 3.1: the left column (video, model radio, buttons) sets the height of
+# the compact «Характеристика личности» window next to it; at 240 px the column is about 420 px high and the tabs
+# stay on the first screen of a 1080p display (with 300 px the pair alone was 480 px)
+VIDEO_H = 240
 # Two framed windows side by side (gr.Row with class bs3-pair): both columns get the height of the taller one, and in
 # each column the window marked bs3-grow takes the extra height, so the two frames start and end on one line with no
 # page background under the shorter one. A text box stretches its text area (the text fills the frame instead of
@@ -429,12 +444,19 @@ APP_CSS += (
     f".row.bs3-pair>.column>.bs3-grow:has(.video-container){{height:auto!important;min-height:{VIDEO_H}px;"
     "display:flex;flex-direction:column}"
     ".row.bs3-pair .bs3-grow .video-container{flex-grow:1}")
-# «Характеристика личности» (design 10.1): 15 px text, line height 1.55, at most 75 characters per line, paragraphs
-# 10 px apart with bold leads, no scroll inside the block (the column grows with the text). The HTML of
-# characterization.html() carries the same values inline; these rules keep Gradio's prose styles from overriding them.
-APP_CSS += (".bs3-char .bs3-char-text{font-size:15px;line-height:1.55;max-width:75ch}"
-            ".bs3-char .bs3-char-text p{margin:0 0 10px}.bs3-char .bs3-char-text p b{font-weight:700}"
-            ".bs3-char,.bs3-char .html-container,.bs3-char .prose{max-height:none!important;overflow:visible!important}")
+# «Характеристика личности» (change request 3.1, section 4): a compact window like the 2.0 «Краткие выводы» box.
+# The block is a flex item of its column with a zero flex basis, so the row's height comes from the left column
+# (video, model radio, buttons, about 300 px of video plus the controls); align-items:stretch gives the right column
+# that height and the block fills it. Inside, the label keeps its size and the html-container takes the rest and
+# scrolls (min-height:0 lets it shrink below its content). CHAR_MIN_PX keeps the window readable when the columns
+# wrap onto separate lines on a narrow screen: there the block is exactly this high and the text scrolls inside.
+# 15 px text, line height 1.55, at most 75 characters per line, paragraphs 10 px apart with bold leads; the HTML of
+# characterization.html() carries the same values inline, these rules keep Gradio's prose styles from overriding them.
+CHAR_MIN_PX = 320
+APP_CSS += (f".row.bs3-pair>.column>.bs3-char{{display:flex;flex-direction:column;flex:1 1 0;min-height:{CHAR_MIN_PX}px}}"
+            ".bs3-char>.html-container{flex:1 1 0;min-height:0;overflow-y:auto;overflow-x:hidden}"
+            ".bs3-char .bs3-char-text{font-size:15px;line-height:1.55;max-width:75ch}"
+            ".bs3-char .bs3-char-text p{margin:0 0 10px}.bs3-char .bs3-char-text p b{font-weight:700}")
 
 
 def _theme():
@@ -498,12 +520,13 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
     def render(rep: dict) -> tuple:
         return page_outputs(rep) + (gr.update(interactive=True),)
 
-    def analyze(video, member, explain, request: gr.Request):
-        """`member`: the model chosen on the page ("oceanai" | "mm"); the speech is Russian (pipeline)."""
+    def analyze(video, member, request: gr.Request):
+        """`member`: the model chosen on the page ("oceanai" | "mm"); the speech is Russian (pipeline). Explanations
+        follow the model (change request 3.1, section 3): always for AMLAI 1.0, never for OCEAN-AI — no checkbox."""
         if not video:
             raise gr.Error("Загрузите видео", title=ERROR_TITLE)
         member = member if member in MODEL_TITLES else DEFAULT_MODEL
-        journal.start(request, video, member, explain)
+        journal.start(request, video, member)
         state = {"frac": 0.0, "desc": "запуск", "t0": time.time()}
 
         def cb(frac, desc=None, **kw):
@@ -514,7 +537,7 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
 
         def work():
             try:
-                result["r"] = run_analysis(studio, work_dir, video, member=member, explain=explain, progress=cb)
+                result["r"] = run_analysis(studio, work_dir, video, member=member, explain=(member == "mm"), progress=cb)
             except BaseException as e:  # noqa: BLE001
                 result["e"] = e
 
@@ -579,34 +602,35 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
             with gr.Column(scale=1, min_width=220):
                 pdf_btn = gr.DownloadButton("Экспорт в PDF", variant="primary", interactive=False)
         status = gr.HTML(value="")
-        # design 10.1: left — what was measured (video, settings, buttons, key facts), right — what it means (the
-        # characterization); the key facts take the extra height of the left column, so both frames end on one line
+        # design 10.1 / change request 3.1, section 4: left — what was measured (video, model, buttons), right — what it
+        # means: the characterization in a compact window the height of the left column, the text scrolling inside
+        # (APP_CSS .bs3-char); the key facts follow as one row under the pair, so the tabs are on the first screen
         with gr.Row(elem_classes=["bs3-pair"]):
             with gr.Column(scale=1, min_width=320):
                 video = gr.Video(label="Видео", sources=["upload"], height=VIDEO_H)
-                # 3.1: the model is chosen by hand, one model runs per analysis; the speech is always Russian
+                # 3.1: the model is chosen by hand, one model runs per analysis; the speech is always Russian; the
+                # explanations follow the model (AMLAI 1.0 only), so there is no checkbox for them
                 model = gr.Radio(choices=[(MODEL_TITLES[m], m) for m in ("oceanai", "mm")], value=DEFAULT_MODEL,
                                  label="Модель")
-                explain = gr.Checkbox(value=True, label="Объяснения (ключевые кадры, вклад модальностей, слова)")
                 with gr.Row():
                     btn = gr.Button("Анализировать", variant="primary")
                     stop_btn = gr.Button("Остановить обработку", variant="stop")
-                facts = block("Ключевые факты", grow=True)
             with gr.Column(scale=2, min_width=480):
-                character = block("Характеристика личности", grow=True, classes=("bs3-char",),
+                character = block("Характеристика личности", classes=("bs3-char",),
                                   value=characterization.placeholder_html())
+        facts = block("Ключевые факты")
         with gr.Tabs():
             with gr.Tab("Обзор"):
-                # the radar window takes the height of the bars and the second opinion: the circle grows as far as the
-                # column width allows and is centred with its subtitle
+                # the radar window takes the height of the bars: the circle grows as far as the column width allows
+                # and is centred with its subtitle
                 with gr.Row(elem_classes=["bs3-pair"]):
                     with gr.Column(scale=1, min_width=360):
                         radar = block("Профиль Big Five", chart=True, grow=True)
                     with gr.Column(scale=1, min_width=360):
-                        bars = block("Оценки по чертам и второе мнение", grow=True)
+                        bars = block("Оценки по чертам", grow=True)
                 method = block("Как получены оценки")
             with gr.Tab("Тип MBTI"):
-                mbti_types = block("Тип MBTI по двум системам")
+                mbti_types = block("Тип MBTI")
                 mbti_strip = block("Тип по ходу ролика")
                 mbti_read = block("Как читать тип MBTI")
             with gr.Tab("Таймлайн"):
@@ -629,27 +653,29 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
                 face_plot = block("Выражение лица за ролик", chart=True)
                 gallery = block("Ключевые кадры")
             with gr.Tab("Объяснения"):
+                # explanations exist for AMLAI 1.0 only; for an OCEAN-AI job the first block carries one note and the
+                # other blocks stay empty (page_outputs)
                 with gr.Row(elem_classes=["bs3-pair"]):
                     with gr.Column(scale=1, min_width=360):
-                        contrib = block("Вклад модальностей в оценку своей модели", grow=True)
+                        contrib = block("Вклад модальностей в оценку модели AMLAI 1.0", grow=True)
                     with gr.Column(scale=1, min_width=360):
                         words_detail = gr.Textbox(label="Слова, на которые откликнулась модель", lines=8, max_lines=16,
                                                   autoscroll=False, elem_classes=["bs3-grow"])
                 desc = gr.Textbox(label="Описание поведения по отрезкам", lines=8, max_lines=12, autoscroll=False)
             with gr.Tab("Данные"):
-                members = gr.Textbox(label="Участники ансамбля и время обработки", lines=4, max_lines=8, autoscroll=False)
+                members = gr.Textbox(label="Модель и время обработки", lines=3, max_lines=8, autoscroll=False)
                 raw = gr.Code(label="result.json", language="json", lines=24, elem_classes=["bs3-json"])
                 path = gr.Textbox(label="Сохранено в", interactive=False)
         # the caveats are the most important small print on the page: 13 px (gr.Markdown <small> gave 11 px);
         # design 11: C1, C2, C10, C3, word for word from caveats.py
         gr.HTML(f"<div style='font-size:13px;line-height:1.5;margin-top:6px;padding-top:10px;"
                 f"border-top:1px solid {PAL['card_border']}'><b>Как читать результаты.</b> "
-                + "<br>".join(caveats.text(c) for c in ("C1", "C2", "C10", "C3")) + "</div>")
+                + "<br>".join(caveats.text(c) for c in FOOTER_CAVEATS) + "</div>")
         outputs = [status, radar, bars, facts, character, traits_plot, emo_plot, voice_plot, speech_plot, emo_bars,
                    seg_table, speech_html, transcript, face_html, face_plot, gallery, contrib, words_detail, desc, members,
                    raw, path, job_state, method, emo_intro, mbti_types, mbti_strip, mbti_read, pdf_btn]
         assert len(outputs) == N_REST + 1
-        run_ev = btn.click(analyze, inputs=[video, model, explain], outputs=outputs, show_progress="hidden", api_name=False)
+        run_ev = btn.click(analyze, inputs=[video, model], outputs=outputs, show_progress="hidden", api_name=False)
         stop_btn.click(stop, inputs=None, outputs=[status], cancels=[run_ev], show_progress="hidden", api_name=False)
         pdf_btn.click(make_pdf, inputs=[job_state], outputs=[pdf_btn], api_name=False)
 

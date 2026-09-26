@@ -1,7 +1,7 @@
 """The journal entries of BS Profiler 3.1 (design 10.6; task T19) on the numeric copy of sample B: the start entry
-names the chosen model, the result entry carries the clean scores of one model, its MBTI line and the paragraph
-«Коротко»; no second opinion, no language, no «Краткие выводы». The entries are written into a temporary file,
-never into the journal of the service."""
+names the chosen model (and nothing about explanations: they follow the model), the result entry carries the clean
+scores of one model, its MBTI line and the paragraph «Коротко»; no second opinion, no language, no «Краткие выводы».
+The entries are written into a temporary file, never into the journal of the service."""
 from __future__ import annotations
 
 import tempfile
@@ -56,14 +56,14 @@ def test_start_and_result_write_entries():
     with tempfile.TemporaryDirectory() as d:
         journal.PATH = Path(d) / "journal.txt"
         try:
-            journal.start(_Req(), "/tmp/video.mp4", "mm", True)
-            journal.start(_Req(), "/tmp/video.mp4", "oceanai", False)
+            journal.start(_Req(), "/tmp/video.mp4", "mm")
+            journal.start(_Req(), "/tmp/video.mp4", "oceanai")
             journal.result(_Req(), rep("B"), 65.0)
             text = journal.PATH.read_text(encoding="utf-8")
         finally:
             journal.PATH = old
-    assert "СТАРТ" in text and "модель AMLAI 1.0, объяснения да" in text and "модель OCEAN-AI, объяснения нет" in text
-    assert "язык" not in text.lower()
+    assert "СТАРТ" in text and "модель AMLAI 1.0\n" in text and "модель OCEAN-AI\n" in text
+    assert "язык" not in text.lower() and "объяснени" not in text.lower()      # no checkbox, no language (3.1)
     assert "РЕЗУЛЬТАТ" in text and "обработка 1:05" in text
     assert "    Тип MBTI (OCEAN-AI): ENFJ" in text
     assert "Характеристика (коротко): " in text and "Краткие выводы" not in text and "торое мнение" not in text

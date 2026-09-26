@@ -1,5 +1,6 @@
-"""HTML helpers for the BS Profiler 3.0 web UI: score bars, second opinion, modality table and the shared table style used by
-webapp.py. Forked from bs 1.0 (the unused 1.0 page, engine and run_analysis were removed; the page is webapp.py).
+"""HTML helpers for the BS Profiler 3.1 web UI: score bars of the one model that ran, the modality table of AMLAI 1.0
+and the shared table style used by webapp.py. Forked from bs 1.0 (the unused 1.0 page, engine and run_analysis were
+removed; the page is webapp.py); the second-opinion block of 3.0 is gone with the second model (3.1).
 
 Colours: bars, outlines and rules come from palette.HTML (>= 3:1 on the dark and the light Gradio theme). Text colours
 are never hard-coded: Gradio's `.prose *` rule gives the body text colour of the current theme, secondary text is the
@@ -12,8 +13,9 @@ import logging
 import re
 from pathlib import Path
 
+from . import MODEL_TITLES
 from .narrative2 import plural_ru
-from .norms import TRAIT_KEYS, percentile
+from .norms import TRAIT_KEYS
 from .palette import HTML as PAL
 
 log = logging.getLogger("bs3.web")
@@ -26,7 +28,7 @@ TRAIT_TITLES = {
     "emotional_stability": "Эмоциональная стабильность",
     "interview": "Впечатление «пригласить на собеседование»",
 }
-MEMBER_TITLES = {"oceanai": "OCEAN-AI", "mm": "Своя модель (MM-PSYCHE)", "scene": "SSL-MEPR сцена",
+MEMBER_TITLES = {**MODEL_TITLES, "scene": "SSL-MEPR сцена",
                  "face": "лицо", "audio": "голос (CLAP)", "audio_whisper": "голос (Whisper)", "audio_xlsr": "голос (XLS-R)",
                  "audio_w2v_emo": "голос (wav2vec2)", "text": "речь", "behavior": "описание поведения"}
 # two-line column headers for narrow tables (long Russian words do not wrap by themselves)
@@ -35,8 +37,6 @@ TRAIT_TITLES_2L = {"openness": "Открытость<br>опыту", "conscienti
                    "emotional_stability": "Эмоц.<br>стабильность", "interview": "Собесе-<br>дование"}
 # short row names for tables (the interview title is too long for a first column)
 ROW_TITLES = {**TRAIT_TITLES, "interview": "«Собеседование»"}
-# names inside the second-opinion title: «Второе мнение: своя модель MM-PSYCHE (шкала First Impressions V2, …)»
-SECOND_TITLES = {"mm": "своя модель MM-PSYCHE", "oceanai": "OCEAN-AI", "scene": "сцена SSL-MEPR"}
 # modality columns of the contribution table: (column title, second line)
 MODALITY_HEADS = {"face": ("Лицо", "кадры"), "audio": ("Голос", "CLAP"), "audio_whisper": ("Голос", "Whisper"),
                   "audio_xlsr": ("Голос", "XLS-R"), "audio_w2v_emo": ("Голос", "wav2vec2"), "text": ("Речь", "текст"),
@@ -202,59 +202,21 @@ def _bar_html(traits: dict, interview: dict | None) -> str:
             f"<div style='{NOTE};margin-top:8px'>{' '.join(notes)}</div></div>")
 
 
-def _members_html(rep: dict) -> str:
-    """Framed block under the main bars: the second opinion (own model on the FIV2 scale) when one member is
-    primary, otherwise a table of the members that were averaged."""
-    var = rep.get("variant_scores") or {}
-    if len(var) < 2:                  # one model per analysis (3.1; a clean view of an older job keeps one member)
-        return ""
-    model = rep.get("model") or {}
-    primary = model.get("primary")
-    # a clean view (scores.clean_view) names the system its main scores come from: the own model when OCEAN-AI gave none
-    main = (rep.get("view_meta") or {}).get("main_system") or primary
-    if primary:
-        others = [m for m in var if m != main]
-        if not others:
-            return ""
-        # Russian speech: the score only (no percentile of any group); otherwise the FIV2 percentile as in 2.0
-        ru = model.get("lang") == "ru"
-        where = (" (своя шкала, обучена на First Impressions V2)" if ru
-                 else " (шкала First Impressions V2, сравнение с людьми из этого датасета)")
-        title = "Второе мнение: " + ", ".join(SECOND_TITLES.get(m, MEMBER_TITLES.get(m, m)) for m in others) + where
-        rows = ""
-        any_tick = False
-        for m in others:
-            if len(others) > 1:
-                rows += f"<div style='font-weight:600;font-size:14px;margin-top:8px'>{MEMBER_TITLES.get(m, m)}</div>"
-            for k in TRAIT_KEYS:
-                s = float(var[m][k])
-                pct = None if ru else percentile(k, s)
-                phrase, tick_ok = _pct_phrase(pct, "train FIV2")
-                any_tick = any_tick or tick_ok
-                # neutral fill (theme text colour at .55): blue stays reserved for the main score, as on the radar
-                text = f"{s:.2f}" + (f" · {phrase}" if phrase else "")
-                rows += _score_row(TRAIT_TITLES[k], s, text, PAL["second_fill"], pct if tick_ok else None,
-                                   height=8, radius=5, bold=False, fill_extra="opacity:.55")
-        legend = [_swatch(PAL["second_fill"], "opacity:.55") + "второе мнение, оценка 0…1"]
-        if any_tick:
-            legend.append(_tick_swatch() + "процентиль в First Impressions V2")
-        body = rows + _scale_row() + _legend(legend)
-        from .scores import SECOND_SCALE_RU, gap_sentence
-        gap = gap_sentence(var[others[0]], var[main], others[0], main) if len(others) == 1 and main in var else ""
-        note = (f"Основная оценка ({MEMBER_TITLES.get(main, main)}) — в полосках над этой рамкой. "
-                + (SECOND_SCALE_RU if others == ["mm"] else
-                   "Второе мнение считается на другой шкале, поэтому оценки двух систем не усредняются.")
-                + (f" {gap}" if gap else ""))
-    else:
-        title = "Участники ансамбля: итоговая оценка — их среднее"
-        head = ["Модель"] + [TRAIT_TITLES_2L[k] for k in TRAIT_KEYS]
-        table_rows = [[MEMBER_TITLES.get(m, m)] + [f"{float(v[k]):.2f}" for k in TRAIT_KEYS] for m, v in var.items()]
-        body = table_html(head, table_rows)
-        who = "Обе модели" if len(var) == 2 else "Все модели"
-        note = f"{who} на шкале FIV2, оценки от 0 до 1; итог в полосках выше — их среднее."
-    return (f"<div style='max-width:640px;margin-top:18px;padding:10px 12px 8px;border:1px solid {PAL['card_border']};"
-            f"border-radius:8px'><div style='font-weight:600;font-size:15px;margin-bottom:4px'>{title}</div>{body}"
-            f"<div style='{NOTE};margin-top:8px'>{note}</div></div>")
+def model_title(main: str | None) -> str:
+    """«OCEAN-AI, веса MuPTA» / «AMLAI 1.0»: the model of a clean view with its weights line (change request 3.1,
+    section 2)."""
+    title = MODEL_TITLES.get(main, str(main or "—"))
+    return title + (", веса MuPTA" if main == "oceanai" else "")
+
+
+def model_line(view: dict) -> str:
+    """One line for «Модель и время обработки»: «Модель OCEAN-AI, веса MuPTA: открытость опыту 0.71, …» — the clean
+    scores of the one model the view shows (scores.clean_view)."""
+    main = (view.get("view_meta") or {}).get("main_system")
+    traits = view.get("traits") or {}
+    scores = ", ".join(f"{TRAIT_TITLES[k].lower()} {float(traits[k]['score']):.2f}" for k in TRAIT_KEYS
+                       if isinstance(traits.get(k), dict) and traits[k].get("score") is not None)
+    return f"Модель {model_title(main)}" + (f": {scores}." if scores else ".")
 
 
 def _words_text(expl: dict, rep: dict, lang: str, expl_path: Path | None = None) -> str:
@@ -298,9 +260,10 @@ def _contrib_html(expl: dict | None) -> str:
         shares = [float(row[m]["share"]) for m in mods]
         top = max(shares) if shares else 0.0
         rows.append([ROW_TITLES.get(k, k)] + [_share_cell(s, s == top) for s in shares])
-    return (f"<div style='{NOTE};margin-bottom:8px'>Какая доля оценки своей модели пришлась на каждую модальность "
+    return (f"<div style='{NOTE};margin-bottom:8px'>Какая доля оценки модели AMLAI 1.0 пришлась на каждую модальность "
             "(по градиенту оценки: насколько признаки каждой модальности сдвигают результат). В каждой строке доли в "
             "сумме дают 100%; самая большая выделена жирным.</div>"
             + table_html(head, rows, wrap_first=True) +
             f"<div style='{NOTE};margin-top:8px'>«&lt;1%» — модальность почти не влияет на оценку этого ролика: модель, "
-            "обученная на FIV2, опирается в основном на лицо и голос; речь и описание поведения слабо меняют результат.</div>")
+            "обученная на First Impressions V2, опирается в основном на лицо и голос; речь и описание поведения слабо "
+            "меняют результат.</div>")

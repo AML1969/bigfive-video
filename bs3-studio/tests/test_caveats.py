@@ -1,6 +1,6 @@
-"""Caveats C1–C22 (design 11, task T13): every one has a text, the templates are filled, word forms agree with the
-numbers, none says «сегмент», and none mentions a group of processed videos or statistics of the two systems on
-them (change of 2026-09-26)."""
+"""Caveats C1–C22 without C18 (design 11, task T13; 3.1: one model): every one has a text, the templates are filled,
+word forms agree with the numbers, none says «сегмент», none mentions a group of processed videos, a second opinion
+or the mean of two systems (changes of 2026-09-26)."""
 from __future__ import annotations
 
 import re
@@ -14,22 +14,33 @@ PLACEHOLDER = re.compile(r"\{[a-zA-Z_]+\}")
 def _all_filled() -> dict:
     out = {}
     for code in caveats.CODES:
-        if code in ("C6", "C7"):
-            out[code + "-ru"] = getattr(caveats, code.lower())("ru")
-            out[code + "-en"] = getattr(caveats, code.lower())("en")
-        elif code == "C13":
+        if code == "C13":
             out[code] = caveats.c13(7, 33)
+            out[code + "-mm"] = caveats.c13(2, 9, "mm")
         else:
             out[code] = caveats.text(code)
     return out
 
 
 def test_every_caveat_has_a_text():
-    assert caveats.CODES == tuple(f"C{i}" for i in range(1, 23))
+    assert caveats.CODES == tuple(f"C{i}" for i in range(1, 23) if i != 18)
+    assert "C18" not in caveats.TEXTS and set(caveats.TEXTS) == set(caveats.CODES)
     for code, t in _all_filled().items():
         assert isinstance(t, str) and len(t) > 30, code
         assert not PLACEHOLDER.search(t), (code, t)
         assert t.endswith(".") or t.endswith("»."), code
+
+
+def test_one_model_no_second_opinion():
+    """3.1: no caveat speaks of a second opinion, an own model, the mean or the agreement of two systems."""
+    for code, t in _all_filled().items():
+        low = t.lower()
+        for w in ("второе мнение", "второго мнения", "своя модель", "своей модели", "двух систем", "усреднен",
+                  "основная система", "основной считается", "mm-psyche", "английск"):
+            assert w not in low, (code, w)
+    assert "OCEAN-AI (веса MuPTA) или AMLAI 1.0" in caveats.text("C7")
+    assert "одной модели" in caveats.text("C7") and "напрямую их сравнивать не следует" in caveats.text("C7")
+    assert caveats.text("C6") == caveats.C6 and caveats.text("C7") == caveats.C7
 
 
 def test_c1_c2_are_the_report_disclaimers():
@@ -50,29 +61,36 @@ def test_no_reference_group():
         low = t.lower()
         for w in ("опорн", "положени", "процентил", "русских ролик", "роликов, обработанных", "предварительн",
                   "типичн", "плохо согласуются", "из 13", "медиан"):
-            if code == "C6-en" and w == "процентил":        # FIV2 percentiles on the English bars do not set letters
-                continue
             assert w not in low, (code, w)
 
 
 def test_c5_c6_c9_absolute_scale():
     assert "от 0.36 до 0.64" in caveats.text("C5") and "0.5" in caveats.text("C5")
-    for lang in ("ru", "en"):
-        assert "середина шкалы 0.5" in caveats.c6(lang)
+    assert "середина шкалы 0.5" in caveats.text("C6")
     assert "у края шкалы" in caveats.text("C9")
-    assert "Основной считается OCEAN-AI" in caveats.c7("ru") and "граница" not in caveats.c7("ru")
-    assert caveats.text("C20").endswith("построены по своей модели.")
+    assert "граница" not in caveats.text("C7")
+    assert caveats.text("C20") == ("Модель OCEAN-AI не дала оценок по этому ролику, поэтому характеристика и тип "
+                                   "построены по оценкам модели AMLAI 1.0, сохранённым в этом задании.")
 
 
 def test_c13_word_forms():
-    assert caveats.c13(7, 33).startswith("В 7 отрезках из 33 система OCEAN-AI не дала оценки")
+    assert caveats.c13(7, 33).startswith("В 7 отрезках из 33 модель OCEAN-AI не дала оценки")
     assert "эти отрезки не вошли" in caveats.c13(7, 33) and "показаны пропусками" in caveats.c13(7, 33)
     one = caveats.c13(1, 18)
     assert one.startswith("В 1 отрезке из 18") and "этот отрезок не вошёл" in one and "показан пропуском" in one
     assert caveats.c13(21, 40).startswith("В 21 отрезке из 40")
+    # the model is the one the view shows: the own model by its product name
+    assert caveats.c13(2, 9, "mm").startswith("В 2 отрезках из 9 модель AMLAI 1.0 не дала оценки")
+    assert caveats.c13(2, 9, "oceanai") == caveats.c13(2, 9)
 
 
 def test_text_fills_templates_by_hand():
-    t = caveats.text("C13", k=2, segments_k="отрезках", n=5, these="эти отрезки не вошли", shown="показаны пропусками")
-    assert t.startswith("В 2 отрезках из 5")
-    assert caveats.text("C6", "en") == caveats.C6_EN and caveats.text("C7", "en") == caveats.C7_EN
+    t = caveats.text("C13", k=2, segments_k="отрезках", n=5, model="OCEAN-AI", these="эти отрезки не вошли",
+                     shown="показаны пропусками")
+    assert t.startswith("В 2 отрезках из 5 модель OCEAN-AI")
+    try:
+        caveats.text("C18")
+    except KeyError:
+        pass
+    else:
+        raise AssertionError("C18 (the second strip of 3.0) must be gone")

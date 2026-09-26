@@ -6,7 +6,7 @@ from typing import Dict, List
 
 import numpy as np
 
-from . import MODEL_TITLES
+from . import DEFAULT_MODEL, MODEL_TITLES
 from .norms import RU_TITLES, TRAIT_KEYS
 from .report import seg_label
 
@@ -24,6 +24,10 @@ SOURCE_RU = {
            "транскрипт русской речи для неё переведён на английский."),
 }
 SCALE_RU = "Уровни черт и буквы MBTI считаются по самой оценке модели на шкале от 0 до 1 с серединой 0.5."
+# the one note of the tab «Объяснения» and of the PDF (under section 4) for an OCEAN-AI job (change request 3.1,
+# section 3, the owner's final decision): explanations exist for AMLAI 1.0 only
+NO_EXPLAIN_RU = ("Модель OCEAN-AI не строит объяснений: ключевые кадры, вклад модальностей и слова, повлиявшие на "
+                 "оценку, есть только для модели AMLAI 1.0.")
 
 
 def plural_ru(n: int, forms: tuple) -> str:
@@ -95,14 +99,10 @@ def build_narrative(rep: dict, expl: dict | None = None) -> str:
     lang, primary = model.get("lang", "en"), model.get("primary")
     parts: List[str] = []
 
-    # 1. what the scores come from (one model per analysis)
-    selected = model.get("selected") or primary
-    if selected in SOURCE_RU:
-        parts.append(SOURCE_RU[selected])
-    elif selected:
-        parts.append(f"Оценки дала система {SYSTEM_RU.get(selected, selected)}.")
-    else:
-        parts.append("Оценки — среднее нескольких систем на шкале First Impressions V2.")
+    # 1. what the scores come from (one model per analysis; a report without a recorded model is read as OCEAN-AI,
+    # as scores.main_system reads it)
+    selected = model.get("selected") or primary or DEFAULT_MODEL
+    parts.append(SOURCE_RU.get(selected) or f"Оценки дала система {SYSTEM_RU.get(selected, selected)}.")
 
     # 2. traits that stand out
     order = sorted(TRAIT_KEYS, key=lambda k: -traits[k]["score"])
@@ -176,16 +176,13 @@ def method_notes(view: dict, expl: dict | None = None) -> str:
     which call it with the explanation at hand."""
     from . import caveats
     meta = view.get("view_meta") or {}
-    lang, main = meta.get("lang", "ru"), meta.get("main_system")
+    main = meta.get("main_system")
     parts: List[str] = []
     if meta.get("primary_missing"):
         parts.append(caveats.text("C20"))
     else:
         parts.append(SOURCE_RU.get(main) or f"Оценки дала система {SYSTEM_RU.get(main, main)}.")
     parts.append(SCALE_RU)
-    if lang != "ru":
-        parts.append("Процентили на полосках — относительно оценок наблюдателей в обучающей выборке First Impressions "
-                     "V2 (6000 роликов).")
 
     # stability over the segments the model scored
     tl = [t for t in (view.get("timeline") or []) if t.get("scores")]
@@ -205,7 +202,7 @@ def method_notes(view: dict, expl: dict | None = None) -> str:
 
     dropped = meta.get("segments_without_primary") or []
     if dropped:
-        parts.append(caveats.c13(len(dropped), int(meta.get("segments_total") or len(dropped))))
+        parts.append(caveats.c13(len(dropped), int(meta.get("segments_total") or len(dropped)), main))
     return " ".join(parts)
 
 

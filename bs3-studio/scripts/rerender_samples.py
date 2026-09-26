@@ -13,17 +13,20 @@ For every job:
 2. import_job.py copies result.json and explain/ into ~/bs3_data/web_jobs/<id>/ (an existing copy is replaced);
 3. webapp.page_outputs runs on the copy and the page is checked: 27 values; the characterization starts with its
    header and «Коротко»; the first key fact is the MBTI card; the view and the `mbti` section hold one model (the
-   recorded one: OCEAN-AI for an imported 2.0 job), the tab «Тип MBTI» shows one panel and one letter strip, no
-   agreement line, no C18, and no block of the page says «второе мнение»; segments without the model are gaps on the
-   timeline chart and are named by C13 in «Как получены оценки»; «Краткие выводы» appears nowhere; result.json of
-   the copy gets no `mbti` section; nothing on the page mentions a group of processed videos (reference group,
-   position, «типичный», percentiles of Russian speech), and the characterization does not compare two systems
-   (changes of 2026-09-26);
+   recorded one: OCEAN-AI for an imported 2.0 job), the tab «Тип MBTI» shows one panel and one letter strip titled by
+   the model («OCEAN-AI, веса MuPTA» / «AMLAI 1.0»), no agreement line, no roles, and no block of the page says
+   «второе мнение», «своя модель» or «MM-PSYCHE»; the score bars have no framed block under them; the tab
+   «Объяснения» of an OCEAN-AI job carries the one note (narrative.NO_EXPLAIN_RU); «Модель и время обработки» starts
+   with the model line; segments without the model are gaps on the timeline chart and are named by C13 in «Как
+   получены оценки»; «Краткие выводы» appears nowhere; result.json of the copy gets no `mbti` section; nothing on the
+   page mentions a group of processed videos (reference group, position, «типичный», percentiles of Russian speech),
+   and the characterization does not compare two systems (changes of 2026-09-26);
 4. webapp.export_pdf runs on the copy: the PDF is built; its text (pdftotext) contains «Характеристика личности»,
-   «Тип MBTI (перевод шкал Big Five)», «Как получены оценки», «BS Profiler 3.1 · стр.», the type of the model and, in
-   the appendix «Значения по отрезкам», the type of every typed segment; it does not contain «Краткие выводы»,
-   «сегмент» (outside the transcript, which is the person's own speech), «второе мнение», the name of the old version
-   or anything about a group of processed videos; it
+   «Тип MBTI (перевод шкал Big Five)», «Как получены оценки», «Оценки по чертам», «BS Profiler 3.1 · стр.», the one
+   model («Модель OCEAN-AI, веса MuPTA»), the type of the model and, in the appendix «Значения по отрезкам», the type
+   of every typed segment; for an OCEAN-AI job it has no section 5 and the one-line note instead; it does not contain
+   «Краткие выводы», «сегмент» (outside the transcript, which is the person's own speech), «второе мнение», the names
+   and roles of 3.0, the name of the old version or anything about a group of processed videos; it
    has at most 2 pages more than the PDF of the old version in the source job (when there is one);
 5. sha256 of the source job is taken again and must not have changed.
 
@@ -60,6 +63,10 @@ EXPECT = {
           "strip": "ENFJ во всех 26 отрезках с оценкой; все четыре оси совпадают с итогом во всех отрезках"},
 }
 SECOND_OPINION = re.compile(r"втор(?:ое|ого) мнени|second_opinion", re.I)
+# names and roles of 3.0 that 3.1 does not use on the page or in the PDF (AMLAI 1.0 is the own model's name; the
+# recipe MM-PSYCHE may be named once in «Как получены оценки» of a job of AMLAI 1.0)
+OLD_NAMES = re.compile(r"сво(?:я|ей|ю) модел|Участники ансамбля|основная оценка|Основная система|двух систем|"
+                       r"усредн|язык речи|английской речи|для русской речи", re.I)
 # nothing about a group of processed videos anywhere (change of 2026-09-26), including a rule drawn from them
 # («на русских роликах её значения ниже»): a difference of the two systems is given for this recording only
 RELATIVE = re.compile(r"опорн|положени[ея] (?:в|среди|оценки)|типичн|\d+ русск\w* ролик|среди (?:тех же )?русских|"
@@ -90,11 +97,13 @@ def _page(title: str, blocks: list[tuple[str, str]]) -> str:
             f"<style>{PAGE_CSS}</style></head><body>{body}</body></html>")
 
 
-PDF_MUST = ("Характеристика личности", "Тип MBTI (перевод шкал Big Five)", "Как получены оценки", f"{PRODUCT} · стр.")
+PDF_MUST = ("Характеристика личности", "Тип MBTI (перевод шкал Big Five)", "Как получены оценки", "Оценки по чертам",
+            "Как читать результаты", f"{PRODUCT} · стр.")
 PDF_MUST_NOT = (("Краткие выводы", re.compile(r"Краткие выводы")), ("сегмент", re.compile(r"сегмент", re.I)),
                 ("the name of the old version", re.compile(r"BS\s+(?:2\.0|3\.0)")),
                 ("a group of processed videos", RELATIVE), ("«Согласие двух систем»", re.compile(r"Согласие двух систем")),
-                ("«второе мнение»", SECOND_OPINION))
+                ("«второе мнение»", SECOND_OPINION), ("3.0 names and roles", OLD_NAMES),
+                ("«MM-PSYCHE» outside the recipe clause", re.compile(r"(?<!по рецепту )MM-PSYCHE")))
 MAX_EXTRA_PAGES = 2
 
 
@@ -136,6 +145,15 @@ def check_pdf(c: Checks, src: Path, dest: Path, mb: dict | None, exp: dict | Non
         seg_types = {e["type"] for e in mb.get("timeline") or [] if e.get("type")}
         c.ok(" MBTI " in appx and all(t in appx for t in seg_types),
              f"MBTI column in the appendix with {len(seg_types)} segment type(s)")
+        from bs3 import mbti_html
+        from bs3.webparts import model_title
+        main = (mb.get("model") or "oceanai")
+        c.ok(f"Модель {model_title(main)}" in text and f"{mbti_html.panel_title(mb)}: " in text,
+             f"PDF names one model: {model_title(main)}")
+        if main == "oceanai":
+            from bs3.narrative import NO_EXPLAIN_RU
+            c.ok(NO_EXPLAIN_RU[:60] in text and "Что повлияло" not in text,
+                 "OCEAN-AI: no section 5, the one-line note under section 4")
     if exp:
         c.ok(exp["strip"] in text, "PDF strip summary as in design 13.2")
     old = sorted(p for p in src.glob("*_report_*.pdf"))
@@ -152,8 +170,9 @@ def check_pdf(c: Checks, src: Path, dest: Path, mb: dict | None, exp: dict | Non
 
 
 def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path | None = None) -> Checks:
-    from bs3 import caveats, mbti
+    from bs3 import caveats, mbti, mbti_html, webparts
     from bs3.charts import fig_traits_timeline
+    from bs3.narrative import NO_EXPLAIN_RU
     from bs3.scores import clean_view
     from bs3.webapp import N_PAGE, page_outputs
 
@@ -192,7 +211,7 @@ def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path |
     c.ok(bool(first_label) and first_label.group(1) == title, f"first key fact is «{title}»")
     card = mbti.fact_card(mb)
     c.ok(card is not None and f">{card[1]}</div>" in facts, "the type card shows the type")
-    # one model (3.1): the view, the section, the tab «Тип MBTI» (one panel, one strip, no agreement line, no C18)
+    # one model (3.1): the view, the section, the tab «Тип MBTI» (one panel, one strip, no agreement line, no roles)
     c.ok(set(view.get("variant_scores") or {}) == {meta["main_system"]},
          f"the view holds one model: {meta['main_system']}")
     c.ok(bool(mb) and "second" not in mb and "agreement" not in mb and mb.get("schema_version") == mbti.SCHEMA_VERSION,
@@ -200,15 +219,26 @@ def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path |
     c.ok(types.count("С учётом границ:") == 1, "one panel on the tab «Тип MBTI»")
     c.ok(strip.count("grid-template-columns:56px") == 1, "one letter strip")
     for name, h in (("bars", bars), ("types", types), ("strip", strip), ("method", method), ("members", members),
-                    ("facts", facts), ("characterization", char)):
-        c.ok(not SECOND_OPINION.search(re.sub(r"<[^>]+>", " ", h)), f"no «второе мнение» in {name}")
-    c.ok("OCEAN-AI — основная оценка" in strip if mb and mb.get("source") == "ocean_ai" else bool(strip),
-         "letter strip of the model")
-    c.ok(caveats.text("C18") not in strip, "no C18 (one model, no second strip)")
+                    ("facts", facts), ("characterization", char), ("contrib", _contrib), ("frames", _frames)):
+        plain = re.sub(r"<[^>]+>", " ", h)
+        c.ok(not SECOND_OPINION.search(plain), f"no «второе мнение» in {name}")
+        c.ok(not OLD_NAMES.search(plain), f"no 3.0 names (своя модель, MM-PSYCHE, roles) in {name}")
+    title = mbti_html.panel_title(mb) if mb else ""
+    c.ok(bool(title) and f">{title}</div>" in types and f">{title}</div>" in strip,
+         f"the panel and the strip are titled «{title}»")
+    c.ok(f"{mbti.source_title(mb)}: " in strip if mb else bool(strip), "the strip summary starts with the model")
     c.ok(caveats.text("C8") in strip, "C8 under the strip")
-    for code in ("C3", "C4", "C5", "C9", "C16"):
+    for code in mbti_html.READ_CAVEATS:
         c.ok(caveats.text(code) in read, f"{code} in «Как читать тип MBTI»")
-    c.ok(caveats.c6(meta["lang"]) in read and caveats.c7(meta["lang"]) in read, "C6 and C7 in «Как читать тип MBTI»")
+    # one model on the overview and in the tab «Объяснения» (an OCEAN-AI job: the one note, nothing else)
+    c.ok(bars.count("<b>Экстраверсия</b>") == 1 and "border-radius:8px'><div style='font-weight:600" not in bars,
+         "score bars of one model, no framed block under them")
+    if meta["main_system"] == "oceanai":
+        c.ok(re.sub(r"<[^>]+>", "", _contrib).strip() == NO_EXPLAIN_RU and _words == "",
+             "tab «Объяснения»: the one note for OCEAN-AI")
+        c.ok("модель OCEAN-AI не строит объяснений" in _frames, "«Ключевые кадры»: OCEAN-AI builds none")
+    c.ok(members.startswith(f"Модель {webparts.model_title(meta['main_system'])}: ")
+         and "\nОбработка заняла " in members, "«Модель и время обработки»: the model line and the time")
     # segments without the main system: gaps on the chart, C13 in «Как получены оценки»
     dropped = meta["segments_without_primary"]
     fig = fig_traits_timeline(view, "light")
@@ -224,7 +254,7 @@ def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path |
                                  .get("emotions_text")), "«Эмоции и голос: коротко» filled when there are analyses")
     # data tab
     if mb and mb.get("computed_on_render"):
-        c.ok(caveats.text("C22") in members, "C22 in «Участники ансамбля и время обработки»")
+        c.ok(caveats.text("C22") in members, "C22 in «Модель и время обработки»")
     if meta["lang"] == "ru":
         shown_json = json.loads(raw)
         c.ok(not any(k in (shown_json.get("traits") or {}).get(t, {}) for t in shown_json.get("traits") or {}

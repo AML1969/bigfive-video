@@ -31,8 +31,8 @@ log = logging.getLogger("bs3.ru_texts")
 # one short note above a translated transcript (page tab «Речь» and PDF section «Транскрипт речи»); the job only says
 # which language was chosen, not which one is spoken
 TRANSCRIPT_NOTE = "Ролик обработан как англоязычный: ниже — автоматический перевод транскрипта на русский."
-WRONG_LANGUAGE_NOTE = ("В транскрипте есть русские слова: похоже, человек говорит по-русски, а при запуске был выбран "
-                       "английский язык речи. Выберите «русский» и запустите анализ заново — оценки и транскрипт будут точнее.")
+WRONG_LANGUAGE_NOTE = ("В транскрипте есть русские слова: похоже, человек говорит по-русски, а ролик был обработан как "
+                       "англоязычный (задание старой версии). Запустите анализ заново — оценки и транскрипт будут точнее.")
 NO_TRANSCRIPT_TRANSLATION = "Перевод транскрипта на русский сейчас недоступен. Откройте результат ещё раз чуть позже."
 VOCABULARY_TOP = 15
 MIN_FREQUENT = 2          # «частые слова» / «чаще всего звучат»: a word said once is not frequent

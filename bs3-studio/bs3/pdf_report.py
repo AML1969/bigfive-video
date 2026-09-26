@@ -1,14 +1,15 @@
 """PDF report for one analysed video (fpdf2).
 
-The main part reads top down (design 10.7): a passport of the file and the analysis, «Характеристика личности» (its
-header line and paragraphs, pdf_mbti.characterization_block), the key facts with the MBTI type card first, the Big
-Five profile (radar beside «Как получены оценки», score bars with the second opinion), «Тип MBTI (перевод шкал Big
-Five)» (pdf_mbti.mbti_section), then one numbered section per topic — Big Five over time, emotions and facial
-expression, voice and speech, what drove the own model's score — and «Как читать результаты». The appendices follow:
-file and analysis parameters, the values of every segment (with the MBTI type of the segment), behaviour descriptions
-of the notable segments, the transcript. Every chart of the web page has a print version (pdf_charts.py). The report is
-built from the clean view (scores.clean_view). The original file name of the video is printed exactly as it is, also
-in the footer of every page, so pages of two reports cannot be mixed up.
+The main part reads top down (design 10.7; 3.1: one model): a passport of the file and the analysis, «Характеристика
+личности» (its header line and paragraphs, pdf_mbti.characterization_block), the key facts with the MBTI type card
+first, the Big Five profile (radar beside «Как получены оценки», the score bars of the one model that ran), «Тип MBTI
+(перевод шкал Big Five)» (pdf_mbti.mbti_section), then one numbered section per topic — Big Five over time, emotions
+and facial expression, voice and speech, what drove the score of AMLAI 1.0 (for an OCEAN-AI job one line under the
+voice section says that it builds no explanations) — and «Как читать результаты». The appendices follow: file and
+analysis parameters, the values of every segment (with the MBTI type of the segment), behaviour descriptions of the
+notable segments, the transcript. Every chart of the web page has a print version (pdf_charts.py). The report is built
+from the clean view (scores.clean_view). The original file name of the video is printed exactly as it is, also in the
+footer of every page, so pages of two reports cannot be mixed up.
 """
 from __future__ import annotations
 
@@ -19,36 +20,31 @@ from pathlib import Path
 
 from fpdf import FPDF
 
-from . import PRODUCT, caveats
+from . import MODEL_TITLES, PRODUCT, caveats
+from .narrative import NO_EXPLAIN_RU
 from .narrative2 import analyses_parts, fix_counts, key_facts, plural_ru
-from .norms import RU_SHORT, TRAIT_KEYS, percentile
-from .palette import CARD_PDF, SCORE_BAR_PDF, SECOND_BAR_PDF, TRAIT_BAR_PDF
+from .norms import RU_SHORT, TRAIT_KEYS
+from .palette import CARD_PDF, SCORE_BAR_PDF, TRAIT_BAR_PDF
 from .report import _SEC_LABEL, fmt_secs, seg_label
 from .ru_texts import transcript_shown, vocabulary_shown
-from .scores import SECOND_SCALE_RU, gap_sentence
 
 TITLES = {
     "openness": "Открытость опыту", "conscientiousness": "Добросовестность", "extraversion": "Экстраверсия",
     "agreeableness": "Доброжелательность", "emotional_stability": "Эмоциональная стабильность",
     "interview": "Впечатление «собеседование»",
 }
-MEMBERS = {"oceanai": "OCEAN-AI", "mm": "Своя модель (MM-PSYCHE)", "scene": "SSL-MEPR (сцена)"}
-# two-line column headers: long Russian words do not fit narrow table columns
-TITLES_2L = {"openness": "Открытость\nопыту", "conscientiousness": "Добросовест-\nность", "extraversion": "Экстра-\nверсия",
-             "agreeableness": "Доброжела-\nтельность", "emotional_stability": "Эмоц.\nстабильность",
-             "interview": "Собесе-\nдование"}
 # «Значения по отрезкам» has 14 columns: the short trait names are broken over two lines where one line is wider than
 # its column of numbers; the legend under the table joins the halves back («Добро-жел.» -> «Доброжел.»)
 SEG_HEAD = {**RU_SHORT, "agreeableness": "Добро-\nжел.", "emotional_stability": "Эм.\nстаб.", "interview": "Собе-\nсед."}
-SYSTEM_TITLES = {"oceanai": "OCEAN-AI", "mm": "своя модель (MM-PSYCHE)", "scene": "SSL-MEPR (сцена)",
-                 "ensemble": "ансамбль", "sslmepr": "SSL-MEPR"}
+SYSTEM_TITLES = {**MODEL_TITLES, "scene": "SSL-MEPR (сцена)", "sslmepr": "SSL-MEPR"}
 MODALITY_TITLES = {**SYSTEM_TITLES, "audio": "голос", "video": "видео", "text": "речь", "face": "лицо",
                    "behavior": "описание поведения"}
 # container tags from media.probe_media (ffprobe names) -> row titles of the «Файл» table
 MEDIA_TAGS = {"creation_time": "Записан (метка в файле)", "encoder": "Программа записи",
               "com.apple.quicktime.make": "Производитель камеры", "com.apple.quicktime.model": "Модель камеры",
               "title": "Название"}
-LANG_RU = {"ru": "русский", "en": "английский"}
+# training data of each model, for appendix А
+TRAINED_ON = {"oceanai": "MuPTA (русская речь)", "mm": "First Impressions V2"}
 EMO_NAMES = {"joy": "радость", "surprise": "удивление", "neutral": "нейтрально", "sadness": "грусть", "fear": "страх",
              "anger": "злость", "disgust": "отвращение"}
 NOTE_GREY = 85                      # #555555, 7.46:1 on white: notes, card labels, the footer
@@ -84,15 +80,16 @@ def _encoder(v) -> str:
     return f"FFmpeg (libav{'format' if m.group(1) == 'f' else 'codec'} {m.group(2)})" if m else s
 
 
-def _trained_on(m: dict, members: list) -> str:
-    """model.trained_on names one corpus for the whole ensemble; say which member learned from what."""
-    oc = {"ru": "MuPTA (русская речь)", "en": "First Impressions V2"}.get(m.get("lang"))
-    if m.get("backend") == "ensemble" and members:
-        parts = [f"OCEAN-AI — {oc}" if x == "oceanai" and oc else "своя модель — First Impressions V2" if x == "mm"
-                 else None for x in members]
-        if all(parts):
-            return "; ".join(parts)
-    return str(m.get("trained_on") or "—")
+def _main_model(report: dict) -> str | None:
+    """The model a clean view shows ("oceanai" | "mm"); a raw report gives the recorded one (scores.recorded_model)."""
+    from .scores import recorded_model
+    return (report.get("view_meta") or {}).get("main_system") or recorded_model(report)
+
+
+def model_title(report: dict) -> str:
+    """«OCEAN-AI, веса MuPTA» / «AMLAI 1.0»: the one model of the report, as on the page (webparts.model_title)."""
+    from .webparts import model_title as _title
+    return _title(_main_model(report))
 
 
 def pct_phrase(pct, ref: str = "") -> str:
@@ -391,16 +388,12 @@ class Report(FPDF):
     def _bar_rows(self, traits: dict, interview: dict | None):
         return [(k, traits[k]) for k in TRAIT_KEYS] + ([("interview", interview)] if interview else [])
 
-    def _bars_legend(self, second: bool, second_ru: bool = False):
+    def _bars_legend(self):
         """Legend items (kind, text) under the score bars."""
         # «как на графиках» with one reservation: the extraversion fill is a step darker than its line on the charts,
         # because the chart colour gives only 2.9:1 on the light track of the bar
-        items = [("traits", "оценка черты 0…1 (цвет — как на графиках, экстраверсия чуть темнее)")]
-        if second:
-            # Russian speech: the note under the bars names the second system (the legend then fits one line)
-            items.append(("second", "второе мнение" if second_ru else "второе мнение: своя модель, FIV2"))
-        items.append(("tick", "середина шкалы"))
-        return items
+        return [("traits", "оценка черты 0…1 (цвет — как на графиках, экстраверсия чуть темнее)"),
+                ("tick", "середина шкалы")]
 
     def _legend_lines(self, items) -> list:
         """Legend items wrapped into lines of the text width: [[(kind, text, x_offset), …], …]."""
@@ -415,50 +408,40 @@ class Report(FPDF):
             lines.append(cur)
         return lines
 
-    def _bars_note(self, traits: dict, interview: dict | None, second: dict | None, second_ru: bool = False) -> str:
+    def _bars_note(self, traits: dict, interview: dict | None) -> str:
         groups: dict[str, list[str]] = {}          # FIV2 reference in words -> item keys (Russian speech: none)
         for k, t in self._bar_rows(traits, interview):
             pct = t.get("percentile", t.get("percentile_vs_fiv2"))
             ref = t.get("percentile_ref", "train First Impressions V2 (6000 клипов)" if pct is not None else "")
             if pct is not None and pct_phrase(pct, ref):
                 groups.setdefault(f"относительно {_ref_ru(ref)}", []).append(k)
-        parts = ["Длина полоски — оценка системы от 0 до 1; уровни черт и буквы MBTI считаются по этой же шкале, "
+        parts = ["Длина полоски — оценка модели от 0 до 1; уровни черт и буквы MBTI считаются по этой же шкале, "
                  "середина — 0.5."]
         interview_named = False
         if groups:
             if len(groups) == 1:
                 parts.append(f"Рядом с полоской — процентиль {next(iter(groups))}.")
             else:
-                parts += [(f"«Собеседование» (коричневая полоска, своя модель) — процентиль {ref}."
+                parts += [(f"«Собеседование» (коричневая полоска, модель AMLAI 1.0) — процентиль {ref}."
                            if keys == ["interview"] else f"{_group_name(keys).capitalize()} — процентиль {ref}.")
                           for ref, keys in groups.items()]
                 interview_named = any(keys == ["interview"] for keys in groups.values())
-        if second:
-            # the second opinion is the own model (the PDF passes it only when OCEAN-AI is the main system)
-            parts.append(SECOND_SCALE_RU)
-            gap = gap_sentence(second, traits)
-            if gap:
-                parts.append(gap)
         if interview and not interview_named:
-            parts.append("Коричневая полоска — впечатление «собеседование» (своя модель, шкала FIV2).")
+            parts.append("Коричневая полоска — впечатление «собеседование» (метка модели AMLAI 1.0, шкала 0…1).")
         return " ".join(parts)
 
-    def score_bars_height(self, traits: dict, interview: dict | None, second: dict | None = None,
-                          second_ru: bool = False) -> float:
+    def score_bars_height(self, traits: dict, interview: dict | None) -> float:
         n = len(TRAIT_KEYS)
-        h = n * (8.6 if second else 6.0) + (8.0 if interview else 0.0) + 4.2
-        h += len(self._legend_lines(self._bars_legend(bool(second), second_ru))) * 4.4 + 1
+        h = n * 6.0 + (8.0 if interview else 0.0) + 4.2
+        h += len(self._legend_lines(self._bars_legend())) * 4.4 + 1
         self.set_font("ui", "", 8)
-        h += len(self.multi_cell(self.epw, 4.0, self._bars_note(traits, interview, second, second_ru),
-                                 dry_run=True, output="LINES")) * 4.0
+        h += len(self.multi_cell(self.epw, 4.0, self._bars_note(traits, interview), dry_run=True, output="LINES")) * 4.0
         return h + 1
 
-    def score_bars(self, traits: dict, interview: dict | None, second: dict | None = None,
-                   second_ru: bool = False):
+    def score_bars(self, traits: dict, interview: dict | None):
         """One row per trait: the bar is the score itself (0…1, what a reader expects to see filled), the text gives the
-        score and, for a FIV2 percentile (English speech), its position in words. second: {trait: score} of the second
-        opinion, drawn as a thin slate bar under each trait: for Russian speech (`second_ru`) with its score only, as on
-        the web page, otherwise with its FIV2 percentile."""
+        score and, for a FIV2 percentile (an older English job), its position in words. One model (3.1): no second
+        opinion under the bars."""
         items = self._bar_rows(traits, interview)
         bar_w, bar_h = self.BAR_W, self.BAR_H
         c = SCORE_BAR_PDF
@@ -466,7 +449,7 @@ class Report(FPDF):
         self.set_font("ui", "", 8.5)
         label_w = max(self.get_string_width(TITLES[k]) for k, _ in items) + 3
         x = self.l_margin + label_w
-        row_h = 5.4 if second else 6.0      # with the second opinion every trait takes 5.4 + 3.2 mm
+        row_h = 6.0
         for k, t in items:
             pct = t.get("percentile", t.get("percentile_vs_fiv2")); score = float(t["score"])
             ref = t.get("percentile_ref", "train First Impressions V2 (6000 клипов)" if pct is not None else "")
@@ -505,27 +488,6 @@ class Report(FPDF):
                 if self.get_string_width(text) <= room:
                     break
             self.cell(0, row_h, text, new_x="LMARGIN", new_y="NEXT")
-            if second and k in second:
-                s = float(second[k])
-                ys = self.get_y() + 0.3
-                self.set_fill_color(c["track"]); self.rect(x, ys, bar_w, 1.4, style="F")
-                self.set_fill_color(*_rgb(SECOND_BAR_PDF))
-                self.rect(x, ys, bar_w * max(0.01, min(1.0, s)), 1.4, style="F")
-                self.set_xy(x + bar_w + 2, self.get_y() - 0.4)
-                self.set_text_color(*_rgb(SECOND_BAR_PDF))
-                if second_ru:
-                    text = f"второе мнение {s:.2f}"
-                else:
-                    text = f"второе мнение {s:.2f} · {pct_phrase(percentile(k, s), 'train FIV2')}"
-                room = self.l_margin + self.epw - self.get_x() - 2 * self.c_margin
-                for pt in (7.5, 7.2, 7.0):          # «примерно посередине …» is the longest phrase: it must not
-                    self.set_font("ui", "", pt)     # run past the right margin
-                    if self.get_string_width(text) <= room:
-                        break
-                else:                               # the longest phrase at the smallest size: one word less
-                    text = text.replace("примерно посередине", "посередине")
-                self.cell(0, 3.2, text, new_x="LMARGIN", new_y="NEXT")
-                self.set_text_color(0)
         # scale under the bars: 0, 0.5, 1, each label centred on its point of the bar
         self.set_font("ui", "", 7.5); self.set_text_color(NOTE_GREY)
         y = self.get_y()
@@ -533,10 +495,9 @@ class Report(FPDF):
             self.set_xy(pos - 5, y); self.cell(10, 3.6, val, align="C")
         self.set_text_color(0)
         self.set_xy(self.l_margin, y + 4.2)
-        self._draw_bars_legend(self._legend_lines(self._bars_legend(bool(second), second_ru)))
+        self._draw_bars_legend(self._legend_lines(self._bars_legend()))
         self.set_font("ui", "", 8); self.set_text_color(NOTE_GREY)
-        self.multi_cell(0, 4.0, self._bars_note(traits, interview, second, second_ru), new_x="LMARGIN",
-                        new_y="NEXT", align="L")
+        self.multi_cell(0, 4.0, self._bars_note(traits, interview), new_x="LMARGIN", new_y="NEXT", align="L")
         self.set_text_color(0)
         self.ln(1)
 
@@ -549,8 +510,6 @@ class Report(FPDF):
                 if kind == "traits":             # the five trait colours side by side
                     for i, k in enumerate(TRAIT_KEYS):
                         self.set_fill_color(*_rgb(TRAIT_BAR_PDF[k])); self.rect(x + i * 1.3, y + 1.0, 1.3, 2.6, style="F")
-                elif kind == "second":
-                    self.set_fill_color(*_rgb(SECOND_BAR_PDF)); self.rect(x, y + 1.6, 6.5, 1.4, style="F")
                 else:
                     self.set_draw_color(c["mid_tick"]); self.set_line_width(0.3)
                     self.line(x + 3, y + 0.4, x + 3, y + 4.0); self.set_draw_color(0); self.set_line_width(0.2)
@@ -686,7 +645,8 @@ def _plan(pdf: Report, report: dict, explanation, frames, charts: dict, mb: dict
            "timeline": bool(charts.get("traits")) and len(_scored(report)) >= 2,
            "emotions": bool(te.get("mean") or fa.get("mean") or charts.get("emotions")),
            "voice_speech": bool(an.get("voice") or an.get("speech") or charts.get("voice") or charts.get("speech")),
-           "explain": bool(explanation or frames),
+           # explanations exist for AMLAI 1.0 only (3.1): an OCEAN-AI job gets one line under section 4 instead
+           "explain": bool(explanation or frames) and _main_model(report) == "mm",
            "how_to_read": True}          # numbered like the rest: between the sections and the lettered appendices
     n = 0
     for key, ok in has.items():
@@ -694,8 +654,11 @@ def _plan(pdf: Report, report: dict, explanation, frames, charts: dict, mb: dict
             n += 1
             pdf.plan[key] = n
     note, transcript = transcript_shown(report)
+    # the behaviour description is written for AMLAI 1.0 (its video-language model); an older OCEAN-AI job that
+    # carries the description of the second model of 3.0 does not print it: one model in the report
     appx = {"file": True, "segments": len(_segment_rows(report)) >= 2,
-            "behavior": bool(report.get("behavior_description_ru")), "transcript": bool(note or transcript)}
+            "behavior": bool(report.get("behavior_description_ru")) and _main_model(report) == "mm",
+            "transcript": bool(note or transcript)}
     letters = iter("АБВГДЕ")
     for key, ok in appx.items():
         if ok:
@@ -725,27 +688,15 @@ def _passport(pdf: Report, report: dict, media: dict | None, fname: str) -> None
         parts.append(f"{md['size_mb']} МБ")
     created = str(report.get("created_at") or "")
     mt = re.match(r"^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})", created)
-    analysis = [f"{mt.group(1)} {mt.group(2)}" if mt else created or None,
-                f"язык речи — {LANG_RU.get(m.get('lang'), m.get('lang') or '—')}"]
+    analysis = [f"{mt.group(1)} {mt.group(2)}" if mt else created or None]
     n_seg = int(report.get("segments") or 0)
     analysis.append(f"{n_seg} {plural_ru(n_seg, 'отрезок', 'отрезка', 'отрезков')} по ~20 с" if n_seg > 1
                     else "ролик оценён целиком")
     t = report.get("timings_sec") or {}
     if t.get("total_wall", t.get("total")) is not None:
         analysis.append(f"время обработки {fmt_secs(t.get('total_wall', t.get('total')))}")
-    members = [x for x in (report.get("variant_scores") or {})] or \
-        [x for x in report.get("modalities_used", []) if x in SYSTEM_TITLES]
-    primary = m.get("primary")
-    if primary == "oceanai" and m.get("lang") == "ru":
-        score = ("основная — OCEAN-AI (веса MuPTA, русская речь); второе мнение — своя модель MM-PSYCHE (шкала FIV2)"
-                 if "mm" in members else "OCEAN-AI (веса MuPTA, русская речь)")
-    elif primary:
-        score = f"основная — {SYSTEM_TITLES.get(primary, primary)}"
-    elif set(members) >= {"oceanai", "mm"}:
-        score = "среднее OCEAN-AI и своей модели MM-PSYCHE (шкала First Impressions V2)"
-    else:
-        score = SYSTEM_TITLES.get(m.get("backend"), str(m.get("backend") or "—"))
-    rows = [("Файл", " · ".join(parts)), ("Анализ", " · ".join(p for p in analysis if p)), ("Оценка", score),
+    # one model per analysis (3.1): the model of the view, «OCEAN-AI, веса MuPTA» or «AMLAI 1.0»
+    rows = [("Файл", " · ".join(parts)), ("Анализ", " · ".join(p for p in analysis if p)), ("Модель", model_title(report)),
             ("Отчёт", f"создан {_dt.datetime.now().strftime('%Y-%m-%d %H:%M')}; технические сведения о файле и анализе — "
                       f"в приложении {pdf.appx.get('file', 'А')}")]
     pdf.set_font("ui", "B", 8.5)
@@ -792,7 +743,7 @@ def _pdf_facts(view: dict, speech_cards: bool, mb: dict | None = None) -> list:
 
 def _profile_section(pdf: Report, report: dict, explanation, charts: dict) -> None:
     """1. Radar beside «Как получены оценки» (narrative.method_notes on the clean view, design 9; its overflow
-    continues under the row), then the score bars with the second opinion."""
+    continues under the row), then the score bars of the one model that ran (3.1)."""
     try:
         from .narrative import method_notes
         narrative = _hms_text(fix_counts(method_notes(report, explanation)), report.get("duration_sec"))
@@ -802,15 +753,7 @@ def _profile_section(pdf: Report, report: dict, explanation, charts: dict) -> No
     text_x = pdf.l_margin + RADAR_W_MM + ROW_GAP_MM
     text_w = pdf.l_margin + pdf.epw - text_x
     radar_h = pdf.chart_height(radar, RADAR_W_MM) if radar else 0.0
-    m = report.get("model") or {}
-    primary = m.get("primary")
-    main = (report.get("view_meta") or {}).get("main_system") or primary
-    var = report.get("variant_scores") or {}
-    second_sys = next((k for k, v in var.items() if primary and k != main and all(t in v for t in TRAIT_KEYS)), None)
-    second = var.get(second_sys) if second_sys else None
-    # Russian speech: the second opinion with its score only, as on the web page
-    second_ru = second is not None and m.get("lang") == "ru"
-    bars_h = pdf.score_bars_height(report["traits"], report.get("interview"), second, second_ru)
+    bars_h = pdf.score_bars_height(report["traits"], report.get("interview"))
 
     def layout(size: float):
         lh = size * 0.5
@@ -849,16 +792,9 @@ def _profile_section(pdf: Report, report: dict, explanation, charts: dict) -> No
     elif narrative:
         pdf.h3("Как получены оценки")
         pdf.para(narrative, size)
-    # ---- score bars with the second opinion (Russian speech) or the members (English speech: their mean)
-    title = "Оценки по чертам и второе мнение" if second else "Оценки по чертам"
-    pdf.h3(title, keep_mm=bars_h)
-    pdf.score_bars(report["traits"], report.get("interview"), second, second_ru)
-    if var and not primary:
-        pdf.h3("Участники ансамбля: итоговая оценка — их среднее", keep_mm=22)
-        rows = [[MEMBERS.get(n, n)] + [f"{float(v.get(k, float('nan'))):.2f}" for k in TRAIT_KEYS] for n, v in var.items()]
-        pdf.table(["Модель"] + [TITLES_2L[k] for k in TRAIT_KEYS], rows, [50, 28, 28, 28, 28, 28], size=8, first_left=True)
-        who = "Обе модели" if len(var) == 2 else "Все модели"
-        pdf.caption(f"{who} на шкале First Impressions V2, оценки от 0 до 1; итог в полосках выше — их среднее.", 8)
+    # ---- the score bars of the one model (3.1: no second opinion, no table of averaged members)
+    pdf.h3("Оценки по чертам", keep_mm=bars_h)
+    pdf.score_bars(report["traits"], report.get("interview"))
 
 
 def _timeline_section(pdf: Report, report: dict, charts: dict, has_expl: bool) -> None:
@@ -891,10 +827,9 @@ def _emotions_section(pdf: Report, report: dict, charts: dict) -> None:
     intro = " ".join(p for p in (parts["text_emotion"], parts["face"]) if p)
     per = an.get("per_segment") or []
     fa = an.get("face") or {}
-    text_src = "по транскрипту" if (report.get("model") or {}).get("lang") == "en" else "по переводу транскрипта на английский"
     blocks = []                          # (chart key, caption, message when the chart is missing)
-    prof_cap = (f"Средняя доля каждой эмоции за ролик. Речь — модель эмоций текста {text_src}; лицо — модель выражений "
-                "по кадрам.")
+    prof_cap = ("Средняя доля каждой эмоции за ролик. Речь — модель эмоций текста по переводу транскрипта на английский; "
+                "лицо — модель выражений по кадрам.")
     # an отрезок whose own transcript came out empty is «нет текста» everywhere else in the report, but the stored
     # average counts it as «нейтрально 100%»: say so, so the two views do not read as contradicting each other
     no_text = [r for r in per if _empty_text(r)]
@@ -1009,20 +944,28 @@ def _frame_rows(pdf: Report, frames: list):
     return rows, cell_w, gap
 
 
+def _no_explain_note(pdf: Report, report: dict) -> None:
+    """An OCEAN-AI job (3.1): one line under section 4 in place of section 5 — no empty section, no heading."""
+    if "explain" in pdf.plan or _main_model(report) == "mm":
+        return
+    pdf.ln(1)
+    pdf.caption(NO_EXPLAIN_RU, 8)
+
+
 def _explain_section(pdf: Report, report: dict, explanation, frames: list, charts: dict, media: dict | None) -> None:
-    """5. What drove the own model's score: key frames, modality contributions, words."""
+    """5. What drove the score of AMLAI 1.0: key frames, modality contributions, words."""
     if "explain" not in pdf.plan:
         return
     seg = _rep_segment(report)
     tl_all = report.get("timeline") or []
     if seg and "timeline" in pdf.plan:
-        intro = (f"Объяснения построены для своей модели MM-PSYCHE по отрезку {_seg(report, seg['start'], seg['end'])}, "
+        intro = (f"Объяснения построены для модели AMLAI 1.0 по отрезку {_seg(report, seg['start'], seg['end'])}, "
                  "ближайшему к среднему профилю (★ на графике «Big Five по ходу ролика»).")
     else:
-        intro = "Объяснения построены для своей модели MM-PSYCHE по всему ролику."
+        intro = "Объяснения построены для модели AMLAI 1.0 по всему ролику."
     rows, cell_w, gap = _frame_rows(pdf, frames) if frames else ([], 0.0, 0.0)
     first_h = (max(h for _, _, h in rows[0]) + 6 + 6) if rows else 20
-    pdf.section("Что повлияло на оценку своей модели", "explain", keep_mm=pdf.para_height(intro, 8.5) + first_h)
+    pdf.section("Что повлияло на оценку модели AMLAI 1.0", "explain", keep_mm=pdf.para_height(intro, 8.5) + first_h)
     pdf.para(intro, 8.5)
     if rows:
         # frames come from the clip the explanations were computed on: the representative segment of a long video,
@@ -1049,7 +992,7 @@ def _explain_section(pdf: Report, report: dict, explanation, frames: list, chart
                 return f"кадр {n} · {d // 600}:{d // 10 % 60:02d},{d % 10}"
             return f"кадр {n} · {_mmss(t)}"
 
-        note = ("Кадры, сильнее всего повлиявшие на оценку своей модели. Рамкой отмечено найденное лицо; "
+        note = ("Кадры, сильнее всего повлиявшие на оценку модели AMLAI 1.0. Рамкой отмечено найденное лицо; "
                 + (("под кадром — его номер и момент ролика (мин:с, после запятой — десятые доли секунды)." if tenths
                     else "под кадром — его номер и момент ролика (мин:с).") if timed else "под кадром — его номер."))
         pdf.h3("Ключевые кадры", keep_mm=max(h for _, _, h in rows[0]) + 6)
@@ -1073,12 +1016,12 @@ def _explain_section(pdf: Report, report: dict, explanation, frames: list, chart
             pdf.set_xy(pdf.l_margin, y0 + row_h + 5.5)
         pdf.caption(note, 8)
     if charts.get("modalities"):
-        cap = ("Какая доля оценки своей модели пришлась на каждую модальность (по градиенту оценки: насколько признаки "
-               "модальности сдвигают результат); в каждой строке — 100%. «<1%» — модальность почти не влияет на оценку "
-               "этого ролика: модель, обученная на FIV2, опирается в основном на лицо и голос.")
+        cap = ("Какая доля оценки модели AMLAI 1.0 пришлась на каждую модальность (по градиенту оценки: насколько "
+               "признаки модальности сдвигают результат); в каждой строке — 100%. «<1%» — модальность почти не влияет "
+               "на оценку этого ролика: модель, обученная на First Impressions V2, опирается в основном на лицо и голос.")
         pdf.chart_block(charts["modalities"], cap)
     rw_all = (explanation or {}).get("readable_words") or {}
-    lang = (report.get("model") or {}).get("lang", "en")
+    lang = (report.get("model") or {}).get("lang", "ru")
     if rw_all:
         try:
             from .narrative import words_summary
@@ -1095,9 +1038,12 @@ def _explain_section(pdf: Report, report: dict, explanation, frames: list, chart
     # lists without Russian words (translation failed) are not printed: the raw English tokens stay in the JSON
 
 
+HOW_TO_READ = ("C1", "C2", "C10", "C11", "C14", "C15")       # «Как читать результаты» (design 11)
+
+
 def _how_to_read(pdf: Report) -> None:
-    """«Как читать результаты»: the caveats C1, C2, C10, C11, C14, C15 (design 11)."""
-    texts = [caveats.text(c) for c in ("C1", "C2", "C10", "C11", "C14", "C15")]
+    """«Как читать результаты»: the caveats HOW_TO_READ, word for word from caveats.py."""
+    texts = [caveats.text(c) for c in HOW_TO_READ]
     # 7.5 pt like the caveats of the MBTI section: six caveats instead of the three of 2.0
     pdf.section("Как читать результаты", "how_to_read", keep_mm=sum(pdf.para_height(t, 7.5) for t in texts))
     for t in texts:
@@ -1130,23 +1076,16 @@ def _file_rows(report: dict, media: dict | None) -> list:
 
 
 def _analysis_rows(report: dict) -> list:
+    """Appendix А, «Параметры анализа»: the one model of the report (3.1), speech recognition, training data, the
+    modalities of the analysis (a model the job also carried but the view does not show is left out), version,
+    segments, time. The speech is always Russian, so no language row."""
     m = report.get("model", {})
-    members = [x for x in report.get("modalities_used", []) if x in SYSTEM_TITLES]
-    if m.get("backend") == "ensemble" and members:
-        system = "ансамбль: " + " + ".join(SYSTEM_TITLES[x] for x in members)
-        if m.get("primary"):
-            system += f"; основная оценка — {SYSTEM_TITLES.get(m['primary'], m['primary'])}"
-            if m.get("scale"):
-                sc = str(m["scale"])
-                sc = "MuPTA для русской речи" if sc.startswith("MuPTA") else (
-                    "First Impressions V2" if sc.startswith("FIV2") else sc)
-                system += f", шкала {sc}"
-    else:
-        system = f"{SYSTEM_TITLES.get(m.get('backend'), m.get('backend'))} ({m.get('corpus')})"
-    rows = [("Система", system), ("Язык речи", LANG_RU.get(m.get("lang"), m.get("lang"))),
+    main = _main_model(report)
+    mods = [x for x in report.get("modalities_used", []) if x not in MODEL_TITLES or x == main]
+    rows = [("Модель", model_title(report)),
             ("Распознавание речи", _asr_ru(m.get("asr_model")) if m.get("asr_model") else "готовый транскрипт"),
-            ("Обучающие данные", _trained_on(m, members)),
-            ("Модальности", ", ".join(MODALITY_TITLES.get(x, x) for x in report.get("modalities_used", []))),
+            ("Обучающие данные", TRAINED_ON.get(main) or str(m.get("trained_on") or "—")),
+            ("Модальности", ", ".join(MODALITY_TITLES.get(x, x) for x in mods) or "—"),
             ("Версия", _version_ru(m.get("version")))]
     if report.get("segments"):
         n_seg = int(report["segments"])
@@ -1249,12 +1188,12 @@ def _segments_table(pdf: Report, report: dict, mb: dict | None = None) -> None:
     legend = ", ".join(f"{_one_line(SEG_HEAD[k])} — {TITLES[k].lower() if k != 'interview' else 'впечатление «собеседование»'}"
                        for k in keys) + ". "
     if mbti_col:
-        legend += ("MBTI — тип отрезка по основной системе, X — ось на границе (подробнее — в разделе "
-                   f"{pdf.plan['mbti']}). " if "mbti" in pdf.plan else
-                   "MBTI — тип отрезка по основной системе, X — ось на границе. ")
+        legend += ("MBTI — тип отрезка, X — ось на границе (подробнее — в разделе "
+                   f"{pdf.plan['mbti']}). " if "mbti" in pdf.plan else "MBTI — тип отрезка, X — ось на границе. ")
     if any_no_primary:
         legend += ("«—» в столбцах Big Five" + (" и MBTI" if mbti_col else "")
-                   + " — система OCEAN-AI не дала оценки отрезка, он не вошёл в основные оценки. ")
+                   + f" — модель {MODEL_TITLES.get(_main_model(report), 'OCEAN-AI')} не дала оценки отрезка, он не "
+                   "вошёл в основные оценки. ")
     legend += ("Возб. — возбуждение, Увер. — уверенность, Позит. — позитивность. "
                "Эмоция — преобладающая в отрезке и её доля. Темп — слов в минуту речи; «—» — речи в отрезке меньше 3 с. "
                "Паузы — доля времени отрезка, занятая паузами от 0.5 с.")
@@ -1434,6 +1373,7 @@ def _render(report: dict, explanation, media, frames: list, charts: dict, fname:
     _timeline_section(pdf, report, charts, has_expl)
     _emotions_section(pdf, report, charts)
     _voice_speech_section(pdf, report, charts)
+    _no_explain_note(pdf, report)
     _explain_section(pdf, report, explanation, frames, charts, media)
     _how_to_read(pdf)
     _appendices(pdf, report, media, has_expl, mb)

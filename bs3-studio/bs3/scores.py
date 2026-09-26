@@ -215,29 +215,7 @@ def clean_view(rep: dict) -> dict:
     return view
 
 
-SYSTEM_GEN = {"oceanai": "OCEAN-AI", "mm": "модели AMLAI 1.0"}
-SECOND_SCALE_RU = ("Второе мнение — своя модель, обученная на англоязычных роликах First Impressions V2; у неё своя "
-                   "шкала, поэтому оценки двух систем не усредняются.")
-
-
-def gap_sentence(second: dict, main: dict, second_sys: str = "mm", main_sys: str = "oceanai") -> str:
-    """«На этой записи оценки своей модели в среднем на 0.35 ниже, чем у OCEAN-AI.»: the mean difference of the two
-    systems over the five traits of this recording only (no rule drawn from other videos); '' when a score is missing
-    or the difference prints as 0.00. `second` / `main`: {trait: score} or {trait: {"score": …}}."""
-    def val(d, k):
-        x = (d or {}).get(k)
-        return _num(x.get("score") if isinstance(x, dict) else x)
-    diffs = [(val(second, k), val(main, k)) for k in TRAIT_KEYS]
-    if any(a is None or b is None for a, b in diffs):
-        return ""
-    d = sum(a - b for a, b in diffs) / len(diffs)
-    if round(abs(d), 2) == 0:
-        return ""
-    return (f"На этой записи оценки {SYSTEM_GEN.get(second_sys, second_sys)} в среднем на {abs(d):.2f} "
-            f"{'ниже' if d < 0 else 'выше'}, чем у {SYSTEM_GEN.get(main_sys, main_sys)}.")
-
-
-LEGACY_KEYS = ("narrative",)         # the 2.0 plain-language summary; 3.0 shows «Как получены оценки» instead
+LEGACY_KEYS = ("narrative",)         # the 2.0 plain-language summary; 3.x shows «Как получены оценки» instead
 
 
 def data_json(rep: dict) -> tuple[dict, bool]:

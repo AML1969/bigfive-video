@@ -1,11 +1,11 @@
-"""«Характеристика личности» — the main text of BS Profiler 3.0 (design 8).
+"""«Характеристика личности» — the main text of BS Profiler 3.1 (design 8).
 
 Deterministic templates over the clean numbers (scores.clean_view) and the MBTI section (mbti.get_mbti); every phrase
 comes from config/lexicon_ru.json (the trait texts of 8.5, the short phrases of 8.6 and the paragraph templates of
-8.4), every caveat from caveats.py. No language model. Levels are the bands of the system's own score on 0…1
+8.4), every caveat from caveats.py. No language model. Levels are the bands of the model's own score on 0…1
 (scores.level; the score itself is printed with two decimals in the parentheses of a trait line); nothing is compared
-with a group of processed videos, and the two systems are not compared here (that is the tab «Тип MBTI» and section
-2 of the PDF). The text is not stored in result.json; it is built on every display.
+with a group of processed videos, and «Основа описания» names the one model that ran (OCEAN-AI or AMLAI 1.0, 3.1).
+The text is not stored in result.json; it is built on every display.
 
 Structure: a header (letters of the type, its name, labels) and up to eight paragraphs, each with a bold lead —
 «Коротко», «Основа описания», four traits (O, C, E, A in the order of |v − 0.5|), emotional stability with
@@ -365,7 +365,7 @@ def _p_limits(view) -> str:
     parts = [caveats.text("C14"), caveats.text("C15")]
     dropped = meta.get("segments_without_primary") or []
     if dropped:
-        parts.append(caveats.c13(len(dropped), int(meta.get("segments_total") or len(dropped))))
+        parts.append(caveats.c13(len(dropped), int(meta.get("segments_total") or len(dropped)), meta.get("main_system")))
     if int(meta.get("segments_total") or 0) <= 1:
         parts.append(caveats.text("C19"))
     if meta.get("primary_missing"):

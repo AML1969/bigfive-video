@@ -140,7 +140,7 @@ def key_facts(rep: dict) -> List[tuple]:
         facts.append(("Темп речи", value, f"паузы — {sp.get('pause_share', 0):.0%} времени, "
                                           f"заполнители — {fillers} на 100 слов"))
     if rep.get("interview"):
-        facts.append(("Впечатление «собеседование»", f"{rep['interview']['score']:.2f}", "шкала 0…1, своя модель (FIV2)"))
+        facts.append(("Впечатление «собеседование»", f"{rep['interview']['score']:.2f}", "шкала 0…1, модель AMLAI 1.0"))
     dur = rep.get("duration_sec")
     if dur:
         n = int(rep.get("segments") or 1)

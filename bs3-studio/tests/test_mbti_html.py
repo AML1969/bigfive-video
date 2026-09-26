@@ -1,8 +1,8 @@
-"""The tab «Тип MBTI» (design 10.3, 5.5–5.7; task T18) on the numeric copies of samples A and B: one panel (the model
-that ran; 3.1: no second panel, no agreement line, no signs), neuroticism, the letter strip with gaps and its summary
-line, C19 (never C18), the reading guide with the caveats, the short emotion paragraph; no «сегмент» and nothing
-about a group of processed videos anywhere (change of 2026-09-26: letters on the absolute scale, the tracks show the
-score itself)."""
+"""The tab «Тип MBTI» (design 10.3, 5.5–5.7; task T18) on the numeric copies of samples A and B: one panel titled by
+the model that ran («OCEAN-AI, веса MuPTA» / «AMLAI 1.0»; 3.1: no second panel, no roles, no agreement line, no
+signs), neuroticism, the letter strip with gaps and its summary line, C19, the reading guide with the caveats (C7 of
+one model), the short emotion paragraph; no «сегмент», no «второе мнение» and nothing about a group of processed
+videos anywhere (change of 2026-09-26: letters on the absolute scale, the tracks show the score itself)."""
 from __future__ import annotations
 
 import copy
@@ -39,7 +39,7 @@ def _own(name: str) -> dict:
 
 def test_types_b():
     h = mbti_html.types_html(_mb(rep("B")))
-    for s in ("OCEAN-AI (веса MuPTA)",
+    for s in ("OCEAN-AI, веса MuPTA</div>",
               "«Наставник»", "С учётом границ: ENFJ (пограничных осей нет)",
               "Нейротизм — средний уровень. В MBTI этой шкалы нет, поэтому он приводится отдельно.",
               "I · интроверсия", "экстраверсия · E", "соответствие шкал r ≈ 0.74",
@@ -49,9 +49,10 @@ def test_types_b():
         assert s in h, s
     # the marker of extraversion at the score 0.73 on the track 0…1
     assert "left:calc(73.0% - 7px)" in h
-    # one panel: no second opinion, no agreement line, no signs
+    # one panel: no second opinion, no roles, no agreement line, no signs
     assert h.count("С учётом границ:") == 1 and "ISXX" not in h and "ISTP" not in h
-    for bad in ("второе мнение", "расходится", "совпадает", "Уверенных совпадений", "хотя бы у одной из систем"):
+    for bad in ("второе мнение", "основная оценка", "расходится", "совпадает", "Уверенных совпадений",
+                "хотя бы у одной из систем", "Своя модель"):
         assert bad not in h, bad
     assert "minmax(min(320px,100%),1fr)" in h                        # the panel keeps its width rule on a phone
     assert "сегмент" not in h
@@ -71,6 +72,7 @@ def test_types_own_model():
     """A job of AMLAI 1.0: one panel of the own model; C20 only when OCEAN-AI was recorded and gave nothing."""
     h = mbti_html.types_html(_mb(_own("A")))
     assert "С учётом границ: IXXX · тип не выражен: 3 оси из 4 на границе" in h and h.count("С учётом границ:") == 1
+    assert ">AMLAI 1.0</div>" in h and "MuPTA" not in h and "Своя модель" not in h
     # the own model's agreeableness 0.47531: printed 0.48 as on the bars, not 0.47 through a stored 0.475
     assert "X (ближе к T) · на границе · доброжелательность 0.48 — средний уровень" in h
     assert caveats.text("C20") not in h and "XNFJ" not in h
@@ -94,16 +96,17 @@ def test_strip_b():
     for ax in ("E–I", "S–N", "T–F", "J–P"):
         assert _cells(s, ax) == 26, ax
     assert s.count("нет оценки OCEAN-AI") == 7 * 4
-    assert "Основная система: ENFJ во всех 26 отрезках с оценкой; все четыре оси совпадают с итогом во всех отрезках." in s
-    assert caveats.text("C8") in s and caveats.text("C18") not in s
+    assert "OCEAN-AI: ENFJ во всех 26 отрезках с оценкой; все четыре оси совпадают с итогом во всех отрезках." in s
+    assert ">OCEAN-AI, веса MuPTA</div>" in s                         # the lane title: the model, no role
+    assert caveats.text("C8") in s
     assert "overflow-x:auto" in s and s.count("grid-template-columns:56px repeat(33,26px)") == 1
-    assert "сегмент" not in s and "второе мнение" not in s
+    assert "сегмент" not in s and "второе мнение" not in s and "Основная система" not in s and "основная оценка" not in s
 
 
 def test_strip_a_short_and_new_jobs():
     s = mbti_html.strip_html(_mb(rep("A")))
     # the strict letters never change, but no segment has a confident ENFJ: the line says so
-    assert ("Основная система: строгий тип ENFJ во всех 17 отрезках с оценкой; строгие буквы всех четырёх осей "
+    assert ("OCEAN-AI: строгий тип ENFJ во всех 17 отрезках с оценкой; строгие буквы всех четырёх осей "
             "совпадают с итогом во всех отрезках; ось E–I на границе во всех 17 отрезках, S–N — в 7, T–F — в 6, "
             "J–P — в 6.") in s
     assert "ENFJ во всех 17 отрезках с оценкой; все четыре оси" not in s
@@ -124,21 +127,22 @@ def test_strip_a_short_and_new_jobs():
     for t in r["timeline"]:
         t["primary_used"] = "mm"
     s = mbti_html.strip_html(_mb(r))
-    assert "Основная система: строгий тип ISTP во всех 33 отрезках с оценкой" in s and s.count("grid-template-columns:56px") == 1
-    assert _cells(s, "E–I") == 33 and caveats.text("C18") not in s
+    assert "AMLAI 1.0: строгий тип ISTP во всех 33 отрезках с оценкой" in s and s.count("grid-template-columns:56px") == 1
+    assert ">AMLAI 1.0</div>" in s and s.count("нет оценки AMLAI 1.0") == 0
+    assert _cells(s, "E–I") == 33
 
 
 def test_read():
     h = mbti_html.read_html(_mb(rep("B")))
-    for code in ("C3", "C4", "C5", "C9", "C16"):
+    assert mbti_html.READ_CAVEATS == ("C3", "C4", "C5", "C6", "C7", "C9", "C16")
+    for code in mbti_html.READ_CAVEATS:
         assert caveats.text(code) in h, code
-    assert caveats.c6("ru") in h and caveats.c7("ru") in h
     for s in ("высокое, r ≈ 0.74", "высокое, r ≈ 0.72", "среднее, r ≈ 0.44", "среднее, r ≈ 0.49", "в MBTI не выражается",
               "McCrae, Costa, 1989"):
         assert s in h, s
-    # an older English job is read as one model too: the Russian caveats (3.1 has no English path on the page)
-    assert caveats.c6("ru") in mbti_html.read_html(_mb(english("B")))
-    for w in RELATIVE:
+    # the same guide for any job (an older English job is read as one model too), and without a section at all
+    assert mbti_html.read_html(_mb(english("B"))) == h == mbti_html.read_html()
+    for w in RELATIVE + ("двух систем", "Основной считается", "второе мнение", "своя модель", "английск"):
         assert w not in h, w
 
 

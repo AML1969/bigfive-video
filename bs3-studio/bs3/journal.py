@@ -114,10 +114,10 @@ def visit(request) -> None:
     _write("ВХОД", request)
 
 
-def start(request, video, member: str, explain: bool) -> None:
-    """`member`: the model chosen for the analysis ("oceanai" | "mm"), written by its title."""
-    _write("СТАРТ", request, f"{_file(video)}, модель {MEMBERS.get(member, member)}, объяснения "
-                             f"{'да' if explain else 'нет'}")
+def start(request, video, member: str) -> None:
+    """`member`: the model chosen for the analysis ("oceanai" | "mm"), written by its title. Explanations follow the
+    model (AMLAI 1.0 only, 3.1), so the entry does not mention them."""
+    _write("СТАРТ", request, f"{_file(video)}, модель {MEMBERS.get(member, member)}")
 
 
 def result(request, rep: dict, wall_sec: float) -> None:
