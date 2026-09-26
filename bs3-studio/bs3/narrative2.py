@@ -156,8 +156,10 @@ def key_facts(rep: dict) -> List[tuple]:
     vo = an.get("voice")
     if vo and vo.get("mean"):
         m = vo["mean"]
-        # the value of the card is the arousal, so the colour is the arousal's (the two other dimensions are the note)
-        facts.append(("Голос, шкала 0…1", f"возбуждение {m.get('arousal', 0):.2f}",
+        # the value of the card is the arousal, so the colour is the arousal's (the two other dimensions are the note).
+        # The word «возбуждение» belongs to the label, not to the value: as part of the value it was a 11-letter word
+        # in a 150 px card and the browser broke it in the middle («возбужден / ие 0.36»)
+        facts.append(("Голос: возбуждение, шкала 0…1", f"{m.get('arousal', 0):.2f}",
                       f"уверенность {m.get('dominance', 0):.2f} · позитивность {m.get('valence', 0):.2f}",
                       scale_state(m.get("arousal", 0))))
     sp = an.get("speech")

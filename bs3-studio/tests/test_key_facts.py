@@ -70,15 +70,15 @@ def test_key_facts_states_of_every_card():
     cards = _by_label(_rep(emotion="sadness", face="joy", arousal=0.70, wpm=90.0, interview=0.30))
     assert card_item(cards["Эмоция по тексту речи"])[3] == BELOW
     assert card_item(cards["Выражение лица"])[3] == ABOVE
-    assert card_item(cards["Голос, шкала 0…1"])[3] == ABOVE
+    assert card_item(cards["Голос: возбуждение, шкала 0…1"])[3] == ABOVE
     assert card_item(cards["Темп речи"])[3] == BELOW
     assert card_item(cards["Впечатление «собеседование»"])[3] == BELOW
     cards = _by_label(_rep(emotion="neutral", face="neutral", arousal=0.50, wpm=130.0, interview=0.50))
-    for lab in ("Эмоция по тексту речи", "Выражение лица", "Голос, шкала 0…1", "Темп речи",
+    for lab in ("Эмоция по тексту речи", "Выражение лица", "Голос: возбуждение, шкала 0…1", "Темп речи",
                 "Впечатление «собеседование»"):
         assert cards[lab][3] == NEUTRAL, lab
     cards = _by_label(_rep(emotion="joy", face="anger", arousal=0.65, wpm=161.0, interview=0.65))
-    for lab in ("Эмоция по тексту речи", "Выражение лица", "Голос, шкала 0…1", "Темп речи",
+    for lab in ("Эмоция по тексту речи", "Выражение лица", "Голос: возбуждение, шкала 0…1", "Темп речи",
                 "Впечатление «собеседование»"):
         assert cards[lab][3] == ABOVE, lab
 
@@ -129,16 +129,16 @@ def test_the_state_is_said_in_a_word_as_well_as_in_colour():
     repeats its state in the label line, in the words of the legend."""
     assert narrative2.FACT_STATE_RU == {NEUTRAL: "около нейтрального", BELOW: "ниже", ABOVE: "выше"}
     for state, word in narrative2.FACT_STATE_RU.items():
-        assert narrative2.fact_label("Голос, шкала 0…1", state) == f"Голос, шкала 0…1 · {word}"
+        assert narrative2.fact_label("Голос: возбуждение, шкала 0…1", state) == f"Голос: возбуждение, шкала 0…1 · {word}"
         assert word in narrative2.FACTS_LEGEND, word
     assert narrative2.fact_label("Тип MBTI · AMLAI 1.0", None) == "Тип MBTI · AMLAI 1.0"
     # the page prints the word of every state it shows, and the PDF prints the same label
     html = webapp._facts_html(_rep(emotion="joy", arousal=0.20, wpm=130.0))
     for word in narrative2.FACT_STATE_RU.values():
         assert f" · {word}</div>" in html, word
-    drawn = [t for t, _ in _draw_cards([("Голос, шкала 0…1", "возбуждение 0.20", "", BELOW)], cols=1,
+    drawn = [t for t, _ in _draw_cards([("Голос: возбуждение, шкала 0…1", "возбуждение 0.20", "", BELOW)], cols=1,
                                        value_first=True)]
-    assert drawn == ["возбуждение 0.20", "Голос, шкала 0…1 · ниже"]
+    assert drawn == ["возбуждение 0.20", "Голос: возбуждение, шкала 0…1 · ниже"]
 
 
 def test_facts_block_carries_the_colours_and_the_line_under_the_grid():
