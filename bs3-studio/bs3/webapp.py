@@ -695,6 +695,9 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
             for comp, value in zip(outputs, filled):
                 comp.value = value
             pdf_btn.interactive = True
+            # the radio shows the model the previewed job was processed with (an imported 2.0 job: OCEAN-AI)
+            from .scores import recorded_model
+            model.value = recorded_model(rep) or DEFAULT_MODEL
     return demo
 
 

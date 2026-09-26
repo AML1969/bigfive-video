@@ -241,7 +241,7 @@ def _share_cell(share: float, top: bool) -> str:
     return (f"<div style='font-weight:{700 if top else 400}'>{_pct(share)}</div>"
             f"<div style='width:56px;height:6px;margin:3px auto 0;border-radius:3px;"
             f"box-shadow:inset 0 0 0 1px {PAL['track_outline']}'><div style='width:{w:.1f}%;height:6px;border-radius:3px;"
-            f"background:{PAL['second_fill']};opacity:.55'></div></div>")
+            f"background:{PAL['share_fill']};opacity:.55'></div></div>")
 
 
 def _contrib_html(expl: dict | None) -> str:

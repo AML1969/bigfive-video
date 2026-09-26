@@ -1,4 +1,4 @@
-"""Single source of colours for BS Profiler 3.0 (web charts, HTML infographics, PDF charts).
+"""Single source of colours for BS Profiler 3.1 (web charts, HTML infographics, PDF charts).
 
 The page uses the Gradio Default theme with zinc neutrals and orange buttons, the same look as BS 1.0. Its backgrounds:
 dark #27272a block / #0f0f11 page, light #ffffff block and page (the Gradio theme text is #f4f4f5 / #27272a).
@@ -67,10 +67,10 @@ EMO_WEB = {
 }
 EMO_ALIAS = {"happy": "joy", "sad": "sadness", "angry": "anger"}     # face-expression labels -> text-emotion keys
 
-# radar and score bars: the main score is blue, the second opinion is a neutral grey (another model, another scale)
+# radar: the score of the one model that ran is blue (3.1: no second opinion, so no second colour)
 RADAR_WEB = {
-    "dark": dict(main="#60a5fa", main_fill="rgba(96,165,250,0.22)", second="#d4d4d8"),
-    "light": dict(main="#1d4ed8", main_fill="rgba(29,78,216,0.16)", second="#52525b"),
+    "dark": dict(main="#60a5fa", main_fill="rgba(96,165,250,0.22)"),
+    "light": dict(main="#1d4ed8", main_fill="rgba(29,78,216,0.16)"),
 }
 SPEECH_WEB = {
     "dark": dict(bars="#808080", pauses="#f4f4f5"),
@@ -82,7 +82,7 @@ BARS_WEB = {"dark": dict(speech="#60a5fa", face="#fb923c"), "light": dict(speech
 HTML = dict(
     main_fill="#3b82f6",                 # score bars: 4.05 on #27272a, 3.68 on white
     interview_fill="#b7791f",            # 4.09 / 3.64
-    second_fill="currentColor",          # second opinion: theme text colour at opacity .55 (5.2 dark / 3.5 light)
+    share_fill="currentColor",           # modality share bars: theme text colour at opacity .55 (5.2 dark / 3.5 light)
     # outlines, frames and rules: the neutral grey of BS 1.0, 3.8 on #27272a, 4.8 on #0f0f11, 3.9 on white
     track="transparent", track_outline="#808080",
     card_border="#808080", table_rule="#808080",
@@ -108,10 +108,8 @@ SCORE_BAR_PDF = dict(track=242, outline=130, fill=(29, 78, 216), interview=(138,
 # score bars in the PDF: the chart colour of each trait; extraversion one step darker (#d97706 gives 2.9:1 on the
 # #f2f2f2 track, #b45309 gives 4.5:1), every other fill already has >= 4:1
 TRAIT_BAR_PDF = {**TRAIT_PDF, "extraversion": "#b45309"}
-# radar and the second-opinion bars of the PDF, as on the web: the main score blue, the second opinion slate (another
-# model, another scale); the slate is also the colour of the second-opinion text under each bar (7.58:1)
-RADAR_PDF = dict(main="#1d4ed8", second="#475569")
-SECOND_BAR_PDF = "#475569"
+# radar of the PDF, as on the web: the score of the one model blue
+RADAR_PDF = dict(main="#1d4ed8")
 # average emotion profile: speech blue, face orange with white hatching (a second cue besides colour), as on the web
 BARS_PDF = dict(speech="#1d4ed8", face="#c2410c")
 # modality contributions: white percentages inside the segments (>= 4.5:1); face orange and speech blue mean the same
