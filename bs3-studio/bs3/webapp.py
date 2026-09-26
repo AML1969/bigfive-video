@@ -228,7 +228,7 @@ def _frames_html(rep: dict, expl: dict | None = None, max_side: int = 640) -> st
     tl_all = rep.get("timeline") or []
     seg = next((t for t in tl_all if t.get("segment") == rep.get("representative_segment")), None) if tl_all else None
     entries = frame_captions.build(rep, shown, expl)
-    tenths = frame_captions.has_tenths(rep, shown)
+    tenths = frame_captions.has_tenths(rep, shown, None, expl)
     figs = []
     for b64, e in zip(images, entries):
         tip = e["tooltip"] or "Щёлкните, чтобы увеличить"
@@ -243,14 +243,18 @@ def _frames_html(rep: dict, expl: dict | None = None, max_side: int = 640) -> st
             + f"<span class='bs3-kf-more'>{more} · щелчок закрывает</span></figcaption></figure>")
     timed = frame_captions.any_moment(entries)
     where = f" (отрезок {seg_label(seg['start'], seg['end'])})" if seg else ""
+    # a job made before the captions has neither a phrase nor the expressions: the note promises only what the
+    # page really shows, otherwise it sends the reader hunting for a description that is not there
+    described, has_expr, has_eff = frame_captions.note_flags(entries)
+    what = (("момент ролика (минуты:секунды" + (", после запятой — десятые доли секунды" if tenths else "") + ")")
+            if timed else "его номер") + (" и коротко то, что на нём видно" if described else "")
+    hover = [x for x, ok in (("выражение лица", has_expr), ("то, как кадр сдвинул оценку", has_eff)) if ok]
     return (FRAMES_CSS + "<div class='bs3-kf' style='display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));"
             f"gap:12px'>{''.join(figs)}</div>"
             f"<p style='{NOTE};margin-top:10px'>Кадры, сильнее всего повлиявшие на оценку модели AMLAI 1.0{where}. "
-            + ("Рамкой на кадре отмечено найденное лицо, под кадром — момент ролика (минуты:секунды"
-               + (", после запятой — десятые доли секунды" if tenths else "") + ") и коротко то, что на нём видно. "
-               if timed else
-               "Рамкой на кадре отмечено найденное лицо, под кадром — его номер и коротко то, что на нём видно. ")
-            + "Наведите мышь на кадр — покажутся выражение лица и то, как кадр сдвинул оценку. "
+            + f"Рамкой на кадре отмечено найденное лицо, под кадром — {what}. "
+            + (f"Наведите мышь на кадр — {'покажутся' if len(hover) > 1 else 'покажется'} {' и '.join(hover)}. "
+               if hover else "")
             + "Щелчок по кадру увеличивает его, повторный щелчок закрывает.</p>")
 
 

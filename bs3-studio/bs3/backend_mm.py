@@ -303,17 +303,19 @@ class MMBackend:
         `expression_fn` — the facial-expression model of the report (analyses.face_expr.FaceExpression.on_crops),
         called on the face crops of the key frames so their captions can name the expression; `captions=False`
         skips both the expressions and the one-phrase-per-frame requests to the vision model."""
-        from .mm.explain import frame_attribution, key_frame_info, modality_attribution, save_key_frames, token_attribution
+        from .mm.explain import (clip_fps, frame_attribution, key_frame_info, modality_attribution, save_key_frames,
+                                 token_attribution)
         self.load()
         video = Path(video).resolve()
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         t0 = time.time()
-        feats, face_seq, crops = {}, None, []
+        feats, face_seq, crops, kept = {}, None, [], None
         with tempfile.TemporaryDirectory(prefix="bs_mmx_") as tmp:
             tmpdir = Path(tmp)
             if self.face is not None:
-                crops, _ = get_face_crops(str(video), n_frames=self.cfg.n_frames)
+                crops, face_st = get_face_crops(str(video), n_frames=self.cfg.n_frames)
+                kept = face_st.get("frames_kept")           # crops[i] is frame kept[i] of the clip
                 face_seq = self.face.sequence(crops)                       # [T, 512]
                 feats["face"] = mean_std(face_seq)
             for m, enc in self.audio_encoders.items():
@@ -330,6 +332,9 @@ class MMBackend:
                 feats["behavior"] = self.text(behavior)
         dev = self.cfg.device
         res = {"input": str(video), "transcript": transcript or "", "behavior_description": behavior or ""}
+        fps = clip_fps(str(video))              # the captions turn a frame number of THIS clip into a moment
+        if fps:
+            res["clip_fps"] = fps
         if transcript_en and transcript_en != transcript:
             res["transcript_en"] = transcript_en
         res["modalities"] = modality_attribution(self.model, feats, dev)
@@ -338,7 +343,7 @@ class MMBackend:
             fa = frame_attribution(self.model, face_seq, feats, dev, top_k=top_k)
             raw: dict[str, str] = {}
             fa["key_frame_files"] = save_key_frames(str(video), fa["top_frames_overall"], self.cfg.n_frames, out_dir,
-                                                    raw_jpegs=raw if captions else None)
+                                                    raw_jpegs=raw if captions else None, kept_frames=kept)
             fa["key_frame_info"] = key_frame_info(fa["key_frame_files"], crops, raw,
                                                   expression_fn=expression_fn if captions else None,
                                                   phrase_fn=self.describe_frame if captions else None)

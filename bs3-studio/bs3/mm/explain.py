@@ -128,10 +128,29 @@ def token_attribution(model, text_encoder, text: str, modality: str, other_feats
     return {"per_output": res, "n_tokens": valid}
 
 
+def clip_fps(video_path: str) -> Optional[float]:
+    """Frames per second of the clip the explanation ran on, or None.
+
+    A key frame is named by its number inside this clip, and the caption turns that number into a moment of the
+    video: on a source with a variable frame rate the average rate of the whole file is not that rate, and the
+    printed second comes out wrong by one."""
+    import cv2
+    cap = cv2.VideoCapture(video_path)
+    v = float(cap.get(cv2.CAP_PROP_FPS) or 0)
+    cap.release()
+    return round(v, 3) if v > 0 else None
+
+
 def save_key_frames(video_path: str, frame_ids: List[int], n_frames: int, out_dir: Path, prefix: str = "key",
-                    raw_jpegs: Optional[Dict[str, str]] = None, raw_max_side: int = 640) -> List[str]:
-    """Re-decode the clip, take the uniformly sampled frames used for features, and write the requested ones
+                    raw_jpegs: Optional[Dict[str, str]] = None, raw_max_side: int = 640,
+                    kept_frames: Optional[Sequence[int]] = None) -> List[str]:
+    """Re-decode the clip, take the frames the face features were built from, and write the requested ones
     (with the detected face box) as JPEG. Returns the written paths.
+
+    `frame_ids` are positions in the sequence of face crops, and `kept_frames` (faces.get_face_crops stats
+    `frames_kept`) says which frame of the clip every crop came from. Without it the positions are read as
+    positions in the uniform sampling, which is the same thing only when no leading frame was dropped for want of
+    a face — a clip that opens on an empty chair would otherwise show one frame and describe another.
 
     `raw_jpegs`, when given, is filled with {file name: base64 JPEG of the same frame WITHOUT the drawn box,
     downscaled to `raw_max_side`}: the caption asks a vision model what is visible on the frame, and a yellow
@@ -141,7 +160,10 @@ def save_key_frames(video_path: str, frame_ids: List[int], n_frames: int, out_di
     from .faces import detect_faces, select_uniform_frames
     cap = cv2.VideoCapture(video_path)
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    sampled = select_uniform_frames(total, n_frames)
+    uniform = select_uniform_frames(total, n_frames)
+    sampled = list(kept_frames) if kept_frames else uniform
+    if len(sampled) != len(uniform):        # the silent case made visible: the clip opens without a face
+        log.info("key frames: %d crops for %d sampled frames", len(sampled), len(uniform))
     wanted = {sampled[i]: i for i in frame_ids if i < len(sampled)}
     out_dir.mkdir(parents=True, exist_ok=True)
     paths, t = [], 0

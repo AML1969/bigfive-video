@@ -261,6 +261,9 @@ def test_old_explanation_without_signs_and_phrases_still_renders():
         html = webapp._frames_html(r, expl)
         assert "сильнее всего повлиял на оценку экстраверсии" in html
         assert "улыб" not in html and "радость" not in html
+        # the note promises only what such a job really has: no short description, no expression on hover
+        assert "коротко то, что на нём видно" not in html and "выражение лица" not in html
+        assert "Наведите мышь на кадр — покажется то, как кадр сдвинул оценку." in html
         view = scores.clean_view(r)
         mb = mbti.get_mbti(r, view)
         out = Path(d) / "report.pdf"
@@ -305,6 +308,95 @@ def test_pdf_caption_in_a_narrow_cell_keeps_the_moment_and_the_direction():
     txt = _pdf_text(_caption_expl(), (120, 200))            # five portrait frames in a row: 34.8 mm per caption
     if txt is None:
         return
-    assert "· улыбается…" in txt                            # cut by words, never overflowing the frame
+    assert "· улыбается, смотрит в…" in txt                 # cut by words at 6 pt, never overflowing the frame
     assert "повысил экстраверсию" in txt                    # the shorter second line, not a cut «радость 62% · …»
     assert "радость 62% · повысил" not in txt
+
+
+def test_phrase_must_be_three_to_six_words():
+    """The prompt asks for three to six words; a one-word answer is not a description of the frame."""
+    assert fc.clean_phrase("улыбается") is None
+    assert fc.clean_phrase("кивает") is None
+    assert fc.clean_phrase("голова прямо") is None
+    assert fc.clean_phrase("смотрит в камеру") == "смотрит в камеру"
+    assert fc.clean_phrase("голова прямо взгляд вниз руки вниз плечи") is None
+
+
+def test_phrase_is_written_with_yo():
+    """The report spells «на нём видно» with ё; a caption right under it must not print «вперед»."""
+    assert fc.clean_phrase("смотрит вперед, голова прямо") == "смотрит вперёд, голова прямо"
+    assert fc.clean_phrase("плечи развернуты, легкая улыбка") == "плечи развёрнуты, лёгкая улыбка"
+    assert fc.clean_phrase("голова наклонена, взгляд опущен") == "голова наклонена, взгляд опущен"
+
+
+def test_tooltip_never_names_a_class_with_no_percent():
+    """«грусть 0%» reads as a mistake: a second class under half a percent is not named at all."""
+    assert fc.expr_text([("нейтрально", 0.996), ("грусть", 0.0021)]) == "нейтрально 100%"
+    assert fc.expr_text([("нейтрально", 0.9915), ("грусть", 0.0061)]) == "нейтрально 99%, грусть 1%"
+    assert fc.expr_text([("радость", 0.6234), ("нейтрально", 0.2071)]) == "радость 62%, нейтрально 21%"
+
+
+def test_moment_uses_the_frame_rate_of_the_clip():
+    """The frame number counts frames of the segment clip, so the clip’s own rate turns it into a second; a job
+    made before the rate was stored keeps the average rate of the whole video it was rendered with."""
+    r = {"representative_segment": 1, "media": {"fps": 29.63},
+         "timeline": [{"segment": 1, "start": 60.0, "end": 80.0}]}
+    fs = ["/jobs/x/explain/key_26_frame538.jpg"]
+    old, _ = fc.moments(r, fs)
+    new, _ = fc.moments(r, fs, None, {"clip_fps": 30.0})
+    assert fc.moment_text(old[0], False) == "1:18"
+    assert fc.moment_text(new[0], False) == "1:17"
+
+
+def test_narrow_pdf_caption_keeps_the_direction_of_a_long_trait_name():
+    """«повысил эмоциональную стабильность» is 51 mm and never fits a 34.8 mm cell: the sign, which the
+    owner asked for, must survive as «повысил эм. стаб.» rather than be dropped in favour of the expression."""
+    expl = _expl(signed={18: {"emotional_stability": 0.9}}, phrases={18: "улыбается, смотрит в камеру"},
+                 expressions={18: HAPPY})
+    e = fc.build(REPORT, _paths(), expl)[2]
+    assert e["effect_short"] == "повысил эмоциональную стабильность" and e["effect_mini"] == "повысил эм. стаб."
+    assert fc.pdf_second_line(e).index("повысил эм. стаб.") < fc.pdf_second_line(e).index("радость 62%")
+    txt = _pdf_text(expl, (120, 200))
+    if txt is None:
+        return
+    assert "повысил эм. стаб." in txt
+
+
+def test_key_frames_follow_the_frames_that_produced_a_crop():
+    """A clip that opens without a face: those leading frames are dropped from the crops, so the position of a
+    crop is not the position of the uniform sampling and the saved picture must follow the crops."""
+    try:
+        import cv2
+        import numpy as np
+    except Exception:                                       # noqa: BLE001
+        return
+    from bs3.mm import explain, faces
+    with tempfile.TemporaryDirectory() as d:
+        vid = Path(d) / "clip.avi"
+        w = cv2.VideoWriter(str(vid), cv2.VideoWriter_fourcc(*"MJPG"), 10.0, (64, 64))
+        if not w.isOpened():
+            return
+        for t in range(20):
+            w.write(np.full((64, 64, 3), (t * 10, 0, 0), dtype=np.uint8))   # BGR: the blue channel is the number
+        w.release()
+        sampled = faces.select_uniform_frames(20, 10)
+        orig, seen = faces.detect_faces, {"n": 0}
+
+        def no_face_at_first(_im):
+            seen["n"] += 1
+            return [] if seen["n"] <= 3 else [(16, 16, 48, 48, 1024)]
+
+        faces.detect_faces = no_face_at_first
+        try:
+            crops, st = faces.get_face_crops(str(vid), n_frames=10)
+        finally:
+            faces.detect_faces = orig
+        assert st["fallback_frames"] == 3 and len(crops) == len(sampled) - 3
+        assert st["frames_kept"] == sampled[3:]             # crops[i] is frame frames_kept[i] of the clip
+        faces.detect_faces = lambda _im: []
+        try:
+            paths = explain.save_key_frames(str(vid), [0, 1], 10, Path(d) / "out", kept_frames=st["frames_kept"])
+        finally:
+            faces.detect_faces = orig
+        assert [Path(p).name for p in paths] == [f"key_00_frame{sampled[3]}.jpg", f"key_01_frame{sampled[4]}.jpg"]
+        assert round(int(cv2.imread(paths[0])[0, 0, 0]) / 10) == sampled[3]

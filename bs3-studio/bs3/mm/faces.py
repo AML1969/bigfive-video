@@ -55,11 +55,16 @@ def detect_faces(frame_rgb: np.ndarray) -> List[Tuple[int, int, int, int, int]]:
 def get_face_crops(video_path: str, n_frames: int = 30, relative_threshold: float = 0.3,
                    reuse_last: bool = True, fallback_fullframe: bool = True,
                    average_multi_face: bool = True) -> Tuple[List[np.ndarray], dict]:
-    """Returns (list of RGB crops, stats). stats: frames_total, frames_used, frames_with_face, fallback_frames."""
+    """Returns (list of RGB crops, stats). stats: frames_total, frames_used, frames_with_face, fallback_frames,
+    crops, boxes and `frames_kept` — the number in the clip of the frame every crop came from, in the order of the
+    crops. Leading frames with no face are dropped from the list, so the position of a crop is not the position of
+    the sampled frame; anything that shows a crop (the key frames of an explanation) must go through `frames_kept`
+    to name the right frame."""
     cap = cv2.VideoCapture(video_path)
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     need = set(select_uniform_frames(total, n_frames))
     crops: List[np.ndarray] = []
+    kept: List[int] = []                       # the number in the clip of the frame every crop came from
     boxes: List[tuple] = []
     last_valid = None
     fallback_count = 0
@@ -87,6 +92,7 @@ def get_face_crops(video_path: str, n_frames: int = 30, relative_threshold: floa
                     else:
                         crop = max(cs, key=lambda c: c.shape[0] * c.shape[1])
                     crops.append(crop)
+                    kept.append(t)
                     last_valid = crop
                     with_face += 1
                     done = True
@@ -96,13 +102,16 @@ def get_face_crops(video_path: str, n_frames: int = 30, relative_threshold: floa
             if not done:
                 if reuse_last and last_valid is not None:
                     crops.append(last_valid)
+                    kept.append(t)
                 elif fallback_fullframe:
                     crops.append(im_rgb)
+                    kept.append(t)
                     fallback_count += 1
         t += 1
     cap.release()
     if fallback_count and last_valid is not None:
         crops = crops[fallback_count:]
+        kept = kept[fallback_count:]           # crops and kept are cut the same way: crops[i] is frame kept[i]
     stats = {"frames_total": total, "frames_used": len(need), "frames_with_face": with_face,
-             "fallback_frames": fallback_count, "crops": len(crops), "boxes": boxes}
+             "fallback_frames": fallback_count, "crops": len(crops), "boxes": boxes, "frames_kept": kept}
     return crops, stats

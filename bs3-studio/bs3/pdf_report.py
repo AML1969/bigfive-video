@@ -952,6 +952,8 @@ def _frame_rows(pdf: Report, frames: list):
 
 # caption under a key frame: 0.8 mm of air, two lines of 7 pt (3 mm each) and 1.7 mm before the next row
 FRAME_CAP_SIZE = 7
+FRAME_CAP_SIZE_NARROW = 6          # five frames in a row (34.9 mm): 7 pt leaves one word of the phrase
+FRAME_CAP_NARROW = 40.0            # mm, below which the caption drops to FRAME_CAP_SIZE_NARROW
 FRAME_CAP_LINE = 3.0
 FRAME_CAP_H = 8.5
 
@@ -973,19 +975,30 @@ def _clip_words(pdf: Report, text: str, width: float, size: float) -> str:
     return ""
 
 
+def _frame_second(pdf: Report, entry: dict | None, width: float) -> str:
+    """The second line this cell really gets: the first candidate of frame_captions.pdf_second_line that fits its
+    width, or "" when none of them does. The note under the frames is written from what this returns, so it never
+    announces an expression the narrow cell had to drop."""
+    if not entry:
+        return ""
+    pdf.set_font("ui", "", FRAME_CAP_SIZE if width >= FRAME_CAP_NARROW else FRAME_CAP_SIZE_NARROW)
+    return next((c for c in frame_captions.pdf_second_line(entry) if pdf.get_string_width(c) <= width), "")
+
+
 def _frame_caption(pdf: Report, entry: dict | None, x: float, y: float, width: float) -> None:
     """Two centred lines under one key frame: «2:14 · улыбается, смотрит в камеру» and «радость 62% · повысил
-    экстраверсию». The cell is narrow (34.9 mm with five frames in a row), so the second line falls back to its
-    shorter forms («повысил экстраверсию», «радость 62%») and is dropped when none of them fits; the first line,
-    which carries the moment, is cut by whole words with «…» instead."""
+    экстраверсию». The second line falls back to its shorter forms («повысил экстраверсию», «повысил эм. стаб.»,
+    «радость 62%») and is dropped when none of them fits; the first line, which carries the moment, is cut by
+    whole words with «…» instead. Five frames in a row leave only 34.9 mm, where 7 pt keeps one word of the
+    phrase: such a cell gets 6 pt, which buys about a sixth more characters on both lines."""
     if not entry:
         return
-    pdf.set_font("ui", "", FRAME_CAP_SIZE)
-    first = _clip_words(pdf, entry.get("caption") or "", width, FRAME_CAP_SIZE) or (entry.get("label") or "")
+    size = FRAME_CAP_SIZE if width >= FRAME_CAP_NARROW else FRAME_CAP_SIZE_NARROW
+    pdf.set_font("ui", "", size)
+    first = _clip_words(pdf, entry.get("caption") or "", width, size) or (entry.get("label") or "")
     pdf.set_xy(x, y)
     pdf.cell(width, FRAME_CAP_LINE, first, align="C")
-    pdf.set_font("ui", "", FRAME_CAP_SIZE)
-    second = next((c for c in frame_captions.pdf_second_line(entry) if pdf.get_string_width(c) <= width), "")
+    second = _frame_second(pdf, entry, width)
     if second:
         pdf.set_xy(x, y + FRAME_CAP_LINE)
         pdf.cell(width, FRAME_CAP_LINE, second, align="C")
@@ -1019,15 +1032,26 @@ def _explain_section(pdf: Report, report: dict, explanation, frames: list, chart
         # otherwise the whole video; file names carry the frame index inside that clip (key_<i>_frame<N>.jpg).
         # The captions are the ones of the page (frame_captions): the moment and, in a few words, what is visible;
         # the second line names the expression and what the frame did to the score. The cell is narrow (34.9 mm
-        # with five frames in a row), so both lines are clipped by whole words and the second one is dropped
-        # rather than allowed to overflow.
+        # with five frames in a row), so there the caption is set in 6 pt, the first line is clipped by whole
+        # words and the second falls back to shorter forms — the last of them, «повысил эм. стаб.», still carries
+        # the direction — and is dropped only when even that does not fit.
         entries = {e["path"]: e for e in frame_captions.build(report, frames, explanation, media)}
         timed = frame_captions.any_moment(entries.values())
-        tenths = frame_captions.has_tenths(report, frames, media)
+        tenths = frame_captions.has_tenths(report, frames, media, explanation)
+        # a job made before the captions has neither a phrase nor the expressions: the note promises only the
+        # parts that are actually printed, and it names the second line, which the PDF cannot show on hover
+        described, _, _ = frame_captions.note_flags(entries.values())
+        what = ((("момент ролика (мин:с, после запятой — десятые доли секунды)" if tenths
+                  else "момент ролика (мин:с)") if timed else "его номер")
+                + (" и коротко то, что на нём видно" if described else ""))
+        # what the second line ended up carrying in this layout, not what the captions could have offered
+        chosen = [(e, _frame_second(pdf, e, cell_w)) for e in entries.values()]
+        has_expr = any(s and e["expr_line"] and s.startswith(e["expr_line"]) for e, s in chosen)
+        has_eff = any(s and s != e["expr_line"] for e, s in chosen)
+        second = [x for x, ok in (("выражение лица", has_expr), ("то, как кадр сдвинул оценку", has_eff)) if ok]
         note = ("Кадры, сильнее всего повлиявшие на оценку модели AMLAI 1.0. Рамкой отмечено найденное лицо; "
-                + (("под кадром — момент ролика (мин:с, после запятой — десятые доли секунды) и коротко то, что на "
-                    "нём видно." if tenths else "под кадром — момент ролика (мин:с) и коротко то, что на нём видно.")
-                   if timed else "под кадром — его номер и коротко то, что на нём видно."))
+                f"под кадром — {what}"
+                + (f"; во второй строке — {' и '.join(second)}." if second else "."))
         pdf.h3("Ключевые кадры", keep_mm=max(h for _, _, h in rows[0]) + FRAME_CAP_H)
         per_row = len(rows[0])
         for row in rows:
