@@ -34,7 +34,7 @@ import copy
 import math
 import statistics
 
-from . import DEFAULT_MODEL, MODEL_TITLES
+from . import MODEL_TITLES
 from .norms import RU_NAMES, TRAIT_KEYS
 
 # the band edges, in one place: distance of the score from the middle of the scale 0.5
@@ -47,6 +47,11 @@ LEVELS_RU = {"high": "высокий уровень", "above": "выше сре�
 RELATIVE_KEYS = ("percentile", "percentile_ref", "percentile_vs_fiv2", "position")
 SOURCE_OF = {"oceanai": "ocean_ai", "mm": "own_model"}
 FALLBACK_ORDER = ("oceanai", "mm")
+# how a report that names no model at all is read (an old CLI report, a report of a backend the page does not offer).
+# It is deliberately NOT bs3.DEFAULT_MODEL: the default model is what a new analysis starts with, while this is how an
+# old file is attributed, and a report made before 3.1 came from OCEAN-AI. Reading such a file as AMLAI 1.0 would put
+# «AMLAI 1.0» and its modalities (face, audio, text, behavior) on a page that never ran it.
+READ_FALLBACK = "oceanai"
 
 # Where a measured value of «Ключевые факты» sits, in the three words the card colour says (palette.FACT_VALUE):
 # around neutral, below it, above it. The 0…1 scales are read with the bands above, so the page never calls a score
@@ -61,7 +66,7 @@ EMO_STATE = {"neutral": NEUTRAL, "sadness": BELOW, "fear": BELOW, "disgust": BEL
 
 __all__ = ["clean_view", "segment_ok", "level", "level_phrase", "score_text", "shown", "LEVELS_RU", "plural_ru",
            "main_system", "recorded_model", "data_json", "scale_state", "tempo_state", "emotion_state",
-           "FACT_STATES", "TEMPO_BAND", "NEUTRAL", "BELOW", "ABOVE"]
+           "FACT_STATES", "TEMPO_BAND", "NEUTRAL", "BELOW", "ABOVE", "READ_FALLBACK"]
 
 
 def plural_ru(n, one: str, few: str, many: str) -> str:
@@ -97,8 +102,8 @@ def recorded_model(rep: dict) -> str | None:
 def main_system(rep: dict) -> tuple[str, bool]:
     """(the model the view shows, primary_missing): the recorded model (`recorded_model`) when it produced scores, or
     when the job has no per-member scores at all (a single-model report keeps its traits); otherwise the first of
-    oceanai, mm that did, with primary_missing = True. A job that names no model is read as OCEAN-AI (3.1 shows one
-    model; there is no mean of two systems any more)."""
+    oceanai, mm that did, with primary_missing = True. A job that names no model is read as OCEAN-AI (READ_FALLBACK:
+    3.1 shows one model; there is no mean of two systems any more)."""
     recorded = recorded_model(rep)
     var = rep.get("variant_scores") or {}
     if recorded and (_has_scores(var.get(recorded)) or not any(_has_scores(v) for v in var.values())):
@@ -106,7 +111,7 @@ def main_system(rep: dict) -> tuple[str, bool]:
     for s in FALLBACK_ORDER:
         if _has_scores(var.get(s)):
             return s, recorded is not None
-    return recorded or DEFAULT_MODEL, recorded is not None
+    return recorded or READ_FALLBACK, recorded is not None
 
 
 def segment_ok(rep: dict, t: dict) -> bool:

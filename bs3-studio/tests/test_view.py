@@ -133,6 +133,19 @@ def test_clean_view_one_model():
     assert all(t["scores"] is not None for t in v["timeline"])
 
 
+def test_a_report_that_names_no_model_is_read_as_ocean_ai():
+    """The reading fallback does not follow the default model of a new analysis (bs3.DEFAULT_MODEL is AMLAI 1.0
+    since 3.1): a file that names no model was made before that, and labelling it «AMLAI 1.0» would also give it
+    the modalities of a model that never ran."""
+    import bs3
+    assert scores.READ_FALLBACK == "oceanai" != bs3.DEFAULT_MODEL
+    assert scores.main_system({}) == ("oceanai", False)
+    assert scores.main_system({"model": {"backend": "ensemble"}}) == ("oceanai", False)
+    from bs3.narrative import build_narrative
+    r = {"model": {"lang": "ru"}, "traits": {k: {"score": 0.4} for k in TRAIT_KEYS}}
+    assert "OCEAN-AI" in build_narrative(r) and "AMLAI" not in build_narrative(r)
+
+
 def test_recorded_model():
     assert scores.recorded_model(rep("A")) == "oceanai"
     assert scores.recorded_model({"model": {"selected": "mm", "primary": "oceanai"}}) == "mm"

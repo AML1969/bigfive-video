@@ -22,7 +22,7 @@ from .charts import (EMO_RU, VOICE_RU, fig_emotion_bars, fig_emotions_timeline, 
                      fig_speech_timeline, fig_traits_timeline, fig_voice_timeline, plot_html as _plot_html)
 from .mbti import fact_card, get_mbti
 from .narrative import NO_EXPLAIN_RU, method_notes
-from .narrative2 import FACTS_LEGEND, card_item, fix_counts, key_facts, plural_ru
+from .narrative2 import FACTS_LEGEND, card_item, fact_label, fix_counts, key_facts, plural_ru
 from .norms import TRAIT_KEYS
 from .palette import (ACCENT, BUTTON_PRIMARY, BUTTON_PRIMARY_HOVER, BUTTON_STOP, BUTTON_STOP_HOVER, CARD_TINT,
                       FACT_VALUE, HTML as PAL, PAGE_NOTE_OPACITY, SUBDUED_TEXT_LIGHT)
@@ -42,7 +42,12 @@ DATA_TRIMMED = ("В result.json ниже не показаны поля преж
 CARDS = "display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px"
 CARD = (f"padding:10px 14px;border:1px solid {PAL['card_border']};background:rgba(128,128,128,{CARD_TINT});"
         "border-radius:8px;min-width:0")
-CARD_VALUE = "font-size:20px;font-weight:600;line-height:1.25;font-variant-numeric:tabular-nums"
+# A value is one line of 20 px text in a card 150 px wide at its narrowest, and a single long word («возбуждение
+# 0.30») is wider than that: without overflow-wrap it paints over the card border and into the next card. Chrome's
+# `hyphens: auto` was tried instead and dropped — it depends on hyphenation patterns the browser may not have, so the
+# same card would break differently on two machines.
+CARD_VALUE = ("font-size:20px;font-weight:600;line-height:1.25;font-variant-numeric:tabular-nums;"
+              "overflow-wrap:anywhere")
 # «Ключевые факты»: one class per state, so the value takes the colour of the theme the page is showing (the block
 # HTML is built once for both themes, Gradio puts `dark` on an ancestor of the container). The rules travel with the
 # block, so the same HTML also reads right outside the app (scripts/rerender_samples.py --html-dir).
@@ -53,14 +58,15 @@ FACTS_CSS = "<style>" + "".join(f".bs3-fact-{s}{{color:{FACT_VALUE['light'][s]}}
 
 def _cards(items, min_px: int = 180, value_first: bool = False) -> str:
     """(label, value, note[, state]) -> a grid of cards; note may be empty. `value_first`: the card reads value,
-    then label, then note, and a value with a state is painted by it (FACTS_CSS) — «Ключевые факты» of 3.1."""
+    then label, then note; a value with a state is painted by it (FACTS_CSS) and its label line ends with the word
+    of that state (narrative2.fact_label), so the card also reads without colour — «Ключевые факты» of 3.1."""
     html = ""
     for item in items:
         lab, val, note, state = card_item(item)
         cls = f" class='bs3-fact-{state}'" if value_first and state else ""
         value = (f"<div{cls} style='{CARD_VALUE};margin:"
                  + ("0 0 2px" if value_first else "3px 0") + f"'>{val if val not in (None, '') else '—'}</div>")
-        label = f"<div style='{NOTE}'>{lab}</div>"
+        label = f"<div style='{NOTE}'>{fact_label(lab, state) if value_first else lab}</div>"
         rest = f"<div style='{NOTE}'>{note}</div>" if note else ""
         html += f"<div style='{CARD}'>" + (value + label if value_first else label + value) + rest + "</div>"
     grid = CARDS.replace("minmax(180px", f"minmax({int(min_px)}px")
@@ -69,8 +75,9 @@ def _cards(items, min_px: int = 180, value_first: bool = False) -> str:
 
 def _facts_html(view: dict, mb: dict | None = None) -> str:
     """«Ключевые факты» in the left column (design 10.2): the MBTI type card first, then the cards of 2.0 from the clean
-    view; 150 px minimum, two cards in a row in the 320 px column. 3.1: every card reads value, label, explanation, and
-    the value of a measured card is coloured by where it sits; one line under the grid says what the colours mean."""
+    view; 150 px minimum, two cards in a row in the 320 px column. 3.1: every card reads value, label, explanation; the
+    value of a measured card is coloured by where it sits and its label says the same in a word; one line under the
+    grid says what the colour and the word mean."""
     card = fact_card(mb)
     items = ([card] if card else []) + key_facts(view)
     grid = _cards(items, min_px=150, value_first=True)

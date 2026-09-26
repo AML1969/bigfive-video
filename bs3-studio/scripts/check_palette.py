@@ -128,8 +128,9 @@ for k in P.EMO_PDF:
         cell = P.emo_heat_pdf(k, step)
         check(f"heatmap number on {k} step {step}", P.emo_heat_text_pdf(cell), (cell,), 4.5)
 
-# «Ключевые факты» in the PDF: the value is text on the card fill, and the three states must still be told apart on a
-# black-and-white printer, so every pair of them keeps a greyscale contrast of palette.FACT_GREY_MIN
+# «Ключевые факты» in the PDF: the value is text on the card fill. The three states are not told apart by colour on a
+# black-and-white printer — the word in the label line does that (narrative2.fact_label); the greyscale pairs below
+# are only held at the floor they reach today (palette.FACT_GREY_MIN), so a new colour cannot flatten them further
 pdf_card = "#%02x%02x%02x" % ((P.CARD_PDF["fill"],) * 3)
 for k, c in P.FACT_VALUE_PDF.items():
     check(f"FACT_VALUE_PDF.{k}", c, (pdf_card, P.PDF_BACKGROUND), 4.5)

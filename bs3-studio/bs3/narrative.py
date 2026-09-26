@@ -6,9 +6,10 @@ from typing import Dict, List
 
 import numpy as np
 
-from . import DEFAULT_MODEL, MODEL_TITLES
+from . import MODEL_TITLES
 from .norms import RU_TITLES, TRAIT_KEYS
 from .report import seg_label
+from .scores import READ_FALLBACK
 
 MOD_RU = {"face": "лицо", "audio": "голос", "audio_whisper": "голос", "audio_xlsr": "голос", "audio_w2v_emo": "голос",
           "text": "содержание речи", "behavior": "описание поведения"}
@@ -100,8 +101,8 @@ def build_narrative(rep: dict, expl: dict | None = None) -> str:
     parts: List[str] = []
 
     # 1. what the scores come from (one model per analysis; a report without a recorded model is read as OCEAN-AI,
-    # as scores.main_system reads it)
-    selected = model.get("selected") or primary or DEFAULT_MODEL
+    # as scores.main_system reads it — scores.READ_FALLBACK, not the default model of a new analysis)
+    selected = model.get("selected") or primary or READ_FALLBACK
     parts.append(SOURCE_RU.get(selected) or f"Оценки дала система {SYSTEM_RU.get(selected, selected)}.")
 
     # 2. traits that stand out

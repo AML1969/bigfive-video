@@ -217,10 +217,13 @@ def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path |
     i_val = facts.find(f">{card[1]}</div>", i_card) if card else -1
     i_lab = facts.find(f">{title}</div>", i_card) if title else -1
     c.ok(0 <= i_card < i_val < i_lab, f"first key fact is «{title}», value «{card and card[1]}» on the first line")
-    # a measured value is coloured by where it sits, and one line says what the colours mean
+    # a measured value is coloured by where it sits, its label says the same in a word, and one line explains both
     c.ok(facts.count("class='bs3-fact-") >= 2 and ".dark .bs3-fact-above" in facts,
          "key facts: coloured values with a rule for each theme")
-    c.ok(narrative2.FACTS_LEGEND in facts, "key facts: the line about the colours")
+    n_words = sum(facts.count(f" · {w}</div>") for w in narrative2.FACT_STATE_RU.values())
+    c.ok(n_words == facts.count("class='bs3-fact-"),
+         f"key facts: every coloured value says its state in a word too ({n_words})")
+    c.ok(narrative2.FACTS_LEGEND in facts, "key facts: the line about the colour and the word")
     # one model (3.1): the view, the section, the tab «Тип MBTI» (one panel, one strip, no agreement line, no roles)
     c.ok(set(view.get("variant_scores") or {}) == {meta["main_system"]},
          f"the view holds one model: {meta['main_system']}")

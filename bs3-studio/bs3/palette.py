@@ -101,14 +101,20 @@ CARD_TINT = 0.06
 # The light and PDF green is green-900 and not the green-700 #15803d of the charts: #15803d (luminance 0.159) and the
 # orange #c2410c (0.153) are one and the same grey on a black-and-white printer, and the report is printed. Making the
 # orange darker instead was tried and dropped: an orange dark enough to part from the green stops reading as orange,
-# while a dark green still reads as green. The three lightnesses are now 0.065 / 0.107 / 0.153, so every pair keeps
-# FACT_GREY_MIN in greyscale; scripts/check_palette.py checks both the contrast and that distance.
+# while a dark green still reads as green.
+# Greyscale is NOT carried by these colours. Their luminances are 0.065 / 0.107 / 0.153, and three inks that all keep
+# 4.5:1 on a light card cannot spread far enough to be told apart in a black-and-white print — the uncoloured cards
+# are printed black, so the three states would have to fit between black and the lightest ink that still contrasts.
+# What carries the state on paper, and for a colour-blind reader, is the word in the label line of the card
+# (narrative2.fact_label). FACT_GREY_MIN below is only a floor against the colours drifting into one grey.
 FACT_VALUE = {
     "dark": {"neutral": "#4ade80", "below": "#60a5fa", "above": "#fb923c"},
     "light": {"neutral": "#14532d", "below": "#1d4ed8", "above": "#c2410c"},
 }
 FACT_VALUE_PDF = {"neutral": "#14532d", "below": "#1d4ed8", "above": "#c2410c"}
-FACT_GREY_MIN = 1.25          # smallest greyscale contrast the three PDF fact colours keep between one another
+# the observed floor of the three colours above (blue vs orange), not a legibility threshold: it holds them apart in
+# greyscale as far as they go, and check_palette.py fails if a future colour makes any pair flatter than they are now
+FACT_GREY_MIN = 1.25
 
 # ---------------------------------------------------------------- PDF (white paper)
 TRAIT_PDF = {"openness": "#1d4ed8", "conscientiousness": "#0f766e", "extraversion": "#d97706",

@@ -22,7 +22,7 @@ from fpdf import FPDF
 
 from . import MODALITIES, MODEL_TITLES, PRODUCT, caveats, frame_captions
 from .narrative import NO_EXPLAIN_RU
-from .narrative2 import FACTS_LEGEND, analyses_parts, card_item, fix_counts, key_facts, plural_ru
+from .narrative2 import FACTS_LEGEND, analyses_parts, card_item, fact_label, fix_counts, key_facts, plural_ru
 from .norms import RU_SHORT, TRAIT_KEYS
 from .palette import CARD_PDF, FACT_VALUE_PDF, SCORE_BAR_PDF, TRAIT_BAR_PDF
 from .report import _SEC_LABEL, fmt_secs, seg_label
@@ -335,13 +335,15 @@ class Report(FPDF):
                    for _, v in rows)
 
     # ---------------------------------------------------------------- cards (key facts, speech in numbers)
-    def _card_layout(self, items, cols: int, gap: float):
+    def _card_layout(self, items, cols: int, gap: float, value_first: bool = False):
         w = (self.epw - gap * (cols - 1)) / cols
         pad, inner = 1.8, (self.epw - gap * (cols - 1)) / cols - 3.6
         heights = []
-        for lab, val, note, _state in (card_item(x) for x in items):
+        for lab, val, note, state in (card_item(x) for x in items):
             self.set_font("ui", "", 7.5)
-            n_lab = len(self.multi_cell(inner, 3.4, str(lab), dry_run=True, output="LINES"))
+            # the label carries the state word in the same cases as in cards(), or the card would be measured short
+            n_lab = len(self.multi_cell(inner, 3.4, fact_label(lab, state) if value_first else str(lab),
+                                        dry_run=True, output="LINES"))
             self.set_font("ui", "B", 11)
             n_val = len(self.multi_cell(inner, 5.0, str(val if val not in (None, "") else "—"), dry_run=True, output="LINES"))
             n_note = 0
@@ -353,21 +355,22 @@ class Report(FPDF):
         row_h = [max(heights[i] for i in r) for r in rows]
         return w, pad, inner, rows, row_h
 
-    def cards_height(self, items, cols: int = 3, gap: float = 4.0) -> float:
+    def cards_height(self, items, cols: int = 3, gap: float = 4.0, value_first: bool = False) -> float:
         if not items:
             return 0.0
-        _, _, _, _, row_h = self._card_layout(items, cols, gap)
+        _, _, _, _, row_h = self._card_layout(items, cols, gap, value_first)
         return sum(row_h) + gap * 0.75 * (len(row_h) - 1) + 1.5
 
     def cards(self, items, cols: int = 3, gap: float = 4.0, value_first: bool = False):
         """(label, value, note[, state]) -> a grid of outlined cards, as on the web page: label and note small and
-        grey, the value large and bold. `value_first`: the card reads value, then label, then note, and a value with
-        a state is printed in the colour of that state (palette.FACT_VALUE_PDF) — «Ключевые факты» of 3.1.
-        The grid is never split between pages."""
+        grey, the value large and bold. `value_first`: the card reads value, then label, then note; a value with a
+        state is printed in the colour of that state (palette.FACT_VALUE_PDF) and its label ends with the word of
+        that state (narrative2.fact_label), so the card also reads on a black-and-white printer — «Ключевые факты»
+        of 3.1. The grid is never split between pages."""
         if not items:
             return
-        w, pad, inner, rows, row_h = self._card_layout(items, cols, gap)
-        if self.get_y() + self.cards_height(items, cols, gap) > self.page_break_trigger:
+        w, pad, inner, rows, row_h = self._card_layout(items, cols, gap, value_first)
+        if self.get_y() + self.cards_height(items, cols, gap, value_first) > self.page_break_trigger:
             self.add_page()
         y = self.get_y()
         for r, rh in zip(rows, row_h):
@@ -395,7 +398,7 @@ class Report(FPDF):
                 # the same two gaps either way (0.6 + 0.3), so cards_height does not depend on the order
                 if value_first:
                     big(lead=0)
-                    small(lab, lead=0.6)
+                    small(fact_label(lab, state), lead=0.6)
                 else:
                     small(lab, lead=0)
                     big()
@@ -1488,7 +1491,8 @@ def _render(report: dict, explanation, media, frames: list, charts: dict, fname:
     if facts:
         cols = FACT_COLS.get(len(facts), 3)
         legend = any(card_item(f)[3] for f in facts)
-        pdf.h3("Ключевые факты", keep_mm=pdf.cards_height(facts, cols) + (4 if legend else 0))
+        # the legend runs to two lines at this width, so the heading keeps the grid and both of them together
+        pdf.h3("Ключевые факты", keep_mm=pdf.cards_height(facts, cols, value_first=True) + (8 if legend else 0))
         pdf.cards(facts, cols, value_first=True)
         if legend:
             pdf.caption(FACTS_LEGEND)

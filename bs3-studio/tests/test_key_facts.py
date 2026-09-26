@@ -1,7 +1,8 @@
 """«Ключевые факты» of BS Profiler 3.1: the card reads value, label, explanation, and the value of a measured card is
 coloured by where it sits — green around neutral, blue below, dark orange above (change request «Ключевые факты» of
 2026-09-26). Here: the three states of every card type at the edges of their bands, the cards that are never coloured
-(«Тип MBTI», «Длительность ролика»), the row order on the page and in the PDF, and the line under the grid."""
+(«Тип MBTI», «Длительность ролика»), the row order on the page and in the PDF, the state word that repeats the colour
+in the label line (so the card reads in a black-and-white print), and the line under the grid."""
 from __future__ import annotations
 
 import re
@@ -111,14 +112,33 @@ def _divs(card_html: str) -> list:
 
 def test_page_card_reads_value_label_explanation():
     html = webapp._cards([("Темп речи", "90 слов в минуту", "паузы — 21% времени", BELOW)], value_first=True)
-    assert _divs(html) == ["90 слов в минуту", "Темп речи", "паузы — 21% времени"]
+    assert _divs(html) == ["90 слов в минуту", "Темп речи · ниже", "паузы — 21% времени"]
     assert "class='bs3-fact-below'" in html
-    # a card without a note is two rows
+    # a card without a note is two rows, and an uncoloured card gets no word
     two = webapp._cards([("Длительность ролика", "11:00", "", None)], value_first=True)
     assert _divs(two) == ["11:00", "Длительность ролика"] and "bs3-fact-" not in two
     # the other card grids of the page keep label, value, note
     plain = webapp._cards([("Слов всего", "300", "без повторов")])
     assert _divs(plain) == ["Слов всего", "300", "без повторов"] and "bs3-fact-" not in plain
+    # a value longer than the card («возбуждение 0.30» in a 150 px card) wraps instead of painting over the border
+    assert "overflow-wrap:anywhere" in webapp.CARD_VALUE
+
+
+def test_the_state_is_said_in_a_word_as_well_as_in_colour():
+    """The colour alone does not survive a black-and-white print or a colour-blind reader, so every coloured card
+    repeats its state in the label line, in the words of the legend."""
+    assert narrative2.FACT_STATE_RU == {NEUTRAL: "около нейтрального", BELOW: "ниже", ABOVE: "выше"}
+    for state, word in narrative2.FACT_STATE_RU.items():
+        assert narrative2.fact_label("Голос, шкала 0…1", state) == f"Голос, шкала 0…1 · {word}"
+        assert word in narrative2.FACTS_LEGEND, word
+    assert narrative2.fact_label("Тип MBTI · AMLAI 1.0", None) == "Тип MBTI · AMLAI 1.0"
+    # the page prints the word of every state it shows, and the PDF prints the same label
+    html = webapp._facts_html(_rep(emotion="joy", arousal=0.20, wpm=130.0))
+    for word in narrative2.FACT_STATE_RU.values():
+        assert f" · {word}</div>" in html, word
+    drawn = [t for t, _ in _draw_cards([("Голос, шкала 0…1", "возбуждение 0.20", "", BELOW)], cols=1,
+                                       value_first=True)]
+    assert drawn == ["возбуждение 0.20", "Голос, шкала 0…1 · ниже"]
 
 
 def test_facts_block_carries_the_colours_and_the_line_under_the_grid():
@@ -169,7 +189,7 @@ def _draw_cards(items, **kw):
 def test_pdf_card_prints_the_value_first_and_in_colour():
     from bs3 import pdf_report
     drawn = _draw_cards([("Темп речи", "200 слов в минуту", "паузы — 21% времени", ABOVE)], cols=1, value_first=True)
-    assert [t for t, _ in drawn] == ["200 слов в минуту", "Темп речи", "паузы — 21% времени"]
+    assert [t for t, _ in drawn] == ["200 слов в минуту", "Темп речи · выше", "паузы — 21% времени"]
     orange = tuple(int(palette.FACT_VALUE_PDF[ABOVE].lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
     assert drawn[0][1] == orange and drawn[1][1] == drawn[2][1] == (pdf_report.NOTE_GREY,) * 3
     # a card with no state keeps black ink, and «Речь в цифрах» keeps label, value, note
@@ -179,11 +199,15 @@ def test_pdf_card_prints_the_value_first_and_in_colour():
     assert [t for t, _ in speech] == ["Слов всего", "300", "без повторов"] and speech[1][1] == (0, 0, 0)
 
 
-def test_pdf_card_height_does_not_depend_on_the_order():
+def test_pdf_card_height_counts_the_state_word_and_not_the_order():
     from bs3 import pdf_report
     pdf = pdf_report.Report(file_label="t", total_pages=1)
     pdf.add_page()
     items = [("Темп речи", "200 слов в минуту", "паузы — 21% времени", ABOVE),
              ("Длительность ролика", "11:00", "разбит на 33 отрезка", None)]
+    # the page-break reservation measures the label the card really prints, state word and all
+    expanded = [(narrative2.fact_label(lab, st), val, note) for lab, val, note, st in items]
+    assert abs(pdf.cards_height(items, 2, value_first=True) - pdf.cards_height(expanded, 2)) < 1e-9
+    # with the same labels either way, the two gaps of the card are the same in both orders
     plain = [(a, b, c) for a, b, c, _ in items]
-    assert abs(pdf.cards_height(items, 2) - pdf.cards_height(plain, 2)) < 1e-9
+    assert abs(pdf.cards_height(plain, 2, value_first=True) - pdf.cards_height(plain, 2)) < 1e-9

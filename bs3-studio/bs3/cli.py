@@ -6,8 +6,8 @@
   bs3 infer-dir DIR --out results.csv         score every media file in a folder
   bs3 eval-fiv2 --dir DIR --out eval.json     mACC/CCC on FIV2 clips (DIR has <stem>.mp4, <stem>.txt, labels.csv)
 
-Backends: --backend mm (default, own model AMLAI 1.0, with explanations) | oceanai (all weights public) |
-sslmepr (benchmark) | ensemble.
+Backends: --backend mm (default, own model AMLAI 1.0; `bs3 explain` is the command that writes its explanations,
+`bs3 infer` does not) | oceanai (all weights public) | sslmepr (benchmark) | ensemble.
 The speech language defaults to Russian (--lang ru); the page has no language control at all.
 """
 from __future__ import annotations

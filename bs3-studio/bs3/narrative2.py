@@ -110,8 +110,22 @@ def analyses_sentences(rep: dict) -> str:
     return " ".join(p for p in analyses_parts(rep).values() if p)
 
 
-# the one line under the card grid of «Ключевые факты», on the page and in the PDF: what the colour of a value means
-FACTS_LEGEND = "Цвет показателя: зелёный — около нейтрального, синий — ниже, оранжевый — выше."
+# «Ключевые факты»: where the value sits is said twice — by the colour of the value and by this word in the label
+# line under it. The word is not decoration. Three ink colours that all keep 4.5:1 on a light card cannot be told
+# apart in a black-and-white print (the uncoloured cards are black, so the three states would have to fit between
+# black and the lightest ink that still contrasts), and a colour-blind reader loses green against orange; the word
+# carries the meaning in both cases. The words are the ones the legend under the grid uses.
+FACT_STATE_RU = {"neutral": "около нейтрального", "below": "ниже", "above": "выше"}
+# the one line under the card grid, on the page and in the PDF: what the colour and the word mean
+FACTS_LEGEND = ("Цвет показателя и слово в подписи под ним говорят одно и то же: зелёный — около нейтрального, "
+                "синий — ниже, оранжевый — выше.")
+
+
+def fact_label(lab: str, state: str | None) -> str:
+    """The label line of a key-fact card: «Голос, шкала 0…1 · ниже». Without a state («Тип MBTI», «Длительность
+    ролика», the other card grids) the label is printed as it is."""
+    word = FACT_STATE_RU.get(state or "")
+    return f"{lab} · {word}" if word else str(lab)
 
 
 def card_item(item) -> tuple:
