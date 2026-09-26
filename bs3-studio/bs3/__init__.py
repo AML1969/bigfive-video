@@ -7,4 +7,6 @@ PRODUCT_SLUG = "BS_Profiler_3"
 # exactly one of them is loaded and run per analysis
 MODEL_TITLES = {"oceanai": "OCEAN-AI", "mm": "AMLAI 1.0"}
 DEFAULT_MODEL = "oceanai"
+# what each model looks at (result.json `modalities_used`, appendix А «Модальности» of the PDF)
+MODALITIES = {"oceanai": ("audio", "video", "text"), "mm": ("face", "audio", "text", "behavior")}
 LANG = "ru"          # the speech language of every analysis (3.1: Russian only, section 1 of the change request)

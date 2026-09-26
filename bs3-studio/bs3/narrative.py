@@ -113,10 +113,11 @@ def build_narrative(rep: dict, expl: dict | None = None) -> str:
         return f"{_name(k)} ({traits[k]['score']:.2f}" + (f", {p}" if p else "") + ")"
     parts.append(f"Сильнее всего выражены {tr(hi1)} и {tr(hi2)}; слабее всего — {tr(lo)}.")
 
-    # 3. interview impression
+    # 3. interview impression (the FIV2 percentile is worded for English speech only: nothing of a Russian job
+    # talks about FIV2 percentiles, change request 3.1, section 1)
     iv = rep.get("interview")
     if iv:
-        p = _pct_phrase(iv)
+        p = _pct_phrase(iv) if lang == "en" else ""
         parts.append(f"Впечатление «пригласить на собеседование» по модели AMLAI 1.0: {iv['score']:.2f}"
                      + (f", {p}" if p else "") + ".")
 

@@ -56,8 +56,40 @@ def test_clean_view_ru_has_no_percentiles():
     v = scores.clean_view(r)
     for k in TRAIT_KEYS:
         assert set(v["traits"][k]) & set(scores.RELATIVE_KEYS) == set(), k
-    assert v["interview"] == {"score": 0.41}
+    assert "interview" not in v                                               # the label of the other model
     assert r["traits"]["extraversion"]["percentile"] == 62.5                 # the original is not changed
+    r["model"].update({"selected": "mm", "primary": "mm"})                    # a view of AMLAI 1.0 keeps the label
+    v = scores.clean_view(r)
+    assert v["interview"] == {"score": 0.41}
+
+
+def test_clean_view_oceanai_drops_the_interview_label():
+    """The label «собеседование» exists only for AMLAI 1.0: an imported 2.0 / 3.0 job shown as OCEAN-AI loses it
+    whole video and per segment (scores and variants), so no card, bar, chart series or appendix column names the
+    other model; a view of AMLAI 1.0 keeps it everywhere."""
+    r = rep("B")
+    r["interview"] = {"score": 0.4011, "name_ru": "впечатление «пригласить на собеседование»"}
+    for t in r["timeline"]:
+        if isinstance(t.get("scores"), dict):
+            t["scores"]["interview"] = 0.4
+        t["variants"] = {"mm": {**{k: 0.3 for k in TRAIT_KEYS}, "interview": 0.4}}
+        if "oceanai" in t["members_used"]:
+            t["variants"]["oceanai"] = {**{k: t["scores"][k] for k in TRAIT_KEYS}, "interview": 0.4}
+    v = scores.clean_view(r)
+    assert "interview" not in v
+    for t in v["timeline"]:
+        assert not (isinstance(t.get("scores"), dict) and "interview" in t["scores"]), t["segment"]
+        assert all("interview" not in x for x in t["variants"].values()), t["segment"]
+    assert r["interview"]["score"] == 0.4011 and "interview" in r["timeline"][0]["scores"]    # the original is kept
+    own = rep("B")
+    own["model"].update({"selected": "mm", "primary": "mm"})
+    own["interview"] = {"score": 0.4011}
+    for t in own["timeline"]:
+        t["members_used"] = ["mm"]
+        t["scores"] = {**{k: 0.3 for k in TRAIT_KEYS}, "interview": 0.4}
+    v = scores.clean_view(own)
+    assert v["interview"] == {"score": 0.4011}
+    assert all(t["scores"]["interview"] == 0.4 for t in v["timeline"])
 
 
 def test_clean_view_does_not_change_rep():

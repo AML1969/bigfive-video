@@ -34,7 +34,9 @@ from .webparts import NOTE, TRAIT_TITLES, _bar_html, _contrib_html, _words_text,
 
 log = logging.getLogger("bs3.web")
 # the tab «Данные» of a Russian job whose result.json carries 2.0 fields that 3.x does not use (scores.data_json)
-DATA_TRIMMED = "В result.json ниже не показаны устаревшие поля версии 2.0, которые 3.1 не использует; файл не изменён."
+# the tab «Данные» of an older job (2.0 / 3.0): what scores.data_json left out; a job of 3.1 carries none of it
+DATA_TRIMMED = ("В result.json ниже не показаны поля прежних версий, которые 3.1 не использует (процентили, сводка "
+                "версии 2.0); файл не изменён.")
 # metric cards: 1 px outline 3:1 on every background, light tint (palette.CARD_TINT, the background check_palette.py
 # measures the card text and the outline on) so label, value and note read as one card
 CARDS = "display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px"
@@ -356,7 +358,10 @@ def analysis_error_ru(e: BaseException) -> str:
 
 
 STATUS_LABELS = {"running": "Идёт обработка", "done": "Готово", "stopped": "Остановлено", "error": "Ошибка"}
-FOOTER_CAVEATS = ("C1", "C2", "C10", "C3")      # «Как читать результаты» at the foot of the page (design 11)
+# «Как читать результаты» at the foot of the page (design 11). The footer is built once, before any analysis, so it
+# carries only what holds for both models; C2 (the label «собеседование» of AMLAI 1.0) stands under the score bars
+# of a job that shows that label (webparts._bar_html) and in the PDF of such a job only
+FOOTER_CAVEATS = ("C1", "C10", "C3")
 
 
 def _live_desc(state: dict) -> str:
@@ -667,7 +672,7 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
                 raw = gr.Code(label="result.json", language="json", lines=24, elem_classes=["bs3-json"])
                 path = gr.Textbox(label="Сохранено в", interactive=False)
         # the caveats are the most important small print on the page: 13 px (gr.Markdown <small> gave 11 px);
-        # design 11: C1, C2, C10, C3, word for word from caveats.py
+        # design 11: C1, C10, C3, word for word from caveats.py (C2 follows the label it explains, see FOOTER_CAVEATS)
         gr.HTML(f"<div style='font-size:13px;line-height:1.5;margin-top:6px;padding-top:10px;"
                 f"border-top:1px solid {PAL['card_border']}'><b>Как читать результаты.</b> "
                 + "<br>".join(caveats.text(c) for c in FOOTER_CAVEATS) + "</div>")

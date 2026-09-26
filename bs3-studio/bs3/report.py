@@ -82,10 +82,13 @@ def build_report(video: str | Path, result: dict, *, backend: str, corpus: str, 
     extra = {}
     if "interview" in result["scores"]:
         s = result["scores"]["interview"]
-        pct = percentile("interview", s)
-        extra["interview"] = {"score": round(s, 4), "percentile": pct, "percentile_vs_fiv2": pct,
-                              "percentile_ref": FIV2_REF + f", {MODEL_TITLES['mm']}",
+        # the label of the own model: like the traits, Russian speech (pool_lang) gets the score only
+        extra["interview"] = {"score": round(s, 4),
                               "name_ru": "впечатление «пригласить на собеседование»", "disclaimer": INTERVIEW_DISCLAIMER}
+        if not pool_lang:
+            pct = percentile("interview", s)
+            extra["interview"].update({"percentile": pct, "percentile_vs_fiv2": pct,
+                                       "percentile_ref": FIV2_REF + f", {MODEL_TITLES['mm']}"})
     if result.get("behavior_description"):
         extra["behavior_description"] = result["behavior_description"]
     return {

@@ -130,6 +130,7 @@ def test_pdf_builds_and_reads():
             assert s in text, (name, s)
         for code in ("C7", "C8", "C9", "C16", "C11", "C15"):
             assert caveats.text(code)[:60] in text, (name, code)
+        assert caveats.text("C2")[:40] not in text                     # OCEAN-AI: no label «собеседование» to explain
         # OCEAN-AI: no section «Что повлияло …»; the numbered sections stop before «Как читать результаты»
         assert "Что повлияло" not in text
         n_read = int(re.search(r"(\d)\. Как читать результаты", text).group(1))
@@ -140,7 +141,7 @@ def test_pdf_builds_and_reads():
                     "Уверенных совпадений", "хотя бы у одной из систем", "BS Profiler 3.0", "ISXX", "IXXX", "ISTP",
                     "ISTJ", "система OCEAN-AI не дала") + GONE:
             assert bad not in text.replace("не определяет тип личности", ""), (name, bad)
-        appx = text.split("Значения по отрезкам")[-1]
+        appx = text.split("Значения по отрезкам", 1)[-1]
         assert " MBTI " in appx, name
     # sample B: the strip summary (design 13.2) and the MBTI column with the types of the segments
     path, mb = _build(rep("B"))
@@ -150,7 +151,7 @@ def test_pdf_builds_and_reads():
         assert "F, отчётливо (0.74)" in text and "E, умеренно (0.46)" in text
         assert "Число в скобках после буквы — уверенность по оси" in text          # the number is labelled
         assert "Согласие" not in text
-        appx = text.split("Значения по отрезкам")[-1]
+        appx = text.split("Значения по отрезкам", 1)[-1]
         assert "ENFJ" in appx
         assert "«—» в столбцах Big Five и MBTI — модель OCEAN-AI не дала оценки отрезка" in appx
         assert "MBTI — тип отрезка, X — ось на границе" in appx
@@ -214,16 +215,89 @@ def test_pdf_old_english_job():
 
 
 def test_analysis_rows_one_model():
-    """Appendix А: the model of the view, no language row; a member the old job carried but the view does not show
-    is left out of the modalities."""
+    """Appendix А: the model of the view, no language row; «Модальности» names what the model looked at — the
+    recorded modalities of a 3.1 job, or those of the shown model when an older job recorded member names instead."""
     view = scores.clean_view(rep("B"))
-    view["modalities_used"] = ["oceanai", "mm"]
+    view["modalities_used"] = ["oceanai", "mm"]                     # a job of 3.0
     rows = dict(pdf_report._analysis_rows(view))
-    assert rows["Модель"] == "OCEAN-AI, веса MuPTA" and rows["Модальности"] == "OCEAN-AI"
+    assert rows["Модель"] == "OCEAN-AI, веса MuPTA" and rows["Модальности"] == "голос, видео, речь"
     assert rows["Обучающие данные"] == "MuPTA (русская речь)" and "Язык речи" not in rows and "Система" not in rows
-    own = dict(pdf_report._analysis_rows(scores.clean_view(_own("B"))))
-    assert own["Модель"] == "AMLAI 1.0" and own["Модальности"] == "AMLAI 1.0"
+    view["modalities_used"] = ["audio", "video", "text"]           # a job of 3.1
+    assert dict(pdf_report._analysis_rows(view))["Модальности"] == "голос, видео, речь"
+    own = dict(pdf_report._analysis_rows(scores.clean_view(_own("B"))))    # ["mm"] recorded
+    assert own["Модель"] == "AMLAI 1.0" and own["Модальности"] == "лицо, голос, речь, описание поведения"
     assert own["Обучающие данные"] == "First Impressions V2"
+    for r in (rows, own):
+        assert "OCEAN-AI" not in r["Модальности"] and "AMLAI" not in r["Модальности"]
+
+
+def test_interview_label_and_c2_follow_the_model():
+    """An imported 2.0 job shown as OCEAN-AI carries the «собеседование» label of the other model: the PDF drops it
+    everywhere (card, bar, note, appendix column) and does not print C2, which explains it; a job of AMLAI 1.0 keeps
+    the label and gets C2 in «Как читать результаты»."""
+    r = rep("B")
+    r["interview"] = {"score": 0.4011, "name_ru": "впечатление «пригласить на собеседование»"}
+    for t in r["timeline"]:
+        if isinstance(t.get("scores"), dict):
+            t["scores"]["interview"] = 0.4
+    view, mb, ch = _parts(r)
+    assert "interview" not in view
+    pdf = pdf_report.Report()
+    assert pdf._bar_rows(view["traits"], view.get("interview")) == [(k, view["traits"][k]) for k in TRAIT_KEYS]
+    out = Path(tempfile.mkdtemp(prefix="bs3_pdf_test_")) / "oa.pdf"
+    pdf_report.build_pdf(view, out, mbti=mb, character=ch)
+    text = _text(out)
+    if text is not None:
+        assert "собеседовани" not in text.lower() and "Собе-" not in text and "ChaLearn" not in text
+        assert caveats.text("C1")[:40] in text and caveats.text("C10")[:40] in text
+    own = _own("B")
+    own["interview"] = {"score": 0.4011, "name_ru": "впечатление «пригласить на собеседование»"}
+    for t in own["timeline"]:
+        t["scores"]["interview"] = 0.4
+    view, mb, ch = _parts(own)
+    assert view["interview"] == {"score": 0.4011, "name_ru": "впечатление «пригласить на собеседование»"}
+    out = Path(tempfile.mkdtemp(prefix="bs3_pdf_test_")) / "mm.pdf"
+    pdf_report.build_pdf(view, out, mbti=mb, character=ch)
+    text = _text(out)
+    if text is not None:
+        assert "Впечатление «собеседование» 0.40" in text and caveats.text("C2")[:50] in text
+        assert "Коричневая полоска — впечатление «собеседование» (метка модели AMLAI 1.0, шкала 0…1)" in text
+        assert "Big Five и «собеседование», 0…1" in text
+
+
+def test_short_transcript_stays_with_appendix_a():
+    """A one-line transcript never opens a page of its own (review of 3.1): when appendix А ends near the foot of the
+    page, the two tables are set tighter and the transcript at 8 pt so that the short appendix stays on that page;
+    when even that is not enough, the appendices start on the next page together; when everything fits as it is,
+    the normal spacing is kept. Swept over every start position."""
+    r = rep("B")
+    r["timeline"], r["segments"] = r["timeline"][:1], 1
+    r["transcript"] = "Здравствуйте. Сегодня я коротко расскажу о своей работе и о том, что мне в ней нравится."
+    view = scores.clean_view(r)
+    seen = set()
+    for y0 in range(60, 280, 2):
+        pdf = pdf_report.Report()
+        pdf_report._plan(pdf, view, None, [], {}, None)
+        assert set(pdf.appx) == {"file", "transcript"}
+        pdf.add_page()
+        pdf.set_y(y0)
+        lay = pdf_report._appendix_layout(pdf, view, None)
+        pdf_report._appendices(pdf, view, None, False, None)
+        kind = "tight" if lay["tight"] else "new_page" if lay["new_page"] else "normal"
+        seen.add(kind)
+        if kind == "tight":
+            assert pdf.page_no() == 1, (y0, "tightened, so everything stays on the page")
+        if pdf.page_no() == 2:
+            assert pdf.get_y() > 60, (y0, "a second page holds appendix А too, never the transcript alone")
+    assert seen == {"normal", "tight", "new_page"}, seen
+    # a long transcript flows as before (no tightening: _transcript_size handles its tail)
+    r["transcript"] = " ".join(["Это длинный транскрипт из многих предложений."] * 60)
+    view = scores.clean_view(r)
+    pdf = pdf_report.Report()
+    pdf_report._plan(pdf, view, None, [], {}, None)
+    pdf.add_page()
+    pdf.set_y(200)
+    assert pdf_report._appendix_layout(pdf, view, None)["tight"] is False
 
 
 def test_build_pdf_computes_missing_parts():

@@ -16,8 +16,9 @@ For every job:
    recorded one: OCEAN-AI for an imported 2.0 job), the tab «Тип MBTI» shows one panel and one letter strip titled by
    the model («OCEAN-AI, веса MuPTA» / «AMLAI 1.0»), no agreement line, no roles, and no block of the page says
    «второе мнение», «своя модель» or «MM-PSYCHE»; the score bars have no framed block under them; the tab
-   «Объяснения» of an OCEAN-AI job carries the one note (narrative.NO_EXPLAIN_RU); «Модель и время обработки» starts
-   with the model line; segments without the model are gaps on the timeline chart and are named by C13 in «Как
+   «Объяснения» of an OCEAN-AI job carries the one note (narrative.NO_EXPLAIN_RU); the label «собеседование» of
+   AMLAI 1.0 that the imported job carries is nowhere on the OCEAN-AI page (view, bars, key facts, chart, PDF);
+   «Модель и время обработки» starts with the model line; segments without the model are gaps on the timeline chart and are named by C13 in «Как
    получены оценки»; «Краткие выводы» appears nowhere; result.json of the copy gets no `mbti` section; nothing on the
    page mentions a group of processed videos (reference group, position, «типичный», percentiles of Russian speech),
    and the characterization does not compare two systems (changes of 2026-09-26);
@@ -140,8 +141,9 @@ def check_pdf(c: Checks, src: Path, dest: Path, mb: dict | None, exp: dict | Non
         c.ok(not rx.search(body), f"PDF does not contain «{what}»")
     if mb:
         c.ok(mb["type_strict"] in text and mb["type"] in text, f"PDF shows the type {mb['type']} / {mb['type_strict']}")
-        # appendix «Значения по отрезкам»: the MBTI column carries the type of every typed segment
-        appx = text.split("Значения по отрезкам")[-1]
+        # appendix «Значения по отрезкам»: the MBTI column carries the type of every typed segment (the text from the
+        # first heading on: a long table continues on the next page under «… (продолжение)»)
+        appx = text.split("Значения по отрезкам", 1)[-1]
         seg_types = {e["type"] for e in mb.get("timeline") or [] if e.get("type")}
         c.ok(" MBTI " in appx and all(t in appx for t in seg_types),
              f"MBTI column in the appendix with {len(seg_types)} segment type(s)")
@@ -154,6 +156,8 @@ def check_pdf(c: Checks, src: Path, dest: Path, mb: dict | None, exp: dict | Non
             from bs3.narrative import NO_EXPLAIN_RU
             c.ok(NO_EXPLAIN_RU[:60] in text and "Что повлияло" not in text,
                  "OCEAN-AI: no section 5, the one-line note under section 4")
+            c.ok("собеседовани" not in body.lower() and "Собе-" not in body,
+                 "OCEAN-AI: no label «собеседование» in the PDF (bars, note, appendix column, C2)")
     if exp:
         c.ok(exp["strip"] in text, "PDF strip summary as in design 13.2")
     old = sorted(p for p in src.glob("*_report_*.pdf"))
@@ -237,6 +241,13 @@ def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path |
         c.ok(re.sub(r"<[^>]+>", "", _contrib).strip() == NO_EXPLAIN_RU and _words == "",
              "tab «Объяснения»: the one note for OCEAN-AI")
         c.ok("модель OCEAN-AI не строит объяснений" in _frames, "«Ключевые кадры»: OCEAN-AI builds none")
+        # the label «собеседование» belongs to AMLAI 1.0: an imported job loses it with the other member
+        c.ok("interview" not in view and not any(isinstance(t.get("scores"), dict) and "interview" in t["scores"]
+                                                 for t in view.get("timeline") or []),
+             "no «interview» in the OCEAN-AI view, whole video and per segment")
+        c.ok(bars.count("Впечатление") == 0 and not any("собеседовани" in re.sub(r"<[^>]+>", " ", h).lower()
+                                                       for h in (bars, facts, traits_plot, char, method)),
+             "no label «собеседование» on the OCEAN-AI page (bars, facts, chart, characterization, method)")
     c.ok(members.startswith(f"Модель {webparts.model_title(meta['main_system'])}: ")
          and "\nОбработка заняла " in members, "«Модель и время обработки»: the model line and the time")
     # segments without the main system: gaps on the chart, C13 in «Как получены оценки»

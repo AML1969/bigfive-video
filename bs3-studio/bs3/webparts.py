@@ -198,6 +198,9 @@ def _bar_html(traits: dict, interview: dict | None) -> str:
         notes.append(f"{subject} — относительно {ref}.")
     if any_tick:
         notes.append(TICK_NOTE)
+    if interview:                      # C2 explains the label where it is shown (the page footer holds only what
+        from . import caveats          # is true for both models)
+        notes.append(caveats.text("C2"))
     return ("<div style='max-width:640px'>" + "".join(rows) + _scale_row() + _legend(legend) +
             f"<div style='{NOTE};margin-top:8px'>{' '.join(notes)}</div></div>")
 

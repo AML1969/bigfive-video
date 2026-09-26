@@ -15,7 +15,7 @@ from typing import Callable, Dict, List
 
 import numpy as np
 
-from . import DEFAULT_MODEL, LANG, MODEL_TITLES
+from . import DEFAULT_MODEL, LANG, MODALITIES, MODEL_TITLES
 from .norms import TRAIT_KEYS
 from .report import build_report, fmt_secs
 
@@ -33,23 +33,48 @@ class Studio:
     """Lazily loaded models shared by all requests (one analysis at a time).
 
     3.1: one Big Five model per analysis. `backend(member)` builds and caches the backend of that member only
-    (`EnsembleConfig(members=(member,))`, so the GPU holds one Big Five model and the other one is never run for a
-    second opinion); the speech language is fixed to Russian (bs3.LANG). The emotion, voice and face models are
-    shared by both members."""
+    (`EnsembleConfig(members=(member,))`), and when the page asks for the other member the cached one is dropped
+    first (`_evict`), so the GPU holds one Big Five model at a time even after the radio is switched in a running
+    server; the other model is never run for a second opinion. The Whisper pipeline of the segment analyzer
+    (LongVideoAnalyzer, one per member) is handed over to the analyzer of the next member instead of being loaded
+    again. The speech language is fixed to Russian (bs3.LANG). The emotion, voice and face models are shared by both
+    members."""
 
     def __init__(self, asr_model="openai/whisper-large-v3-turbo", ollama_model="qwen2.5vl:7b", mm_ckpt=None):
         self.asr_model, self.ollama_model, self.mm_ckpt = asr_model, ollama_model, mm_ckpt
         self.lang = LANG
         self._lock = threading.Lock()
-        self._be: Dict[str, object] = {}          # member -> loaded backend of that member alone
-        self._an: Dict[str, object] = {}          # member -> LongVideoAnalyzer over that backend
+        self._be: Dict[str, object] = {}          # member -> loaded backend of that member alone (at most one)
+        self._an: Dict[str, object] = {}          # member -> LongVideoAnalyzer over that backend (at most one)
+        self._asr_shared = None                   # the Whisper pipeline of a dropped analyzer, reused by the next one
         self._text_emo = self._voice_emo = self._face_expr = None
         self.stop_event = threading.Event()
+
+    def _evict(self, keep: str) -> None:
+        """Drop the backend and the analyzer of every member other than `keep` and give their GPU memory back."""
+        others = [m for m in list(self._be) + list(self._an) if m != keep]
+        if not others:
+            return
+        for m in set(others):
+            an = self._an.pop(m, None)
+            if an is not None and getattr(an, "_asr", None) is not None:
+                self._asr_shared = an._asr
+            self._be.pop(m, None)
+        log.info("model %s unloaded: the GPU holds one Big Five model (%s)", ", ".join(sorted(set(others))), keep)
+        try:
+            import gc
+            gc.collect()
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:  # noqa: BLE001 — torch is not needed for the bookkeeping itself
+            pass
 
     def backend(self, member: str = DEFAULT_MODEL):
         member = check_member(member)
         with self._lock:
             if member not in self._be:
+                self._evict(member)
                 from .backend_ensemble import EnsembleBackend, EnsembleConfig
                 from .backend_mm import MMConfig
                 from .backend_oceanai import BackendConfig
@@ -66,8 +91,12 @@ class Studio:
     def analyzer(self, member: str = DEFAULT_MODEL):
         from .longvideo import LongVideoAnalyzer
         member = check_member(member)
+        be = self.backend(member)                 # evicts the other member's backend and analyzer first
         if member not in self._an:
-            self._an[member] = LongVideoAnalyzer(self.backend(member), lang=self.lang, asr_model=self.asr_model)
+            an = LongVideoAnalyzer(be, lang=self.lang, asr_model=self.asr_model)
+            if self._asr_shared is not None:      # the Whisper of the dropped analyzer, not a second copy
+                an._asr, self._asr_shared = self._asr_shared, None
+            self._an[member] = an
         return self._an[member]
 
     def mm_backend(self, member: str = DEFAULT_MODEL):
@@ -190,10 +219,11 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, member: str = 
     """Whole request: copy the upload, Big Five by the chosen model only (`member`: "oceanai" | "mm", segmented),
     extra analyses, explanations (AMLAI 1.0 only), plain-language texts; writes <job>/result.json and returns it with
     the job path. The speech language is Russian (bs3.LANG). result.json records the model as `model.selected` /
-    `model.selected_title` / `model.primary`; `variant_scores` holds that member only."""
+    `model.selected_title` / `model.primary`; `variant_scores` holds that member only, `modalities_used` what that
+    model looks at (bs3.MODALITIES). The plain-language summary of 2.0 (`narrative`) is not written any more: 3.x
+    shows «Как получены оценки» (narrative.method_notes), built on display."""
     from .longvideo import AnalysisCancelled
     from .media import probe_media
-    from .narrative import build_narrative
     from .ru_texts import ensure_russian
 
     def step(frac, desc=None, **kw):
@@ -223,7 +253,7 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, member: str = 
     inner = getattr(be, "backends", {}).get(member)
     corpus = getattr(getattr(inner, "cfg", None), "corpus", None) or be.cfg.corpus
     rep = build_report(local, res, backend=member, corpus=corpus, lang=lang, asr_model=studio.asr_model,
-                       modalities=(member,), pool_lang=lang, primary=member, selected=member)
+                       modalities=MODALITIES[member], pool_lang=lang, primary=member, selected=member)
     rep["variant_scores"] = {m: v for m, v in (res.get("variants") or {}).items() if m == member}
     for key in ("duration_sec", "segments", "timeline", "representative_segment", "transcript_en", "chunks"):
         if res.get(key) is not None:
@@ -264,7 +294,6 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, member: str = 
     rep["original_file_name"] = src.name
     rep["key_frames"] = frames
     rep["timings_sec"]["total_wall"] = round(time.time() - t0, 1)
-    rep["narrative"] = build_narrative(rep, expl)
     rep["job_dir"] = str(job)
     # ---- MBTI section (design 7.2; schema 3: one model): computed once from the clean scores; a failure is logged,
     # the job goes on

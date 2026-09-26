@@ -153,6 +153,8 @@ def test_signatures_one_member_russian_only():
 
 
 def test_studio_builds_one_backend_per_member():
+    """One backend of one member at a time: asking for the other member drops the cached one (the GPU holds one
+    Big Five model even after the radio is switched in a running server); the same member is not rebuilt."""
     with _Patched(_fake_modules()):
         _FakeEnsemble.built.clear()
         st = pipeline.Studio(asr_model="asr-x", ollama_model="qwen-x", mm_ckpt="/tmp/ckpt.pt")
@@ -162,19 +164,37 @@ def test_studio_builds_one_backend_per_member():
         assert mm.cfg.mm_cfg.checkpoint == "/tmp/ckpt.pt" and mm.cfg.mm_cfg.ollama_model == "qwen-x"
         assert list(mm.backends) == ["mm"] and mm.loaded == 1
         assert st.mm_backend("mm") is mm.backends["mm"]
+        assert st.backend("mm") is mm and list(st._be) == ["mm"]          # cached, not rebuilt
         oa = st.backend("oceanai")
         assert oa is not mm and oa.cfg.members == ("oceanai",) and oa.cfg.primary == "oceanai"
         assert oa.cfg.mm_cfg is None and oa.cfg.oceanai_cfg.lang == "ru" and oa.cfg.oceanai_cfg.asr_model == "asr-x"
         assert list(oa.backends) == ["oceanai"]
-        assert st.mm_backend("oceanai") is None                      # explanations exist for AMLAI 1.0 only
-        assert st.backend("mm") is mm and st.backend("oceanai") is oa   # cached, not rebuilt
-        assert len(_FakeEnsemble.built) == 2 and all(len(b.cfg.members) == 1 for b in _FakeEnsemble.built)
+        assert list(st._be) == ["oceanai"] and "mm" not in st._an           # the other member is unloaded
+        assert st.mm_backend("oceanai") is None                            # explanations exist for AMLAI 1.0 only
+        assert st.backend("oceanai") is oa and len(_FakeEnsemble.built) == 2
+        mm2 = st.backend("mm")                                             # back again: built anew, OCEAN-AI dropped
+        assert mm2 is not mm and list(st._be) == ["mm"] and len(_FakeEnsemble.built) == 3
+        assert all(len(b.cfg.members) == 1 for b in _FakeEnsemble.built)
         try:
             st.backend("ensemble")
         except RuntimeError:
             pass
         else:
             raise AssertionError("an unknown member was accepted")
+
+
+def test_studio_hands_whisper_over_between_analyzers():
+    """The segment analyzer of the next member takes the Whisper pipeline of the dropped one instead of loading a
+    second copy; at most one analyzer is kept."""
+    with _Patched(_fake_modules()):
+        st = pipeline.Studio()
+        an_mm = st.analyzer("mm")
+        assert list(st._an) == ["mm"] and an_mm.backend is st._be["mm"] and an_mm.lang == "ru"
+        an_mm._asr = whisper = object()                                     # «loaded» Whisper of this analyzer
+        an_oa = st.analyzer("oceanai")
+        assert list(st._an) == ["oceanai"] and list(st._be) == ["oceanai"]
+        assert an_oa is not an_mm and an_oa._asr is whisper and st._asr_shared is None
+        assert st.analyzer("oceanai") is an_oa
 
 
 def test_ensemble_config_single_member_is_primary():
@@ -215,8 +235,12 @@ def test_run_analysis_one_member_each():
             assert m["selected"] == member and m["primary"] == member
             assert m["selected_title"] == bs3.MODEL_TITLES[member] and m["lang"] == "ru"
             assert m["backend"] == member and m["product"] == "BS Profiler 3.1" and m["version"] == "3.1.0a1"
-            assert r["modalities_used"] == [member]
+            assert r["modalities_used"] == list(bs3.MODALITIES[member])     # what the model looked at, not its name
             assert set(r["variant_scores"]) == {member}
+            # nothing of 2.0 that the tab «Данные» would have to leave out: no stored summary, no percentiles
+            assert "narrative" not in r
+            if member == "mm":
+                assert set(r["interview"]) == {"score", "name_ru", "disclaimer"}
             for k in TRAIT_KEYS:
                 assert abs(r["traits"][k]["score"] - r["variant_scores"][member][k]) < 1e-9
                 assert "percentile" not in r["traits"][k]                   # Russian speech: the score only
@@ -236,10 +260,13 @@ def test_run_analysis_one_member_each():
             text = json.dumps(saved, ensure_ascii=False)
             for bad in ("второе мнение", "Второе мнение", "своя модель", "среднее двух систем", "MM-PSYCHE"):
                 assert bad not in text.replace("по рецепту MM-PSYCHE", ""), (member, bad)
-            # the view of a fresh 3.1 job is the job itself
-            from bs3.scores import clean_view
+            # the view of a fresh 3.1 job is the job itself, and the tab «Данные» shows the file whole (no note)
+            from bs3.scores import clean_view, data_json
             v = clean_view(saved)
             assert v["view_meta"]["main_system"] == member and v["view_meta"]["primary_missing"] is False
+            assert ("interview" in v) == (member == "mm")
+            shown, trimmed = data_json(saved)
+            assert shown == saved and trimmed is False
 
 
 def test_run_analysis_oceanai_skips_explanations_even_when_asked():

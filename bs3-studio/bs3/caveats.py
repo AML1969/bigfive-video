@@ -11,8 +11,10 @@ Where each caveat goes (design 11):
 - characterization: C11 (paragraph 4), C14, C15, C12, when needed C13, C19, C20;
 - tab «Тип MBTI» and section 2 of the PDF: C3, C4, C5, C6, C7, C9, C16; next to the letter strip C8, C19;
   the language-model note C17;
-- «Как получены оценки»: C13; page footer: C1, C2, C10, C3; tab «Данные»: C22; PDF «Как читать результаты»: C1, C2,
-  C10, C11, C14, C15; no Big Five at all: C21 instead of the MBTI block.
+- «Как получены оценки»: C13; page footer: C1, C10, C3; tab «Данные»: C22; PDF «Как читать результаты»: C1, C10,
+  C11, C14, C15; no Big Five at all: C21 instead of the MBTI block;
+- C2 (the label «собеседование» of AMLAI 1.0) goes only where that label is shown: under the score bars of the page
+  and in the PDF «Как читать результаты» of a job that carries the label (3.1: a job of AMLAI 1.0).
 """
 from __future__ import annotations
 

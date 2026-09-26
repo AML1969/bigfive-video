@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rerender_samples import OLD_NAMES, PDF_MUST, PDF_MUST_NOT, SECOND_OPINION, Checks, pdf_text  # noqa: E402
 
-from bs3 import MODEL_TITLES  # noqa: E402
+from bs3 import MODALITIES, MODEL_TITLES  # noqa: E402
 from bs3.narrative import NO_EXPLAIN_RU  # noqa: E402
 from bs3.norms import TRAIT_KEYS  # noqa: E402
 from bs3.webapp import N_PAGE, NO_FRAMES_OCEANAI, export_pdf, page_outputs  # noqa: E402
@@ -67,7 +67,8 @@ def check_result(c: Checks, rep: dict) -> str | None:
     c.ok(all(abs(float(traits[k]["score"]) - float(var.get(sel, {}).get(k, -9))) < 5e-5 for k in TRAIT_KEYS if k in traits),
          "traits are the scores of that member")
     c.ok(not any("percentile" in (traits.get(k) or {}) for k in TRAIT_KEYS), "no percentiles (Russian speech)")
-    c.ok(set(rep.get("modalities_used") or []) == {sel}, "modalities_used names the one member")
+    c.ok(set(rep.get("modalities_used") or []) == set(MODALITIES[sel]), "modalities_used names what the model looked at")
+    c.ok("narrative" not in rep, "no stored 2.0 summary (nothing for the tab «Данные» to leave out)")
     for t in rep.get("timeline") or []:
         if isinstance(t.get("variants"), dict) and set(t["variants"]) - {sel}:
             c.ok(False, f"segment {t.get('segment')} carries another member")
@@ -76,6 +77,8 @@ def check_result(c: Checks, rep: dict) -> str | None:
     c.ok(mb.get("schema_version") == 3 and mb.get("model") == sel and "second" not in mb and "agreement" not in mb,
          "mbti section of schema 3 for that member, no second opinion")
     c.ok(("interview" in rep) == (sel == "mm"), "interview score for AMLAI 1.0 only")
+    c.ok(not any(k in (rep.get("interview") or {}) for k in ("percentile", "percentile_vs_fiv2", "percentile_ref")),
+         "no percentile on the interview label (Russian speech)")
     return sel
 
 
@@ -111,6 +114,8 @@ def check_page(c: Checks, rep: dict, sel: str | None) -> str | None:
         c.ok(texts.get(I_CONTRIB, "") == NO_EXPLAIN_RU, "tab «Объяснения»: the one note and nothing else")
         c.ok(texts.get(I_FRAMES, "") == NO_FRAMES_OCEANAI, "«Ключевые кадры»: the one note")
         c.ok(not texts.get(I_WORDS) and not (outs[I_DESC] or "").strip(), "words and description boxes empty")
+        c.ok(not any("собеседовани" in t.lower() for i, t in texts.items() if i != I_MODEL),
+             "no label «собеседование» of the other model on the page")
     return shown
 
 
@@ -132,6 +137,7 @@ def check_pdf(c: Checks, job: Path, shown: str | None) -> None:
     note, sec5 = "не строит объяснений" in text, "Что повлияло на оценку модели AMLAI 1.0" in text
     if shown == "oceanai":
         c.ok(note and not sec5, "PDF of OCEAN-AI: the one-line note, no section «Что повлияло …»")
+        c.ok("собеседовани" not in body.lower(), "PDF of OCEAN-AI: no label «собеседование» (and no C2 about it)")
     elif shown == "mm":
         c.ok(not note, "PDF of AMLAI 1.0: no OCEAN-AI note")
         if (job / "explain" / "explanation.json").exists():

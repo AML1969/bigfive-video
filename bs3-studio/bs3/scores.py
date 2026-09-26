@@ -5,7 +5,8 @@ written), in which
 - the view holds ONE model (3.1): the one recorded in result.json (`model.selected` of a 3.1 job, `model.primary` of a
   3.0 or an imported 2.0 job — OCEAN-AI), see `main_system`; the Big Five scores are that model's own
   (`variant_scores[main]`), never a mix of two scales, and `variant_scores` (whole video and per segment) keeps that
-  member only, so an older job that carried two members shows one;
+  member only, so an older job that carried two members shows one; the label «собеседование» (`interview`, whole
+  video and per segment) exists only for AMLAI 1.0 and leaves a view of OCEAN-AI with the other member;
 - a segment where the model gave no score has `scores = None` and `no_primary = True` (charts already draw such a
   segment as a gap «нет оценки»), and the spread over segments is recomputed on the remaining ones;
 - Russian speech shows the scores themselves only: the percentiles against the pool of processed videos that older
@@ -175,12 +176,25 @@ def clean_view(rep: dict) -> dict:
             t["no_primary"] = True
     kept = [t for t in timeline if isinstance(t, dict) and isinstance(t.get("scores"), dict)]
 
-    # 3a. one model in the view (3.1): the other members an older job carried are left out, whole video and segments
+    # 3a. one model in the view (3.1): the other members an older job carried are left out, whole video and segments;
+    # the label «собеседование» exists only for AMLAI 1.0, so a view of OCEAN-AI drops it too (a job imported from
+    # 2.0 / 3.0 carries it from the second model), whole video and per segment
     if isinstance(view.get("variant_scores"), dict):
         view["variant_scores"] = {m: v for m, v in view["variant_scores"].items() if m == main}
+    own_label = main == "mm"
+    if not own_label:
+        view.pop("interview", None)
     for t in timeline:
-        if isinstance(t, dict) and isinstance(t.get("variants"), dict):
+        if not isinstance(t, dict):
+            continue
+        if isinstance(t.get("variants"), dict):
             t["variants"] = {m: v for m, v in t["variants"].items() if m == main}
+        if not own_label:
+            if isinstance(t.get("scores"), dict):
+                t["scores"].pop("interview", None)
+            for v in (t.get("variants") or {}).values():
+                if isinstance(v, dict):
+                    v.pop("interview", None)
 
     # 4. spread over the remaining segments (population SD, as longvideo computes it)
     if dropped:

@@ -79,25 +79,34 @@ def test_page_builds_with_the_model_radio_and_no_checkbox():
     pairs = [c for c in comps if isinstance(c, gr.Row) and "bs3-pair" in (c.elem_classes or [])]
     inside = {id(x) for row in pairs for col in row.children for x in getattr(col, "children", [])}
     assert id(facts) not in inside and id(char[0]) in inside
-    # the footer caveats
-    assert webapp.FOOTER_CAVEATS == ("C1", "C2", "C10", "C3")
+    # the footer caveats: what holds for both models (C2 stands under the bars of a job that shows the label)
+    assert webapp.FOOTER_CAVEATS == ("C1", "C10", "C3")
 
 
 def test_page_outputs_oceanai_job():
     with tempfile.TemporaryDirectory() as d:
         r = rep("B")
         r["behavior_description_ru"] = "[0–20 с] Человек говорит спокойно."      # of the second model of 3.0
+        r["interview"] = {"score": 0.4011, "name_ru": "впечатление «пригласить на собеседование»"}   # of the same
+        r["narrative"] = "Оценки дала система OCEAN-AI …"                          # the stored summary of 2.0
+        for t in r["timeline"]:
+            if isinstance(t.get("scores"), dict):
+                t["scores"]["interview"] = 0.4
         r = _job(r, Path(d), "20000101_000000")
         outs = webapp.page_outputs(r)
     assert len(outs) == webapp.N_PAGE == 27
-    bars, contrib, words, desc, members = outs[1], outs[15], outs[16], outs[17], outs[18]
+    bars, facts, contrib, words, desc, members = outs[1], outs[2], outs[15], outs[16], outs[17], outs[18]
     assert _strip(contrib) == NO_EXPLAIN_RU and words == "" and desc == ""     # the one note of the tab «Объяснения»
-    # the bars of one model: five traits once, no framed block («второе мнение» of 3.0) after the scale row
+    # the bars of one model: five traits once, no framed block («второе мнение» of 3.0) after the scale row, and no
+    # label of the other model anywhere on the overview (bars, key facts, timeline chart)
     assert bars.count("<b>Экстраверсия</b>") == 1 and "второе мнение" not in bars.lower()
     assert "border-radius:8px'><div style='font-weight:600" not in bars
+    for h in (bars, facts, outs[4]):
+        assert "собеседовани" not in h.lower() and "AMLAI" not in h, h[:80]
     lines = members.split("\n")
     assert lines[0].startswith("Модель OCEAN-AI, веса MuPTA: открытость опыту 0.71")
     assert lines[1].startswith("Обработка заняла ")
+    assert webapp.DATA_TRIMMED in lines                                          # an older job: percentiles left out
     assert "Ключевых кадров нет: модель OCEAN-AI не строит объяснений" in outs[14]
     page = " ".join(_strip(o) for o in outs if isinstance(o, str))
     for bad in ("второе мнение", "Второе мнение", "своя модель", "Своя модель", "своей модели", "MM-PSYCHE",
@@ -108,13 +117,18 @@ def test_page_outputs_oceanai_job():
 
 
 def test_page_outputs_own_model_job():
+    from bs3 import caveats
     with tempfile.TemporaryDirectory() as d:
         r = _own("B")
         r["behavior_description_ru"] = "[0–20 с] Человек говорит спокойно."
+        r["interview"] = {"score": 0.4011, "name_ru": "впечатление «пригласить на собеседование»"}
         r = _job(r, Path(d), "20000102_000000")
         outs = webapp.page_outputs(r)
     contrib, members, frames = outs[15], outs[18], outs[14]
     assert contrib == ""                                                        # no explanation on disk: empty, no note
+    # the label of AMLAI 1.0 with its bar and C2 under the bars; a fresh job leaves nothing out of the tab «Данные»
+    assert "Впечатление «пригласить на собеседование»" in outs[1] and caveats.text("C2") in outs[1]
+    assert "Впечатление «собеседование»" in outs[2] and webapp.DATA_TRIMMED not in members
     assert outs[17] == "[0:00–0:20] Человек говорит спокойно."                    # the description of AMLAI 1.0 stays
     assert members.startswith("Модель AMLAI 1.0: открытость опыту 0.") and "MuPTA" not in members
     assert "Ключевые кадры не построены: лицо в кадре не найдено" in frames
