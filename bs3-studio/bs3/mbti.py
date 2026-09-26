@@ -1,8 +1,10 @@
-"""Big Five in MBTI notation (design 5, 7; change of 2026-09-26).
+"""Big Five in MBTI notation (design 5, 7; changes of 2026-09-26; one model since 3.1).
 
-Exactly the customer's formula on the system's own score v in [0, 1] (config `raw_thresholds`, 0.5 on every axis):
+Exactly the customer's formula on the model's own score v in [0, 1] (config `raw_thresholds`, 0.5 on every axis):
 the letter by v >= 0.5, BORDERLINE = 0.15, confidence = min(|v − 0.5| / 0.5, 1), X on a borderline axis in `type`,
-four letters in `type_strict`. The same for both systems and both speech languages; no reference group anywhere.
+four letters in `type_strict`. The same for either model (OCEAN-AI or AMLAI 1.0); no reference group anywhere. The
+section describes the one model the analysis ran (`source`, `model`): there is no second opinion and no agreement of
+two systems any more (schema 3).
 
 Details: the confidence denominator for a threshold other than 0.5 (thr below it, 1 − thr above it, so both ends reach
 1); the difference is rounded to 9 digits so that 0.65 − 0.5 is not 0.15000000000000002; a missing trait gives the
@@ -12,7 +14,7 @@ The formula is applied to the score as the report prints it (scores.shown: round
 letter, the borderline flag, the level word and the printed number of an axis always agree (a printed 0.65 is never
 X on one page and a confident letter on another); the axis `value` is that printed value.
 
-Nothing here writes to disk: `get_mbti(rep, view)` returns the section saved by the pipeline (schema 2) or computes it
+Nothing here writes to disk: `get_mbti(rep, view)` returns the section saved by the pipeline (schema 3) or computes it
 on the fly; the caller never stores the computed one.
 """
 from __future__ import annotations
@@ -25,23 +27,22 @@ import math
 from collections import Counter
 from importlib import resources
 
-from . import PRODUCT, __version__
+from . import MODEL_TITLES, PRODUCT, __version__
 from .norms import TRAIT_KEYS
 from .scores import level_phrase, plural_ru, shown
 
 AXES = ("EI", "SN", "TF", "JP")
 AXIS_LABEL = {"EI": "E–I", "SN": "S–N", "TF": "T–F", "JP": "J–P"}
-SOURCE_OF = {"oceanai": "ocean_ai", "mm": "own_model", "mean": "mean"}
+SOURCE_OF = {"oceanai": "ocean_ai", "mm": "own_model"}
 SYSTEM_OF = {v: k for k, v in SOURCE_OF.items()}
-SOURCE_RU = {"ocean_ai": "OCEAN-AI", "own_model": "своя модель", "mean": "среднее двух систем"}
+SOURCE_RU = {SOURCE_OF[k]: v for k, v in MODEL_TITLES.items()}       # "ocean_ai": OCEAN-AI, "own_model": AMLAI 1.0
 WORD_CLEAR, WORD_MODERATE, WORD_BORDER, WORD_MISSING = "отчётливо", "умеренно", "на границе", "нет данных"
 RELIABILITY_BASIS = ("соответствие шкал MBTI и NEO-PI в самоотчётах (McCrae, Costa, 1989); "
                      "не точность оценки по видео")
 NEURO_NOTE = "шкала не имеет соответствия в MBTI, приводится отдельно"
-SIGN = {"agree": "=", "differ": "≠", "border": "≈"}
-BORDER_RU = "на границе хотя бы у одной из систем"      # "border": one system, both, or no score on the axis
-BORDER_NONE = "Уверенных совпадений нет"
-SCHEMA_VERSION = 2            # 1: letters by the position in a reference group of processed videos (before 2026-09-26)
+# 1: letters by the position in a reference group of processed videos (before 2026-09-26); 2: the absolute scale with
+# a second opinion and the agreement of two systems (3.0); 3: one model, no `second`, no `agreement` (3.1)
+SCHEMA_VERSION = 3
 METHOD = "raw"
 
 _cfg: dict | None = None
@@ -149,9 +150,9 @@ def _r(x, nd):
 
 
 def mbti_for(system: str, raw_scores: dict, lang: str, cfg: dict | None = None) -> dict:
-    """Type of one system ('oceanai' | 'mm' | 'mean') from its own Big Five scores, in the format of result.json.
-    `lang` is kept for the callers: the formula is the same for both speech languages. The formula works on the
-    printed scores (scores.shown, two decimals)."""
+    """Type of one model ('oceanai' | 'mm') from its own Big Five scores, in the format of result.json. `lang` is
+    kept for the callers: the formula does not depend on the speech language. The formula works on the printed
+    scores (scores.shown, two decimals)."""
     cfg = cfg or load_config()
     raw_scores = raw_scores if isinstance(raw_scores, dict) else {}
     scores = {k: shown(raw_scores.get(k)) for k in TRAIT_KEYS}
@@ -183,46 +184,11 @@ def mbti_for(system: str, raw_scores: dict, lang: str, cfg: dict | None = None) 
     }
 
 
-def agreement(main: dict, second: dict) -> dict:
-    """Axis by axis: "agree" — the same strict letter and neither system on the border; "border" — at least one system
-    on the border or without data (a difference there is not a signal); "differ" — different letters, both sure."""
-    res = {}
-    for ax in AXES:
-        a, b = (main.get("axes") or {}).get(ax) or {}, (second.get("axes") or {}).get(ax) or {}
-        if a.get("missing") or b.get("missing") or a.get("borderline", True) or b.get("borderline", True):
-            res[ax] = "border"
-        elif a.get("letter") == b.get("letter"):
-            res[ax] = "agree"
-        else:
-            res[ax] = "differ"
-    return {"pair": [main.get("source"), second.get("source")], "axes": res,
-            "n_agree": sum(v == "agree" for v in res.values())}
-
-
-def agreement_line(agr: dict | None) -> str:
-    """«Совпадает 1 из 4 осей; расходится E–I; на границе хотя бы у одной из систем: T–F, J–P.» (no
-    confident match: «Уверенных совпадений нет; …»)."""
-    if not agr:
-        return ""
-    axes = agr.get("axes") or {}
-    n = agr.get("n_agree", 0)
-    if n == 4:
-        return "Обе системы дают один и тот же тип."
-    differ = [AXIS_LABEL[a] for a in AXES if axes.get(a) == "differ"]
-    border = [AXIS_LABEL[a] for a in AXES if axes.get(a) == "border"]
-    parts = [BORDER_NONE if n == 0 else f"{'Совпадает' if n == 1 else 'Совпадают'} {n} из 4 осей"]
-    if differ:
-        parts.append(("расходится " if len(differ) == 1 else "расходятся ") + ", ".join(differ))
-    if border:
-        parts.append(BORDER_RU + ": " + ", ".join(border))
-    return "; ".join(parts) + "."
-
-
 # ------------------------------------------------------------------------------------------- segments, section ---
 
 def _segment_scores(t: dict, system: str, main: str) -> dict | None:
-    """Scores of `system` on one segment of a clean view (design 5.7): variants of 3.0 jobs first; otherwise the
-    segment's own scores, but only for the main system and only where it scored."""
+    """Scores of `system` on one segment of a clean view (design 5.7): variants of 3.x jobs first; otherwise the
+    segment's own scores, but only for the shown model and only where it scored."""
     variants = t.get("variants")
     if isinstance(variants, dict) and system in variants:
         v = variants.get(system)
@@ -312,17 +278,10 @@ def _scores_of(view: dict, system: str) -> dict | None:
     return {k: sc.get(k) for k in TRAIT_KEYS}
 
 
-def _with_timeline(view: dict, system: str, item: dict, cfg: dict, always: bool) -> dict:
-    entries = segment_types(view, system, cfg)
-    if not always and not any(e.get("type_strict") for e in entries):
-        return item
-    st, modal = stability(entries, item["type_strict"], cfg)
-    item.update({"stability": st, "modal_types": modal, "timeline": entries})
-    return item
-
-
 def build_section(view: dict, *, computed_at: str | None = None, cfg: dict | None = None) -> dict | None:
-    """The `mbti` section of result.json (design 7.1) from a clean view (scores.clean_view); None without Big Five."""
+    """The `mbti` section of result.json (design 7.1; schema 3) from a clean view (scores.clean_view): the type of the
+    one model the view shows (`source` "ocean_ai" | "own_model", `model` "oceanai" | "mm", `model_title`), its axes,
+    the type per segment with the stability; None without Big Five. No second opinion, no agreement (3.1)."""
     cfg = cfg or load_config()
     meta = view.get("view_meta")
     if not meta:
@@ -339,40 +298,27 @@ def build_section(view: dict, *, computed_at: str | None = None, cfg: dict | Non
     timeline = view.get("timeline") or []
     total = len(timeline) or int(view.get("segments") or 1)
     used = sum(1 for e in entries if e.get("type_strict")) if timeline else 1
-    if lang == "ru":
-        second_systems = [s for s in ("oceanai", "mm") if s != main]
-    else:
-        second_systems = ["oceanai", "mm"]
-    second = []
-    for s in second_systems:
-        sc = _scores_of(view, s)
-        if sc is None:
-            continue
-        item = {**mbti_for(s, sc, lang, cfg), "role": "second_opinion"}
-        second.append(_with_timeline(view, s, item, cfg, always=False))
-    agr = None
-    if lang == "ru" and second:
-        agr = agreement(m, second[0])
-    elif lang != "ru" and len(second) == 2:
-        agr = agreement(second[0], second[1])
     sec = {
         "schema_version": SCHEMA_VERSION,
         "computed_by": f"{PRODUCT} {__version__}",
         "computed_at": computed_at or _dt.datetime.now().isoformat(timespec="seconds"),
         "method": METHOD,
         "borderline": cfg.get("borderline", 0.15),
-        "source": m["source"], "role": "main",
+        "source": m["source"], "model": main, "model_title": MODEL_TITLES.get(main, main), "role": "main",
+        # True when the recorded model gave no scores and the view fell back to the other member (C20)
+        "primary_missing": bool(meta.get("primary_missing")),
     }
     sec.update({k: v for k, v in m.items() if k != "source"})
     sec.update({"segments_total": total, "segments_used": used, "stability": st, "modal_types": modal,
-                "timeline": entries, "second": second, "agreement": agr, "llm": None})
+                "timeline": entries, "llm": None})
     return sec
 
 
 def get_mbti(rep: dict, view: dict | None = None) -> dict | None:
-    """The section to show: the one saved in result.json (schema 2) as it is, otherwise computed now from the clean
-    view with `computed_on_render: True` (a saved section of schema 1 placed the scores in a reference group and is
-    not shown). Never changes `rep` and never writes anything."""
+    """The section to show: the one saved in result.json (schema 3) as it is, otherwise computed now from the clean
+    view with `computed_on_render: True` (a saved section of schema 1 placed the scores in a reference group, one of
+    schema 2 carries a second opinion and an agreement; neither is shown). Never changes `rep` and never writes
+    anything."""
     saved = rep.get("mbti") if isinstance(rep, dict) else None
     if isinstance(saved, dict) and saved.get("schema_version") == SCHEMA_VERSION:
         return copy.deepcopy(saved)
@@ -391,9 +337,15 @@ def _name(t: str | None, cfg: dict | None = None) -> str | None:
     return (cfg or load_config())["type_names_ru"].get(t)
 
 
+def source_title(mb: dict | None) -> str:
+    """The title of the model a section describes: «OCEAN-AI» / «AMLAI 1.0»."""
+    src = (mb or {}).get("source")
+    return SOURCE_RU.get(src, MODEL_TITLES.get((mb or {}).get("model"), str(src)))
+
+
 def type_title(mb: dict) -> str:
-    """«Тип MBTI · OCEAN-AI» / «Тип MBTI · своя модель» / «Тип MBTI · среднее двух систем»."""
-    return f"Тип MBTI · {SOURCE_RU.get(mb.get('source'), mb.get('source'))}"
+    """«Тип MBTI · OCEAN-AI» / «Тип MBTI · AMLAI 1.0»."""
+    return f"Тип MBTI · {source_title(mb)}"
 
 
 def fact_card(mb: dict | None) -> tuple[str, str, str] | None:
@@ -413,8 +365,6 @@ def fact_card(mb: dict | None) -> tuple[str, str, str] | None:
     else:
         value = mb.get("type")
         notes.append(f"тип не выражен: {x} оси из 4 на границе")
-    for s in mb.get("second") or []:
-        notes.append(f"{SOURCE_RU.get(s.get('source'), s.get('source'))}: {s.get('type')}")
     return type_title(mb), value, " · ".join(notes)
 
 
@@ -432,33 +382,11 @@ def _type_words(m: dict) -> str:
 
 
 def journal_lines(mb: dict | None) -> list[str]:
-    """Lines about the type for the journal (design 10.6)."""
+    """The line about the type for the journal (design 10.6): «Тип MBTI (OCEAN-AI): ENFJ «Наставник»; нейротизм —
+    средний уровень» — one model, no second opinion (3.1)."""
     if not mb:
         return ["Тип MBTI: не рассчитан (нет оценок Big Five)"]
-    head = SOURCE_RU.get(mb.get("source"), mb.get("source"))
-    line = f"Тип MBTI ({head}): {_type_words(mb)}"
+    line = f"Тип MBTI ({source_title(mb)}): {_type_words(mb)}"
     if mb.get("neuroticism"):
         line += f"; нейротизм — {mb['neuroticism']['level']}"
-    lines = [line]
-    agr = mb.get("agreement") or {}
-    second = mb.get("second") or []
-    # ru: the other system is a second opinion; en: the main type is the mean, and both systems are listed separately,
-    # as on the tab «Тип MBTI» (design 5.6)
-    per_system = mb.get("source") == "mean"
-    for i, s in enumerate(second):
-        t = s.get("type")
-        if s.get("x_count", 0) == 0:
-            words = f"{s.get('type_strict')}"
-        elif s.get("x_count", 0) >= 3:
-            words = f"{t}, тип не выражен (формально ближайший {s.get('type_strict')})"
-        else:
-            words = f"{t}, ближайший {s.get('type_strict')}"
-        ln = (f"{'MBTI по системе' if per_system else 'Второе мнение MBTI'} "
-              f"({SOURCE_RU.get(s.get('source'), s.get('source'))}): {words}")
-        if agr and i == len(second) - 1:
-            n = agr.get("n_agree", 0)
-            marks = ", ".join(f"{AXIS_LABEL[a]} {SIGN[agr['axes'][a]]}" for a in AXES)
-            ln += (f"; уверенно {'совпадает' if n == 1 else 'совпадают'} {n} "
-                   f"{plural_ru(n, 'ось', 'оси', 'осей')} из 4 ({marks})")
-        lines.append(ln)
-    return lines
+    return [line]

@@ -1,11 +1,13 @@
-"""bs - Big Five (OCEAN) apparent personality scores from video.
+"""bs3 - Big Five (OCEAN) apparent personality scores from video (BS Profiler 3.1).
 
-  bs setup-weights [--lang en|ru|all]        download/cache OCEAN-AI weights
-  bs infer VIDEO [VIDEO ...] --out out.json  score videos (ASR on by default)
-  bs infer-dir DIR --out results.csv         score every media file in a folder
-  bs eval-fiv2 --dir DIR --out eval.json     mACC/CCC on FIV2 clips (DIR has <stem>.mp4, <stem>.txt, labels.csv)
+  bs3 web [--port 7880]                       the web page: one model per analysis (OCEAN-AI or AMLAI 1.0), Russian speech
+  bs3 setup-weights [--lang ru|en|all]        download/cache OCEAN-AI weights
+  bs3 infer VIDEO [VIDEO ...] --out out.json  score videos (ASR on by default)
+  bs3 infer-dir DIR --out results.csv         score every media file in a folder
+  bs3 eval-fiv2 --dir DIR --out eval.json     mACC/CCC on FIV2 clips (DIR has <stem>.mp4, <stem>.txt, labels.csv)
 
-Backends: --backend oceanai (default, all weights public) | sslmepr (benchmark, scene+audio+text only).
+Backends: --backend oceanai (default, all weights public) | mm (own model AMLAI 1.0) | sslmepr (benchmark) | ensemble.
+The speech language defaults to Russian (--lang ru); the page has no language control at all.
 """
 from __future__ import annotations
 import argparse
@@ -17,26 +19,26 @@ import tempfile
 import time
 from pathlib import Path
 
-from . import __version__
+from . import LANG, PRODUCT, __version__
 from .norms import TRAIT_KEYS
 from .report import build_report
 
 
-def _add_common(p, lang_choices=("en", "ru")):
+def _add_common(p, lang_choices=("ru", "en")):
     p.add_argument("--backend", default="oceanai", choices=["oceanai", "sslmepr", "ensemble", "mm"],
-                   help="oceanai = all public weights; sslmepr = benchmark on scene+audio+text; "
-                        "ensemble = mean of oceanai and the sslmepr scene branch; mm = own MM-PSYCHE-style model")
+                   help="oceanai = all public weights; mm = own model AMLAI 1.0 (MM-PSYCHE recipe); sslmepr = benchmark "
+                        "on scene+audio+text; ensemble = several members with one of them giving the main score")
     p.add_argument("--mm-ckpt", default=None, help="mm: checkpoint (default ~/bs/mm_runs_full/all4_interview/best.pt)")
     p.add_argument("--ensemble-members", default="oceanai,mm",
-                   help="ensemble: comma-separated subset of oceanai,mm,scene (default oceanai,mm = best on FIV2 test)")
+                   help="ensemble: comma-separated subset of oceanai,mm,scene")
     p.add_argument("--primary", default="auto",
-                   help="ensemble: member giving the main score (auto = oceanai for --lang ru, mean otherwise; "
-                        "mean | oceanai | mm | scene). With a primary member the report gives the scores without "
-                        "percentiles (FIV2 norms apply only to the FIV2 scale)")
+                   help="ensemble: member giving the main score (auto = the only member when one is given, else oceanai "
+                        "for --lang ru, mean otherwise; mean | oceanai | mm | scene). With a primary member the report "
+                        "gives the scores without percentiles (FIV2 norms apply only to the FIV2 scale)")
     p.add_argument("--ollama-model", default="qwen2.5vl:7b",
                    help="mm: Ollama vision model for behaviour descriptions (qwen3-vl:30b gives the same accuracy, 3x heavier)")
-    p.add_argument("--lang", default="en", choices=list(lang_choices),
-                   help="language of speech (oceanai: en -> FIV2 weights, ru -> MuPTA weights)")
+    p.add_argument("--lang", default=LANG, choices=list(lang_choices),
+                   help="language of speech, Russian by default (oceanai: ru -> MuPTA weights, en -> FIV2 weights)")
     p.add_argument("--corpus", default=None, choices=["fi", "mupta"], help="oceanai: override the weight set")
     p.add_argument("--models-dir", default=None, help="oceanai: weights cache (default ~/bs/models)")
     p.add_argument("--asr-model", default="openai/whisper-large-v3-turbo", help="HF Whisper id for transcription")
@@ -78,7 +80,7 @@ def _backend(a):
 
 
 def cmd_setup(a):
-    langs = ["en", "ru"] if a.lang == "all" else [a.lang]
+    langs = ["ru", "en"] if a.lang == "all" else [a.lang]
     for lang in langs:
         a.lang = lang
         be = _backend(a)
@@ -150,9 +152,10 @@ def cmd_explain(a):
 
 
 def cmd_web(a):
+    # the page chooses the model per analysis (OCEAN-AI or AMLAI 1.0); --ensemble-members and --lang do not apply
     from .webapp import main as web_main
-    web_main(port=a.port, members=a.ensemble_members, work_dir=a.work_dir, share=a.share,
-             asr_model=a.asr_model, ollama_model=a.ollama_model, mm_ckpt=a.mm_ckpt, host=a.host)
+    web_main(port=a.port, work_dir=a.work_dir, share=a.share, asr_model=a.asr_model, ollama_model=a.ollama_model,
+             mm_ckpt=a.mm_ckpt, host=a.host)
 
 
 def cmd_infer_dir(a):
@@ -214,7 +217,7 @@ def cmd_eval(a):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="bs3", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--version", action="version", version=f"bs-bigfive {__version__}")
+    ap.add_argument("--version", action="version", version=f"{PRODUCT} ({__version__})")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("setup-weights", help="download and cache weights")
@@ -241,7 +244,7 @@ def main(argv=None):
     p.add_argument("--top-k", type=int, default=5)
     p.set_defaults(fn=cmd_explain)
 
-    p = sub.add_parser("web", help="Gradio web UI: upload a video, get scores + explanations")
+    p = sub.add_parser("web", help="Gradio web UI: upload a video, choose the model, get the characterization")
     _add_common(p)
     p.add_argument("--port", type=int, default=7880)
     p.add_argument("--host", default="0.0.0.0", help="bind address (0.0.0.0 = reachable from Windows via localhost)")

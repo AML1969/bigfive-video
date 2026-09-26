@@ -1,10 +1,11 @@
 """Plain-text journal of the web service: who opened the page and when, which file was analysed and the outcome.
 
 One UTF-8 text file, entries appended in order and never rewritten: ~/bs3_data/logs/journal.txt (BS3_JOURNAL
-overrides). A result entry carries the clean main scores, the second opinion, the MBTI type of both systems and the
-paragraph «Коротко» of the characterization, the same as the page shows them. Visitor details come from the reverse proxy: X-Forwarded-For (client address) and X-Remote-User
-(login name from Caddy basic_auth); opened directly on the machine, the address is marked «локально».
-Writing the journal never breaks the page: every failure is logged and swallowed.
+overrides). A start entry names the model chosen for the analysis (BS Profiler 3.1: one model per analysis, Russian
+speech only). A result entry carries the clean scores of that model, its MBTI type and the paragraph «Коротко» of the
+characterization, the same as the page shows them. Visitor details come from the reverse proxy: X-Forwarded-For
+(client address) and X-Remote-User (login name from Caddy basic_auth); opened directly on the machine, the address is
+marked «локально». Writing the journal never breaks the page: every failure is logged and swallowed.
 """
 from __future__ import annotations
 
@@ -15,6 +16,8 @@ import threading
 import time
 from pathlib import Path
 
+from . import MODEL_TITLES
+
 log = logging.getLogger("bs3.journal")
 
 PATH = Path(os.environ.get("BS3_JOURNAL", "~/bs3_data/logs/journal.txt")).expanduser()
@@ -22,8 +25,7 @@ _lock = threading.Lock()
 
 TRAITS = (("openness", "открытость"), ("conscientiousness", "добросовестность"), ("extraversion", "экстраверсия"),
           ("agreeableness", "доброжелательность"), ("emotional_stability", "эмоциональная стабильность"))
-MEMBERS = {"oceanai": "OCEAN-AI", "mm": "своя модель", "scene": "SSL-MEPR (сцена)"}
-LANGS = {"ru": "русский", "en": "английский"}
+MEMBERS = {**MODEL_TITLES, "scene": "SSL-MEPR (сцена)"}
 _DEVICES = (("iPhone", "iPhone"), ("iPad", "iPad"), ("Android", "Android"), ("Windows", "Windows"),
             ("Macintosh", "Mac"), ("Linux", "Linux"))
 _BROWSERS = (("YaBrowser", "Яндекс Браузер"), ("Edg", "Edge"), ("OPR/", "Opera"), ("Firefox", "Firefox"),
@@ -79,10 +81,9 @@ def _scores(scores: dict) -> str:
 
 
 def result_lines(rep: dict) -> list[str]:
-    """Body of a result entry (design 10.6): the clean main scores (scores.clean_view), the second opinion (or both
-    members for the mean), the MBTI type of the main system and of the second opinion with their agreement, the
-    paragraph «Коротко» of the characterization and the job folder. The view, the type and the characterization are
-    built here from `rep`; nothing is written back."""
+    """Body of a result entry (design 10.6; one model since 3.1): the clean scores of the model the view shows
+    (scores.clean_view), its MBTI type, the paragraph «Коротко» of the characterization and the job folder. The view,
+    the type and the characterization are built here from `rep`; nothing is written back."""
     from . import characterization
     from .mbti import get_mbti, journal_lines
     from .scores import clean_view
@@ -90,23 +91,15 @@ def result_lines(rep: dict) -> list[str]:
     view = clean_view(rep)
     meta = view.get("view_meta") or {}
     model = view.get("model") or {}
-    primary = model.get("primary")
-    main_sys = meta.get("main_system") or primary
+    main_sys = meta.get("main_system") or model.get("selected") or model.get("primary")
     main = {k: (v.get("score") if isinstance(v, dict) else v) for k, v in (view.get("traits") or {}).items()}
-    if primary:
-        src = MEMBERS.get(main_sys, main_sys) + (", веса MuPTA" if main_sys == "oceanai" and model.get("lang") == "ru"
-                                                  else "")
-    else:
-        src = "среднее двух систем"
+    src = MEMBERS.get(main_sys, main_sys) + (", веса MuPTA" if main_sys == "oceanai" else "")
     line = f"Итог ({src}): {_scores(main)}"
     iv = view.get("interview")
     iv = iv.get("score") if isinstance(iv, dict) else iv
     if iv is not None:
         line += f"; «пригласил бы на собеседование» {float(iv):.2f}"
     lines = [line]
-    for m, v in (view.get("variant_scores") or {}).items():
-        if m != main_sys or not primary:
-            lines.append(f"{'Второе мнение' if primary else 'Участник'} ({MEMBERS.get(m, m)}): {_scores(v)}")
     mb = get_mbti(rep, view)
     lines += journal_lines(mb)
     short = re.sub(r"\s+", " ", characterization.build(view, mb).short_plain() or "").strip()
@@ -121,8 +114,10 @@ def visit(request) -> None:
     _write("ВХОД", request)
 
 
-def start(request, video, lang: str, explain: bool) -> None:
-    _write("СТАРТ", request, f"{_file(video)}, язык {LANGS.get(lang, lang)}, объяснения {'да' if explain else 'нет'}")
+def start(request, video, member: str, explain: bool) -> None:
+    """`member`: the model chosen for the analysis ("oceanai" | "mm"), written by its title."""
+    _write("СТАРТ", request, f"{_file(video)}, модель {MEMBERS.get(member, member)}, объяснения "
+                             f"{'да' if explain else 'нет'}")
 
 
 def result(request, rep: dict, wall_sec: float) -> None:

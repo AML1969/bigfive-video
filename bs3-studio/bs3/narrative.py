@@ -6,6 +6,7 @@ from typing import Dict, List
 
 import numpy as np
 
+from . import MODEL_TITLES
 from .norms import RU_TITLES, TRAIT_KEYS
 from .report import seg_label
 
@@ -13,9 +14,16 @@ MOD_RU = {"face": "лицо", "audio": "голос", "audio_whisper": "голо�
           "text": "содержание речи", "behavior": "описание поведения"}
 
 
-SYSTEM_RU = {"oceanai": "OCEAN-AI", "mm": "своя модель (MM-PSYCHE)", "scene": "SSL-MEPR (сцена)"}
+SYSTEM_RU = {**MODEL_TITLES, "scene": "SSL-MEPR (сцена)"}
 # grammatical gender of the modality names, for «почти не повлиял / повлияло»
 MOD_GENDER = {"лицо": "n", "голос": "m", "содержание речи": "n", "описание поведения": "n"}
+# where the scores come from, by the model that ran (one model per analysis since 3.1)
+SOURCE_RU = {
+    "oceanai": "Оценки дала система OCEAN-AI на весах MuPTA, обученных на русскоязычных участниках.",
+    "mm": ("Оценки дала модель AMLAI 1.0, построенная по рецепту MM-PSYCHE и обученная на First Impressions V2; "
+           "транскрипт русской речи для неё переведён на английский."),
+}
+SCALE_RU = "Уровни черт и буквы MBTI считаются по самой оценке модели на шкале от 0 до 1 с серединой 0.5."
 
 
 def plural_ru(n: int, forms: tuple) -> str:
@@ -87,14 +95,14 @@ def build_narrative(rep: dict, expl: dict | None = None) -> str:
     lang, primary = model.get("lang", "en"), model.get("primary")
     parts: List[str] = []
 
-    # 1. what the scores come from
-    if primary == "oceanai":
-        parts.append("Основные оценки дала система OCEAN-AI на весах MuPTA, обученных на русскоязычных участниках; своя модель "
-                     "показана как второе мнение.")
-    elif primary:
-        parts.append(f"Основные оценки дала система {SYSTEM_RU.get(primary, primary)}.")
+    # 1. what the scores come from (one model per analysis)
+    selected = model.get("selected") or primary
+    if selected in SOURCE_RU:
+        parts.append(SOURCE_RU[selected])
+    elif selected:
+        parts.append(f"Оценки дала система {SYSTEM_RU.get(selected, selected)}.")
     else:
-        parts.append("Оценки — среднее двух систем (OCEAN-AI и своей модели), обе на шкале First Impressions V2.")
+        parts.append("Оценки — среднее нескольких систем на шкале First Impressions V2.")
 
     # 2. traits that stand out
     order = sorted(TRAIT_KEYS, key=lambda k: -traits[k]["score"])
@@ -109,7 +117,7 @@ def build_narrative(rep: dict, expl: dict | None = None) -> str:
     iv = rep.get("interview")
     if iv:
         p = _pct_phrase(iv)
-        parts.append(f"Впечатление «пригласить на собеседование» по своей модели: {iv['score']:.2f}"
+        parts.append(f"Впечатление «пригласить на собеседование» по модели AMLAI 1.0: {iv['score']:.2f}"
                      + (f", {p}" if p else "") + ".")
 
     # 4. stability across segments
@@ -137,8 +145,8 @@ def build_narrative(rep: dict, expl: dict | None = None) -> str:
         weak = [m for m in mods if share[m] < 0.01]
         named = [f"{MOD_RU.get(m, m)} ({share[m] * 100:.0f}%)" for m in main]
         # «на лицо (57%), голос (37%) и описание поведения (4%)», not «… и … и …»
-        s = "Своя модель опиралась в основном на " + (", ".join(named[:-1]) + " и " + named[-1] if len(named) > 1
-                                                      else "".join(named))
+        s = "Модель AMLAI 1.0 опиралась в основном на " + (", ".join(named[:-1]) + " и " + named[-1] if len(named) > 1
+                                                            else "".join(named))
         if weak:
             names = list(dict.fromkeys(MOD_RU.get(m, m) for m in weak))
             verb = "почти не повлияли" if len(names) > 1 else (
@@ -158,51 +166,33 @@ def build_narrative(rep: dict, expl: dict | None = None) -> str:
             if downs:
                 s += "; в сторону понижения — " + ", ".join(f"«{w}»" for w in downs)
             parts.append(s + ".")
-
-    # 7. second opinion on another scale
-    var = rep.get("variant_scores") or rep.get("variants") or {}
-    if primary == "oceanai" and "mm" in var:
-        diff = float(np.mean([var["oceanai"][k] - var["mm"][k] for k in TRAIT_KEYS]))
-        parts.append(f"Своя модель, обученная на англоязычных влогерах, оценивает те же черты в среднем на {diff:.2f} ниже: "
-                     "это разница шкал двух систем, а не противоречие в выводах.")
     return " ".join(parts)
 
 
 def method_notes(view: dict, expl: dict | None = None) -> str:
-    """«Как получены оценки» (design 9): where the scores come from, the scale of levels and letters, how stable the
-    scores are over the video, the segments without the main system (C13) and, for Russian speech, why the two
-    systems are not averaged. Built on the clean view (scores.clean_view); replaces the Big Five part of the 2.0
-    summary. `expl` is accepted for the page and the PDF, which call it with the explanation at hand."""
+    """«Как получены оценки» (design 9; one model since 3.1): which model gave the scores, the scale of levels and
+    letters, how stable the scores are over the video and the segments without a score (C13). Built on the clean view
+    (scores.clean_view); replaces the Big Five part of the 2.0 summary. `expl` is accepted for the page and the PDF,
+    which call it with the explanation at hand."""
     from . import caveats
     meta = view.get("view_meta") or {}
-    lang, main = meta.get("lang", "en"), meta.get("main_system")
-    var = view.get("variant_scores") or {}
+    lang, main = meta.get("lang", "ru"), meta.get("main_system")
     parts: List[str] = []
-    if lang == "ru":
-        if meta.get("primary_missing"):
-            parts.append(caveats.text("C20"))
-        else:
-            parts.append("Основные оценки дала система OCEAN-AI на весах MuPTA, обученных на русскоязычных участниках; "
-                         "своя модель MM-PSYCHE показана как второе мнение и в основные оценки не входит.")
-        parts.append("Уровни черт и буквы MBTI считаются по самой оценке системы на шкале от 0 до 1 с серединой 0.5, "
-                     "отдельно для каждой системы.")
+    if meta.get("primary_missing"):
+        parts.append(caveats.text("C20"))
     else:
-        parts.append("Оценки — среднее двух систем, OCEAN-AI (веса First Impressions V2) и своей модели MM-PSYCHE; обе "
-                     "на шкале First Impressions V2.")
-        parts.append("Уровни черт и буквы MBTI считаются по самой оценке на шкале от 0 до 1 с серединой 0.5; процентили "
-                     "на полосках — относительно оценок наблюдателей в обучающей выборке First Impressions V2 "
-                     "(6000 роликов).")
+        parts.append(SOURCE_RU.get(main) or f"Оценки дала система {SYSTEM_RU.get(main, main)}.")
+    parts.append(SCALE_RU)
+    if lang != "ru":
+        parts.append("Процентили на полосках — относительно оценок наблюдателей в обучающей выборке First Impressions "
+                     "V2 (6000 роликов).")
 
-    # stability over the segments the main system scored
+    # stability over the segments the model scored
     tl = [t for t in (view.get("timeline") or []) if t.get("scores")]
     std = view.get("scores_std_across_segments") or view.get("scores_std") or {}
     if tl and std:
         n = len(tl)
-        if lang == "ru":
-            who = "OCEAN-AI" if main == "oceanai" else "своей модели"
-            count = f"{n} {plural_ru(n, ('отрезок', 'отрезка', 'отрезков'))} с оценкой {who}"
-        else:
-            count = f"{n} {plural_ru(n, ('отрезок', 'отрезка', 'отрезков'))}"
+        count = f"{n} {plural_ru(n, ('отрезок', 'отрезка', 'отрезков'))} с оценкой {MODEL_TITLES.get(main, main)}"
         worst = max(TRAIT_KEYS, key=lambda k: std.get(k, 0))
         if std.get(worst, 0) <= 0.05:
             parts.append(f"По ходу ролика ({count}) оценки устойчивы: разброс не больше ±{std[worst]:.2f}.")
@@ -216,17 +206,6 @@ def method_notes(view: dict, expl: dict | None = None) -> str:
     dropped = meta.get("segments_without_primary") or []
     if dropped:
         parts.append(caveats.c13(len(dropped), int(meta.get("segments_total") or len(dropped))))
-
-    if lang == "ru" and main == "oceanai" and isinstance(var.get("oceanai"), dict) and isinstance(var.get("mm"), dict):
-        try:
-            diff = float(np.mean([float(var["oceanai"][k]) - float(var["mm"][k]) for k in TRAIT_KEYS]))
-        except (KeyError, TypeError, ValueError):
-            diff = None
-        if diff is not None and round(abs(diff), 2) > 0:
-            # this recording's own difference only: no rule drawn from other videos
-            parts.append(f"Своя модель обучена на англоязычных роликах First Impressions V2 и работает на своей шкале: "
-                         f"на этой записи её оценки в среднем на {abs(diff):.2f} {'ниже' if diff > 0 else 'выше'}, чем "
-                         "у OCEAN-AI, поэтому оценки двух систем не усредняются, а тип MBTI каждой показан отдельно.")
     return " ".join(parts)
 
 
@@ -323,7 +302,8 @@ def words_summary(rw_all: Dict[str, dict], expl: dict | None, titles: Dict[str, 
             s += " Разные черты реагируют на разные слова. " + " ".join(lines)
         out.append(s)
     if out:
-        out.append("Что это значит: своя модель судит в основном по лицу и голосу, а слова показывают, на какие формулировки она "
-                   "откликается; итоговые оценки от слов почти не зависят." if weak_all else
-                   "«Поднимали» — слово сдвигало оценку черты вверх, «снижали» — вниз; это реакция своей модели, а не смысл слов сам по себе.")
+        out.append("Что это значит: модель AMLAI 1.0 судит в основном по лицу и голосу, а слова показывают, на какие "
+                   "формулировки она откликается; итоговые оценки от слов почти не зависят." if weak_all else
+                   "«Поднимали» — слово сдвигало оценку черты вверх, «снижали» — вниз; это реакция модели AMLAI 1.0, а не "
+                   "смысл слов сам по себе.")
     return out

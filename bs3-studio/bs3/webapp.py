@@ -1,4 +1,5 @@
-"""BS Profiler 3.0 web UI (Gradio): Big Five + emotions, voice, face and speech analytics with interactive charts.
+"""BS Profiler 3.1 web UI (Gradio): Big Five by the model chosen for the analysis (OCEAN-AI or AMLAI 1.0, Russian
+speech) + emotions, voice, face and speech analytics with interactive charts.
 
 Run:  bs3 web [--port 7880]      (inside WSL; open http://localhost:7880 on Windows). Независим от BS 2.0 (:7870).
 
@@ -16,7 +17,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import PRODUCT, PRODUCT_SLUG, caveats, characterization, journal, mbti_html
+from . import DEFAULT_MODEL, MODEL_TITLES, PRODUCT, PRODUCT_SLUG, caveats, characterization, journal, mbti_html
 from .charts import (EMO_RU, VOICE_RU, fig_emotion_bars, fig_emotions_timeline, fig_face_expr, fig_radar,
                      fig_speech_timeline, fig_traits_timeline, fig_voice_timeline, plot_html as _plot_html)
 from .mbti import fact_card, get_mbti
@@ -332,10 +333,10 @@ def analysis_error_ru(e: BaseException) -> str:
     if "out of memory" in low:
         return "Не хватило памяти видеокарты. Подождите минуту и запустите анализ заново."
     if "no segment could be analysed" in low or "no predictions for any file" in low or "no frames decoded" in low:
-        return "В ролике не найдено ни лица, ни речи, поэтому оценить его нельзя. Проверьте файл и выбранный язык речи."
+        return "В ролике не найдено ни лица, ни речи, поэтому оценить его нельзя. Проверьте файл."
     if "all ensemble members failed" in low:
-        return ("Ни одна из систем оценки не смогла обработать ролик: чаще всего в кадре не найдено лицо или не слышна "
-                "речь. Проверьте файл и выбранный язык речи.")
+        return ("Модель не смогла обработать ролик: чаще всего в кадре не найдено лицо или не слышна речь. "
+                "Проверьте файл.")
     if isinstance(e, subprocess.CalledProcessError):
         return "Не удалось прочитать видеофайл: возможно, он повреждён или записан в неподдерживаемом формате."
     if re.search(r"[А-Яа-яЁё]", msg) and not re.search(r"[A-Za-z]", msg):
@@ -497,10 +498,12 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
     def render(rep: dict) -> tuple:
         return page_outputs(rep) + (gr.update(interactive=True),)
 
-    def analyze(video, lang, explain, request: gr.Request):
+    def analyze(video, member, explain, request: gr.Request):
+        """`member`: the model chosen on the page ("oceanai" | "mm"); the speech is Russian (pipeline)."""
         if not video:
             raise gr.Error("Загрузите видео", title=ERROR_TITLE)
-        journal.start(request, video, lang, explain)
+        member = member if member in MODEL_TITLES else DEFAULT_MODEL
+        journal.start(request, video, member, explain)
         state = {"frac": 0.0, "desc": "запуск", "t0": time.time()}
 
         def cb(frac, desc=None, **kw):
@@ -511,7 +514,7 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
 
         def work():
             try:
-                result["r"] = run_analysis(studio, work_dir, video, lang, explain, progress=cb)
+                result["r"] = run_analysis(studio, work_dir, video, member=member, explain=explain, progress=cb)
             except BaseException as e:  # noqa: BLE001
                 result["e"] = e
 
@@ -527,7 +530,7 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
             if isinstance(e, AnalysisCancelled):
                 journal.failed(request, video, "остановлено пользователем", stopped=True)
                 yield (_status_html(state["frac"], "по запросу пользователя", state="stopped"),) + (gr.update(),) * N_REST
-                raise gr.Error("Обработка остановлена. Проверьте язык речи и запустите заново.", title="Остановлено")
+                raise gr.Error("Обработка остановлена. Запустите анализ заново.", title="Остановлено")
             log.error("analysis failed", exc_info=(type(e), e, e.__traceback__))
             msg = analysis_error_ru(e)
             journal.failed(request, video, msg)
@@ -581,9 +584,9 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
         with gr.Row(elem_classes=["bs3-pair"]):
             with gr.Column(scale=1, min_width=320):
                 video = gr.Video(label="Видео", sources=["upload"], height=VIDEO_H)
-                lang = gr.Radio(choices=[("русский", "ru"), ("английский", "en")], value="ru", label="Язык речи",
-                                info="Русский: основную оценку даёт OCEAN-AI (веса MuPTA), своя модель — второе мнение. "
-                                     "Английский: среднее двух систем.")
+                # 3.1: the model is chosen by hand, one model runs per analysis; the speech is always Russian
+                model = gr.Radio(choices=[(MODEL_TITLES[m], m) for m in ("oceanai", "mm")], value=DEFAULT_MODEL,
+                                 label="Модель")
                 explain = gr.Checkbox(value=True, label="Объяснения (ключевые кадры, вклад модальностей, слова)")
                 with gr.Row():
                     btn = gr.Button("Анализировать", variant="primary")
@@ -646,7 +649,7 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
                    seg_table, speech_html, transcript, face_html, face_plot, gallery, contrib, words_detail, desc, members,
                    raw, path, job_state, method, emo_intro, mbti_types, mbti_strip, mbti_read, pdf_btn]
         assert len(outputs) == N_REST + 1
-        run_ev = btn.click(analyze, inputs=[video, lang, explain], outputs=outputs, show_progress="hidden", api_name=False)
+        run_ev = btn.click(analyze, inputs=[video, model, explain], outputs=outputs, show_progress="hidden", api_name=False)
         stop_btn.click(stop, inputs=None, outputs=[status], cancels=[run_ev], show_progress="hidden", api_name=False)
         pdf_btn.click(make_pdf, inputs=[job_state], outputs=[pdf_btn], api_name=False)
 
@@ -669,16 +672,16 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
     return demo
 
 
-def main(port: int = 7880, members: str = "oceanai,mm", work_dir: str | None = None, share: bool = False,
+def main(port: int = 7880, work_dir: str | None = None, share: bool = False,
          asr_model: str = "openai/whisper-large-v3-turbo", ollama_model: str = "qwen2.5vl:7b", mm_ckpt: str | None = None,
          host: str = "0.0.0.0"):
+    """The page picks the model per analysis (OCEAN-AI or AMLAI 1.0); the Studio loads each one on first use."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     os.environ.setdefault("no_proxy", "localhost,127.0.0.1,0.0.0.0")
     os.environ.setdefault("NO_PROXY", "localhost,127.0.0.1,0.0.0.0")
     wd = Path(work_dir or os.path.expanduser("~/bs3_data/web_jobs"))
     wd.mkdir(parents=True, exist_ok=True)
-    studio = Studio(members=tuple(m.strip() for m in members.split(",") if m.strip()), asr_model=asr_model,
-                    ollama_model=ollama_model, mm_ckpt=mm_ckpt)
+    studio = Studio(asr_model=asr_model, ollama_model=ollama_model, mm_ckpt=mm_ckpt)
     demo = build_app(studio, wd)
     # allowed_paths: key-frame JPEGs live in the job folder, Gradio 5 refuses to serve files outside it
     demo.queue(default_concurrency_limit=1).launch(server_name=host, server_port=port, share=share, show_api=False,

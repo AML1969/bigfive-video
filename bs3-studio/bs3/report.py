@@ -4,7 +4,7 @@ import datetime as _dt
 import re
 from pathlib import Path
 
-from . import PRODUCT, __version__
+from . import MODEL_TITLES, PRODUCT, __version__
 from .norms import RU_NAMES, TRAIT_KEYS, percentile
 
 DISCLAIMER = ("Apparent personality as perceived by observers (First Impressions V2 style); "
@@ -60,10 +60,16 @@ def mmss_labels(text) -> str:
 
 def build_report(video: str | Path, result: dict, *, backend: str, corpus: str, lang: str,
                  asr_model: str | None, modalities=("audio", "video", "text"),
-                 pool_lang: str | None = None, primary: str | None = None) -> dict:
+                 pool_lang: str | None = None, primary: str | None = None, selected: str | None = None) -> dict:
     """`pool_lang`: the main score is on a scale other than FIV2 (OCEAN-AI MuPTA for Russian): the traits get the score
     only, with no percentile (FIV2 norms do not apply, and no group of processed videos is compared with — change of
-    2026-09-26). `primary`: the ensemble member that supplied the main score (None = mean of the members)."""
+    2026-09-26). `primary`: the ensemble member that supplied the main score (None = mean of the members).
+    `selected`: the model the user chose for this analysis (BS Profiler 3.1: "oceanai" | "mm"; the only one that ran):
+    recorded as `model.selected` with its title in `model.selected_title`, and it is the `primary` unless told
+    otherwise."""
+    selected = selected or (primary if primary in MODEL_TITLES else None)
+    primary = primary or selected
+    own_scale = selected == "oceanai" and lang == "ru"          # MuPTA weights; the own model lives on the FIV2 scale
     traits = {}
     for k in TRAIT_KEYS:
         s = result["scores"][k]
@@ -78,7 +84,7 @@ def build_report(video: str | Path, result: dict, *, backend: str, corpus: str, 
         s = result["scores"]["interview"]
         pct = percentile("interview", s)
         extra["interview"] = {"score": round(s, 4), "percentile": pct, "percentile_vs_fiv2": pct,
-                              "percentile_ref": FIV2_REF + ", своя модель",
+                              "percentile_ref": FIV2_REF + f", {MODEL_TITLES['mm']}",
                               "name_ru": "впечатление «пригласить на собеседование»", "disclaimer": INTERVIEW_DISCLAIMER}
     if result.get("behavior_description"):
         extra["behavior_description"] = result["behavior_description"]
@@ -91,7 +97,9 @@ def build_report(video: str | Path, result: dict, *, backend: str, corpus: str, 
         "modalities_used": list(modalities),
         "model": {"name": "bs-bigfive", "version": __version__, "product": PRODUCT, "backend": backend, "corpus": corpus,
                   "lang": lang, "asr_model": asr_model, "primary": primary,
-                  "trained_on": "FIV2 train" if corpus == "fi" else "MuPTA",
+                  "selected": selected, "selected_title": MODEL_TITLES.get(selected) if selected else None,
+                  "trained_on": ("MuPTA" if own_scale else "FIV2 train") if selected else (
+                      "FIV2 train" if corpus == "fi" else "MuPTA"),
                   "scale": ("MuPTA (OCEAN-AI, русская речь)" if primary == "oceanai" and lang == "ru"
                             else "FIV2 (First Impressions V2)")},
         "timings_sec": {"total": result.get("seconds")},

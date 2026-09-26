@@ -1,7 +1,8 @@
-"""PDF of BS Profiler 3.0 (design 10.7; tasks T21, T27) on the numeric copies of samples A and B: the plan puts the
+"""PDF of BS Profiler 3.1 (design 10.7; tasks T21, T27) on the numeric copies of samples A and B: the plan puts the
 section «Тип MBTI» right after the Big Five section, the report builds without charts and media, its text has the
-characterization, the MBTI section with the letter strip and «Как получены оценки» and nothing of the 2.0 summary;
-the appendix «Значения по отрезкам» has the MBTI column with a dash on the segments without OCEAN-AI."""
+characterization, the MBTI section of one model with the letter strip and «Как получены оценки», no second opinion
+and nothing of the 2.0 summary; the appendix «Значения по отрезкам» has the MBTI column with a dash on the segments
+without OCEAN-AI."""
 from __future__ import annotations
 
 import re
@@ -13,6 +14,7 @@ from pathlib import Path
 from samples import english, rep
 
 from bs3 import caveats, characterization, mbti, pdf_mbti, pdf_report, scores
+from bs3.norms import TRAIT_KEYS
 
 
 def _parts(r: dict):
@@ -78,14 +80,17 @@ def test_pdf_builds_and_reads():
             continue
         for s in ("Характеристика личности", "Коротко.", "Границы вывода.", "Ключевые факты", "Тип MBTI · OCEAN-AI",
                   "Big Five: профиль и оценки", "Как получены оценки", "2. Тип MBTI (перевод шкал Big Five)",
-                  "Тип по ходу ролика", "Как читать тип MBTI", "Как читать результаты", "BS Profiler 3.0 · стр.",
+                  "Тип по ходу ролика", "Как читать тип MBTI", "Как читать результаты", "BS Profiler 3.1 · стр.",
                   mb["type"], mb["type_strict"]):
             assert s in text, (name, s)
-        for code in ("C8", "C9", "C16", "C18", "C11", "C15"):
+        for code in ("C8", "C9", "C16", "C11", "C15"):
             assert caveats.text(code)[:60] in text, (name, code)
+        assert caveats.text("C18")[:60] not in text, name                          # one model: no second strip
         for bad in ("Краткие выводы", "сегмент", "определяет тип личности", "опорн", "положени", "типичн",
                     "русских роликов", "обработанных системой", "предварительн", "большинства", "Согласие двух систем",
-                    "Вторая система", "на русских роликах", "на русской речи её", "порядок черт"):
+                    "Вторая система", "на русских роликах", "на русской речи её", "порядок черт", "торое мнение",
+                    "Уверенных совпадений", "хотя бы у одной из систем", "BS Profiler 3.0", "ISXX", "IXXX", "ISTP",
+                    "ISTJ"):
             assert bad not in text.replace("не определяет тип личности", ""), (name, bad)
         appx = text.split("Значения по отрезкам")[-1]
         assert " MBTI " in appx, name
@@ -94,23 +99,37 @@ def test_pdf_builds_and_reads():
     text = _text(path)
     if text is not None:
         assert "ENFJ во всех 26 отрезках с оценкой; все четыре оси совпадают с итогом во всех отрезках" in text
-        assert "Уверенных совпадений нет; расходятся E–I, S–N; на границе хотя бы у одной из систем: T–F, J–P." in text
         assert "F, отчётливо (0.74)" in text and "E, умеренно (0.46)" in text
         assert "Число в скобках после буквы — уверенность по оси" in text          # the number is labelled
-        assert "Второе мнение — своя модель, обученная на англоязычных роликах First Impressions V2" in text
+        assert "Согласие" not in text
         appx = text.split("Значения по отрезкам")[-1]
         assert "ENFJ" in appx
         assert "«—» в столбцах Big Five и MBTI" in appx
 
 
-def test_pdf_english():
-    path, mb = _build(english("B"))
-    assert path.exists() and mb["source"] == "mean"
+def test_pdf_own_model():
+    """A job of AMLAI 1.0 (3.1): the PDF names its type and no OCEAN-AI type; no second opinion."""
+    r = rep("B")
+    r["model"].update({"selected": "mm", "primary": "mm", "selected_title": "AMLAI 1.0"})
+    mm = {k: r["variant_scores"]["mm"][k] for k in TRAIT_KEYS}
+    r["variant_scores"] = {"mm": r["variant_scores"]["mm"]}
+    for t in r["timeline"]:                    # a 3.1 job: the segments carry the own model's scores
+        t.update({"members_used": ["mm"], "primary_used": "mm", "variants": {"mm": dict(mm)}, "scores": dict(mm)})
+    path, mb = _build(r)
+    assert path.exists() and mb["source"] == "own_model" and mb["type"] == "ISXX"
     text = _text(path)
     if text is not None:
-        assert "Итог — среднее двух систем" in text and "OCEAN-AI (веса First Impressions V2)" in text
+        assert "ISXX" in text and "ISTP" in text and "ENFJ" not in text
+        assert "торое мнение" not in text and caveats.text("C20")[:40] not in text
+
+
+def test_pdf_old_english_job():
+    path, mb = _build(english("B"))
+    assert path.exists() and mb["source"] == "ocean_ai"
+    text = _text(path)
+    if text is not None:
+        assert "среднее двух систем" not in text and "торое мнение" not in text
         assert "пороги предварительные" not in text
-        assert caveats.c6("en")[:60] in text and caveats.c7("en")[:60] in text
 
 
 def test_build_pdf_computes_missing_parts():

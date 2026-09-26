@@ -1,22 +1,22 @@
 """HTML of the tab «Тип MBTI» and of the short emotion paragraph (design 10.3, 5.5–5.7; task T18).
 
-- `types_html(mb)` — the panels of the systems side by side (on a narrow screen one under the other): letters of the
-  type, its name, the type with the borderline axes, four axis tracks with the score on 0…1 (the borderline zone 0.35–0.65 shaded), the
-  agreement of the second system axis by axis, neuroticism on its own track, and the agreement line under the panels;
+- `types_html(mb)` — the panel of the model that ran (one model since 3.1): letters of the type, its name, the type
+  with the borderline axes, four axis tracks with the score on 0…1 (the borderline zone 0.35–0.65 shaded) and
+  neuroticism on its own track;
 - `strip_html(mb)` — the letter strip «Тип по ходу ролика»: one column per segment, letters as text (bold — clear,
-  normal — moderate, dashed frame — on the border, «—» on hatching — no score), the summary line and C8 (C18, C19);
+  normal — moderate, dashed frame — on the border, «—» on hatching — no score), the summary line and C8 (C19);
 - `read_html(mb)` — «Как читать тип MBTI»: the correspondence table 5.5 and the caveats C3, C4, C5, C6, C7, C9, C16;
 - `emo_intro_html(view)` — «Эмоции и голос: коротко»: the text-emotion and voice sentences in one paragraph.
 
-No new colours (design 13.4): outlines are palette.HTML track_outline, the main marker main_fill, the second one the
-text colour at .55; agreement is said in words and signs, not by colour. Text colours come from the theme.
+No new colours (design 13.4): outlines are palette.HTML track_outline, the marker main_fill. Text colours come from
+the theme.
 """
 from __future__ import annotations
 
 import html as _html
 
 from . import caveats
-from .mbti import AXES, AXIS_LABEL, BORDER_RU, SIGN, agreement_line, border_text, load_config
+from .mbti import AXES, AXIS_LABEL, border_text, load_config
 from .norms import RU_NAMES
 from .palette import HTML as PAL
 from .scores import LEVELS_RU, level_phrase, plural_ru, score_text
@@ -24,7 +24,6 @@ from .webparts import NOTE, table_html, th_text
 
 OUTLINE = PAL["track_outline"]
 HATCH = "repeating-linear-gradient(45deg,rgba(128,128,128,.25) 0 3px,transparent 3px 6px)"
-AGREE_RU = {"agree": "совпадает", "differ": "расходится", "border": BORDER_RU}
 TEXT14 = "font-size:14px;line-height:1.5"
 # 5.5: axis, Big Five scale, direction, correspondence of the scales (r from config/mbti.json)
 TABLE_ROWS = (("EI", "Экстраверсия", "выше → E"), ("SN", "Открытость опыту", "выше → N"),
@@ -123,7 +122,7 @@ def _poles(left: str, right: str) -> str:
             f"<span>{_e(left)}</span><span style='text-align:right'>{_e(right)}</span></div>")
 
 
-def _axis_row(ax: str, a: dict, cfg: dict, marker: str, agree: str | None) -> str:
+def _axis_row(ax: str, a: dict, cfg: dict, marker: str) -> str:
     trait, high, low = cfg["axes"][ax]
     poles = cfg.get("pole_names_ru") or {}
     corr = (cfg.get("correspondence") or {}).get(ax) or {}
@@ -143,11 +142,9 @@ def _axis_row(ax: str, a: dict, cfg: dict, marker: str, agree: str | None) -> st
         lvl = f"{RU_NAMES[trait]} {score_text(p)} — {lp}" if lp else ""
     parts = [head, word, lvl] + ([f"соответствие шкал r ≈ {corr['r']}"] if corr.get("r") is not None else [])
     sub = " · ".join(x for x in parts if x)
-    sign = (f"<div style='font-size:13px;margin-top:2px'><b>{_e(SIGN[agree])}</b> {_e(AGREE_RU[agree])}</div>"
-            if agree else "")
     aria = f"{AXIS_LABEL[ax]}: " + (head if a.get("missing") else f"{head}, {a.get('word')}")
     return (f"<div style='margin:10px 0 0'>{_poles(f'{low} · {poles.get(low, low)}', f'{poles.get(high, high)} · {high}')}"
-            f"{_track(p, marker, aria)}<div style='font-size:13px;opacity:.75;line-height:1.4'>{_e(sub)}</div>{sign}</div>")
+            f"{_track(p, marker, aria)}<div style='font-size:13px;opacity:.75;line-height:1.4'>{_e(sub)}</div></div>")
 
 
 def _neuro_row(item: dict, marker: str) -> str:
@@ -160,13 +157,12 @@ def _neuro_row(item: dict, marker: str) -> str:
             "отдельно.</div></div>")
 
 
-def _panel(item: dict, lang: str, main: bool, cfg: dict, agree: dict | None) -> str:
+def _panel(item: dict, lang: str, main: bool, cfg: dict) -> str:
     names = cfg.get("type_names_ru") or {}
     marker = f"background:{PAL['main_fill']}" if main else "background:currentColor;opacity:.55"
     x = int(item.get("x_count") or 0)
     name = item.get("type_name") if x <= 2 else None
-    rows = "".join(_axis_row(ax, (item.get("axes") or {}).get(ax) or {"missing": True}, cfg, marker,
-                             (agree or {}).get(ax)) for ax in AXES)
+    rows = "".join(_axis_row(ax, (item.get("axes") or {}).get(ax) or {"missing": True}, cfg, marker) for ax in AXES)
     return (f"<div style='border:1px solid {OUTLINE};border-radius:8px;padding:12px;min-width:0'>"
             f"<div style='font-size:15px;font-weight:600;line-height:1.4;margin-bottom:8px'>"
             f"{_e(_panel_title(item, lang, main))}</div>"
@@ -177,25 +173,17 @@ def _panel(item: dict, lang: str, main: bool, cfg: dict, agree: dict | None) -> 
 
 
 def types_html(mb: dict | None) -> str:
-    """«Тип MBTI по двум системам»: the panels and the agreement line (5.6); C21 without Big Five."""
+    """«Тип MBTI»: the panel of the model that ran (5.6; one model since 3.1); C21 without Big Five."""
     if not mb:
         return f"<p style='{TEXT14};margin:0'>{_e(caveats.text('C21'))}</p>"
     cfg = load_config()
     lang = _lang(mb)
-    agr = mb.get("agreement") or {}
-    pair = agr.get("pair") or []
-    marks_for = pair[1] if len(pair) == 2 else None
-    panels = [_panel(mb, lang, True, cfg, None)]
-    for s in mb.get("second") or []:
-        agree = agr.get("axes") if (marks_for and s.get("source") == marks_for) else None
-        panels.append(_panel(s, lang, False, cfg, agree))
-    line = agreement_line(agr) if agr else ""
+    panels = [_panel(mb, lang, True, cfg)]
     tail = ""
-    if lang == "ru" and mb.get("source") == "own_model":
+    if lang == "ru" and mb.get("source") == "own_model" and mb.get("primary_missing"):
         tail = f"<p style='{NOTE};margin:8px 0 0'>{_e(caveats.text('C20'))}</p>"
     return ("<div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:12px'>"
-            + "".join(panels) + "</div>"
-            + (f"<p style='{TEXT14};margin:10px 0 0'>{_e(line)}</p>" if line else "") + tail)
+            + "".join(panels) + "</div>" + tail)
 
 
 # --------------------------------------------------------------------------------------------- letter strip ---
@@ -284,43 +272,22 @@ LEGEND = ("Жирная буква — ось выражена отчётлив�
 
 
 def strip_html(mb: dict | None) -> str:
-    """«Тип по ходу ролика» (5.7): the strip of the main system, below it the second system's strip when it has
-    scores on at least half of the segments; the summary line, C8, and C18 / C19 when needed."""
+    """«Тип по ходу ролика» (5.7): the strip of the model that ran (one model since 3.1), the summary line, C8, and
+    C19 for a video analysed as one segment."""
     if not mb:
         return ""
-    lang = _lang(mb)
-    main_who = "Основная система" if lang == "ru" else "Среднее двух систем"
+    main_who = "Основная система"
     entries = mb.get("timeline") or []
     total = int(mb.get("segments_total") or len(entries) or 1)
-    notes = []
     if total <= 1 or not entries:
         return f"<p style='{TEXT14};margin:0'>{_e(caveats.text('C19'))}</p>"
-    lanes = []
     title_main = ("OCEAN-AI — основная оценка" if mb.get("source") == "ocean_ai" else
-                  "Своя модель — основная оценка" if mb.get("source") == "own_model" else "Среднее двух систем")
-    lanes.append(_lane(entries, title_main, "OCEAN-AI" if mb.get("source") == "ocean_ai" else "основной системы"))
-    lines = [summary_line(mb, main_who)]
-    missing_second = False
-    for s in mb.get("second") or []:
-        tl = s.get("timeline")
-        name = {"ocean_ai": "OCEAN-AI", "own_model": "Своя модель"}.get(s.get("source"), str(s.get("source")))
-        if not tl:
-            missing_second = True
-            continue
-        typed = sum(1 for e in tl if e.get("type_strict"))
-        if typed * 2 < len(tl):
-            continue
-        lanes.append("<div style='height:12px'></div>"
-                     + _lane(tl, name + (" — второе мнение" if lang == "ru" else ""), name))
-        lines.append(summary_line(s, name))
-    if missing_second:
-        notes.append(caveats.text("C18"))
-    body = "".join(lanes)
-    summary = " ".join(x for x in lines if x)
+                  "Своя модель — основная оценка" if mb.get("source") == "own_model" else str(mb.get("source")))
+    body = _lane(entries, title_main, "OCEAN-AI" if mb.get("source") == "ocean_ai" else "основной системы")
+    summary = summary_line(mb, main_who)
     return (body + f"<div style='{NOTE};margin-top:6px'>{_e(LEGEND)}</div>"
             + (f"<p style='{TEXT14};margin:10px 0 0'>{_e(summary)}</p>" if summary else "")
-            + f"<p style='{NOTE};margin:8px 0 0'>{_e(caveats.text('C8'))}</p>"
-            + "".join(f"<p style='{NOTE};margin:6px 0 0'>{_e(t)}</p>" for t in notes))
+            + f"<p style='{NOTE};margin:8px 0 0'>{_e(caveats.text('C8'))}</p>")
 
 
 # ------------------------------------------------------------------------------------------- how to read ---

@@ -1,5 +1,5 @@
-"""Re-render finished sample jobs with BS Profiler 3.0 without a new analysis and check the page and the PDF (design
-13.3, items 1-5; tasks T20, T22).
+"""Re-render finished sample jobs with BS Profiler 3.1 without a new analysis and check the page and the PDF (design
+13.3, items 1-5; tasks T20, T22; 3.1: one model — imported 2.0 jobs render as OCEAN-AI only).
 
     ~/bs/venv/bin/python bs3-studio/scripts/rerender_samples.py A=~/bs2_data/web_jobs/<id> B=~/bs2_data/web_jobs/<id>
                                                                 [--html-dir DIR] [--pdf-dir DIR]
@@ -12,17 +12,18 @@ For every job:
 1. sha256 of every file of the source job (except segments/ and seg*.mp4) is taken;
 2. import_job.py copies result.json and explain/ into ~/bs3_data/web_jobs/<id>/ (an existing copy is replaced);
 3. webapp.page_outputs runs on the copy and the page is checked: 27 values; the characterization starts with its
-   header and «Коротко»; the first key fact is the MBTI card; the MBTI panels carry the agreement line; the main system
-   has a letter strip; the own model of an old job gets C18; segments without the main system are gaps on the
+   header and «Коротко»; the first key fact is the MBTI card; the view and the `mbti` section hold one model (the
+   recorded one: OCEAN-AI for an imported 2.0 job), the tab «Тип MBTI» shows one panel and one letter strip, no
+   agreement line, no C18, and no block of the page says «второе мнение»; segments without the model are gaps on the
    timeline chart and are named by C13 in «Как получены оценки»; «Краткие выводы» appears nowhere; result.json of
    the copy gets no `mbti` section; nothing on the page mentions a group of processed videos (reference group,
-   position, «типичный», percentiles of Russian speech), and the characterization does not compare the two systems
-   (change of 2026-09-26);
+   position, «типичный», percentiles of Russian speech), and the characterization does not compare two systems
+   (changes of 2026-09-26);
 4. webapp.export_pdf runs on the copy: the PDF is built; its text (pdftotext) contains «Характеристика личности»,
-   «Тип MBTI (перевод шкал Big Five)», «Как получены оценки», «BS Profiler 3.0 · стр.», the type of the main system
-   and, in the appendix «Значения по отрезкам», the type of every typed segment; it does not contain «Краткие
-   выводы», «сегмент» (outside the transcript, which is the person's own speech), the name of the old version or
-   anything about a group of processed videos; it
+   «Тип MBTI (перевод шкал Big Five)», «Как получены оценки», «BS Profiler 3.1 · стр.», the type of the model and, in
+   the appendix «Значения по отрезкам», the type of every typed segment; it does not contain «Краткие выводы»,
+   «сегмент» (outside the transcript, which is the person's own speech), «второе мнение», the name of the old version
+   or anything about a group of processed videos; it
    has at most 2 pages more than the PDF of the old version in the source job (when there is one);
 5. sha256 of the source job is taken again and must not have changed.
 
@@ -43,21 +44,22 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from import_job import import_job, tree_sha256  # noqa: E402
 
-# golden values of the design samples (design 13.2, recomputed for the absolute scale of 2026-09-26): types,
-# agreement, the clean extraversion, segments without OCEAN-AI and the summary of the letter strip
+from bs3 import PRODUCT  # noqa: E402
+
+# golden values of the design samples (design 13.2, recomputed for the absolute scale of 2026-09-26; 3.1: OCEAN-AI
+# only): type, the clean extraversion, segments without OCEAN-AI and the summary of the letter strip
 EXPECT = {
-    "A": {"type": "XNFJ", "type_strict": "ENFJ", "alternatives": ["INFJ"], "second": ("IXXX", "ISTJ"),
-          "agreement": {"EI": "border", "SN": "border", "TF": "border", "JP": "border"},
+    "A": {"type": "XNFJ", "type_strict": "ENFJ", "alternatives": ["INFJ"],
           "extraversion": "0.56", "dropped": [16], "header": ["ENFJ", "«Наставник»", "ось E–I на границе"],
           # the strict letters never change, but no segment has a confident ENFJ (scores rounded to two decimals)
           "strip": ("строгий тип ENFJ во всех 17 отрезках с оценкой; строгие буквы всех четырёх осей совпадают с "
                     "итогом во всех отрезках; ось E–I на границе во всех 17 отрезках, S–N — в 7, T–F — в 6, "
                     "J–P — в 6")},
-    "B": {"type": "ENFJ", "type_strict": "ENFJ", "alternatives": [], "second": ("ISXX", "ISTP"),
-          "agreement": {"EI": "differ", "SN": "differ", "TF": "border", "JP": "border"},
+    "B": {"type": "ENFJ", "type_strict": "ENFJ", "alternatives": [],
           "extraversion": "0.73", "dropped": [10, 11, 12, 14, 15, 26, 33], "header": ["ENFJ", "«Наставник»"],
           "strip": "ENFJ во всех 26 отрезках с оценкой; все четыре оси совпадают с итогом во всех отрезках"},
 }
+SECOND_OPINION = re.compile(r"втор(?:ое|ого) мнени|second_opinion", re.I)
 # nothing about a group of processed videos anywhere (change of 2026-09-26), including a rule drawn from them
 # («на русских роликах её значения ниже»): a difference of the two systems is given for this recording only
 RELATIVE = re.compile(r"опорн|положени[ея] (?:в|среди|оценки)|типичн|\d+ русск\w* ролик|среди (?:тех же )?русских|"
@@ -88,10 +90,11 @@ def _page(title: str, blocks: list[tuple[str, str]]) -> str:
             f"<style>{PAGE_CSS}</style></head><body>{body}</body></html>")
 
 
-PDF_MUST = ("Характеристика личности", "Тип MBTI (перевод шкал Big Five)", "Как получены оценки", "BS Profiler 3.0 · стр.")
+PDF_MUST = ("Характеристика личности", "Тип MBTI (перевод шкал Big Five)", "Как получены оценки", f"{PRODUCT} · стр.")
 PDF_MUST_NOT = (("Краткие выводы", re.compile(r"Краткие выводы")), ("сегмент", re.compile(r"сегмент", re.I)),
-                ("the name of the old version", re.compile(r"BS\s+2\.0")),
-                ("a group of processed videos", RELATIVE), ("«Согласие двух систем»", re.compile(r"Согласие двух систем")))
+                ("the name of the old version", re.compile(r"BS\s+(?:2\.0|3\.0)")),
+                ("a group of processed videos", RELATIVE), ("«Согласие двух систем»", re.compile(r"Согласие двух систем")),
+                ("«второе мнение»", SECOND_OPINION))
 MAX_EXTRA_PAGES = 2
 
 
@@ -189,13 +192,19 @@ def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path |
     c.ok(bool(first_label) and first_label.group(1) == title, f"first key fact is «{title}»")
     card = mbti.fact_card(mb)
     c.ok(card is not None and f">{card[1]}</div>" in facts, "the type card shows the type")
-    # MBTI tab: panels with the agreement line, the strip of the main system, the reading guide
-    if mb and mb.get("agreement"):
-        c.ok(mbti.agreement_line(mb["agreement"]) in types, "agreement line under the panels")
-    c.ok("OCEAN-AI — основная оценка" in strip if meta["lang"] == "ru" and mb and mb.get("source") == "ocean_ai"
-         else bool(strip), "letter strip of the main system")
-    old_second = [s for s in (mb or {}).get("second") or [] if not s.get("timeline")]
-    c.ok((caveats.text("C18") in strip) == bool(old_second), "C18 exactly when the second system has no strip")
+    # one model (3.1): the view, the section, the tab «Тип MBTI» (one panel, one strip, no agreement line, no C18)
+    c.ok(set(view.get("variant_scores") or {}) == {meta["main_system"]},
+         f"the view holds one model: {meta['main_system']}")
+    c.ok(bool(mb) and "second" not in mb and "agreement" not in mb and mb.get("schema_version") == mbti.SCHEMA_VERSION,
+         "mbti section of schema 3: no second opinion, no agreement")
+    c.ok(types.count("С учётом границ:") == 1, "one panel on the tab «Тип MBTI»")
+    c.ok(strip.count("grid-template-columns:56px") == 1, "one letter strip")
+    for name, h in (("bars", bars), ("types", types), ("strip", strip), ("method", method), ("members", members),
+                    ("facts", facts), ("characterization", char)):
+        c.ok(not SECOND_OPINION.search(re.sub(r"<[^>]+>", " ", h)), f"no «второе мнение» in {name}")
+    c.ok("OCEAN-AI — основная оценка" in strip if mb and mb.get("source") == "ocean_ai" else bool(strip),
+         "letter strip of the model")
+    c.ok(caveats.text("C18") not in strip, "no C18 (one model, no second strip)")
     c.ok(caveats.text("C8") in strip, "C8 under the strip")
     for code in ("C3", "C4", "C5", "C9", "C16"):
         c.ok(caveats.text(code) in read, f"{code} in «Как читать тип MBTI»")
@@ -233,10 +242,7 @@ def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path |
         c.ok(mb["type"] == exp["type"] and mb["type_strict"] == exp["type_strict"],
              f"type {mb['type']}/{mb['type_strict']} == {exp['type']}/{exp['type_strict']}")
         c.ok(mb["alternatives"] == exp["alternatives"], f"alternatives {mb['alternatives']}")
-        s = mb["second"][0]
-        c.ok((s["type"], s["type_strict"]) == exp["second"], f"own model {s['type']}/{s['type_strict']}")
-        c.ok(mb["agreement"]["axes"] == exp["agreement"] and mb["agreement"]["n_agree"] == 0,
-             f"agreement {mb['agreement']['axes']}")
+        c.ok(mb["source"] == "ocean_ai" and mb.get("model") == "oceanai", "imported 2.0 job renders as OCEAN-AI")
         c.ok(dropped == exp["dropped"], f"segments without OCEAN-AI {dropped}")
         m = re.search(r"Экстраверсия</b> <span[^>]*>([^<]*)<", bars)
         c.ok(bool(m) and m.group(1) == exp["extraversion"], f"extraversion bar shows the score only: {m and m.group(1)}")
@@ -255,7 +261,7 @@ def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path |
             _page(f"Характеристика личности · {label}", [("Ключевые факты", facts), ("Характеристика личности", char)]),
             encoding="utf-8")
         (html_dir / f"page_{label}_mbti.html").write_text(
-            _page(f"Тип MBTI · {label}", [("Тип MBTI по двум системам", types), ("Тип по ходу ролика", strip),
+            _page(f"Тип MBTI · {label}", [("Тип MBTI", types), ("Тип по ходу ролика", strip),
                                          ("Как читать тип MBTI", read)]), encoding="utf-8")
     print(f"  {c.n - len(c.failed)} of {c.n} checks passed; {mb['type'] if mb else '—'}/"
           f"{mb['type_strict'] if mb else '—'}, words {len(re.sub('<[^>]+>', ' ', char).split())}")

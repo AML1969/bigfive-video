@@ -182,8 +182,6 @@ def test_every_case_reads_within_the_rules():
             assert mb["type"] in typology, case
         for word in re.findall(r"\b[EIXSNTFJP]{4}\b", text):
             allowed = {mb["type"], mb["type_strict"], *mb["alternatives"]}
-            for s in mb.get("second") or []:
-                allowed |= {s["type"], s["type_strict"]}
             assert word in allowed, (case, word)
         if x >= 3:
             assert not any(nm in text for nm in names16), case
@@ -279,9 +277,10 @@ def test_special_cases():
     assert "MBTI по своей модели" in ch.header_plain()
     assert "по оценкам своей модели MM-PSYCHE" in ch.paragraph("basis")["text"]
     assert "Основная система OCEAN-AI не дала оценок по этому ролику" in ch.paragraph("limits")["text"]
+    # an older English job is read as OCEAN-AI (3.1: no mean of two systems)
     _, mb, ch = _build(cases["en"])
-    assert "MBTI по среднему двух систем" in ch.header_plain()
-    assert "по среднему двух систем" in ch.paragraph("basis")["text"]
+    assert mb["source"] == "ocean_ai" and "MBTI по OCEAN-AI" in ch.header_plain()
+    assert "среднему двух систем" not in ch.plain() and "по оценкам OCEAN-AI" in ch.paragraph("basis")["text"]
     assert "от 0 до 1" in ch.paragraph("basis")["text"]
 
 

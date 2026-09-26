@@ -28,14 +28,18 @@ class EnsembleConfig:
     mm_cfg: object = None
     sslmepr_cfg: object = None
     lang: str = "en"
-    # which member gives the main score. "auto": OCEAN-AI for Russian speech (MuPTA weights = Russian reference
+    # which member gives the main score. "auto": the only member when one member is given (BS Profiler 3.1 runs one
+    # model per analysis), OCEAN-AI for Russian speech with several members (MuPTA weights = Russian reference
     # population; the own model is trained on English FIV2 vloggers and lives on another scale), otherwise the
-    # equal-weight mean. None / "mean": always the mean. Other members stay available as second opinions.
+    # equal-weight mean. None / "mean": always the mean.
     primary: str | None = "auto"
 
     def __post_init__(self):
         if self.primary == "auto":
-            self.primary = "oceanai" if self.lang == "ru" and "oceanai" in self.members else None
+            if len(self.members) == 1:
+                self.primary = self.members[0]
+            else:
+                self.primary = "oceanai" if self.lang == "ru" and "oceanai" in self.members else None
         elif self.primary in (None, "", "none", "mean"):
             self.primary = None
         elif self.primary not in self.members:

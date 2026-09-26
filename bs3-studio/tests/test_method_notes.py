@@ -12,32 +12,61 @@ RELATIVE = ("опорн", "положени", "русских роликов", "
             "на русской речи её", "на русских роликах", "порядок черт")
 
 
+SECOND = ("второе мнение", "своя модель", "своей модели", "двух систем", "каждой системы", "не усредняются")
+
+
 def test_method_notes_sample_b():
     v = scores.clean_view(rep("B"))
     t = narrative.method_notes(v, None)
-    assert t.startswith("Основные оценки дала система OCEAN-AI на весах MuPTA, обученных на русскоязычных участниках; "
-                        "своя модель MM-PSYCHE показана как второе мнение и в основные оценки не входит.")
-    assert ("Уровни черт и буквы MBTI считаются по самой оценке системы на шкале от 0 до 1 с серединой 0.5, отдельно "
-            "для каждой системы.") in t
+    assert t.startswith("Оценки дала система OCEAN-AI на весах MuPTA, обученных на русскоязычных участниках. "
+                        "Уровни черт и буквы MBTI считаются по самой оценке модели на шкале от 0 до 1 с серединой 0.5.")
     assert "По ходу ролика (26 отрезков с оценкой OCEAN-AI) оценки устойчивы: разброс не больше ±0.02." in t
     assert "В 7 отрезках из 33 система OCEAN-AI не дала оценки" in t
-    assert "не противоречие в выводах" not in t
-    # the difference of the two systems on this recording only, not a rule about Russian videos
-    assert re.search(r"Своя модель обучена на англоязычных роликах First Impressions V2 и работает на своей шкале: на "
-                     r"этой записи её оценки в среднем на 0\.\d\d ниже, чем у OCEAN-AI, поэтому оценки двух систем не "
-                     r"усредняются, а тип MBTI каждой показан отдельно\.", t)
+    assert "не противоречие в выводах" not in t and "MM-PSYCHE" not in t
     assert "сегмент" not in t
-    for w in RELATIVE:
-        assert w not in t, w
+    for w in RELATIVE + SECOND:
+        assert w not in t.lower(), w
 
 
-def test_method_notes_sample_a_and_english():
+def test_method_notes_own_model_and_old_english_job():
     a = narrative.method_notes(scores.clean_view(rep("A")))
     assert "(17 отрезков с оценкой OCEAN-AI)" in a and "В 1 отрезке из 18" in a
+    r = rep("B")
+    r["model"].update({"selected": "mm", "primary": "mm"})
+    r["variant_scores"] = {"mm": r["variant_scores"]["mm"]}
+    for t in r["timeline"]:
+        t["members_used"] = ["mm"]
+    own = narrative.method_notes(scores.clean_view(r))
+    assert own.startswith("Оценки дала модель AMLAI 1.0, построенная по рецепту MM-PSYCHE и обученная на First "
+                          "Impressions V2; транскрипт русской речи для неё переведён на английский.")
+    assert "(33 отрезка с оценкой AMLAI 1.0)" in own and "OCEAN-AI" not in own
+    for w in RELATIVE + SECOND:
+        assert w not in own.lower(), w
+    # OCEAN-AI recorded but gave nothing: C20 instead of the source sentence
+    r = rep("B")
+    del r["variant_scores"]["oceanai"]
+    for t in r["timeline"]:
+        t["members_used"] = ["mm"]
+    fell = narrative.method_notes(scores.clean_view(r))
+    assert fell.startswith("Основная система OCEAN-AI не дала оценок по этому ролику")
     en = narrative.method_notes(scores.clean_view(english("B")))
-    assert en.startswith("Оценки — среднее двух систем, OCEAN-AI (веса First Impressions V2) и своей модели MM-PSYCHE")
+    assert en.startswith("Оценки дала система OCEAN-AI") and "среднее двух систем" not in en
     assert "обучающей выборке First Impressions V2 (6000 роликов)" in en and "от 0 до 1 с серединой 0.5" in en
-    assert "OCEAN-AI не дала оценки" not in en and "предварительная" not in en
+    assert "предварительная" not in en
+
+
+def test_build_narrative_names_one_model():
+    """The stored 2.0-style summary of a new job names the model that ran and no second opinion."""
+    r = rep("B")
+    r["model"].update({"selected": "oceanai"})
+    t = narrative.build_narrative(r, None)
+    assert t.startswith("Оценки дала система OCEAN-AI на весах MuPTA")
+    for w in SECOND + ("MM-PSYCHE", "разница шкал"):
+        assert w not in t.lower() and w not in t, w
+    r["model"].update({"selected": "mm", "primary": "mm"})
+    r["interview"] = {"score": 0.41}
+    t = narrative.build_narrative(r, None)
+    assert t.startswith("Оценки дала модель AMLAI 1.0") and "по модели AMLAI 1.0: 0.41" in t
 
 
 def test_bars_on_clean_view_ru():
@@ -65,20 +94,14 @@ def test_bars_english_fiv2_percentile():
     assert webparts.TICK_NOTE in h and "опорн" not in h
 
 
-def test_second_opinion_ru_score_only():
-    v = scores.clean_view(rep("B"))
-    h = webparts._members_html(v)
-    assert "Второе мнение: своя модель MM-PSYCHE (своя шкала, обучена на First Impressions V2)" in h
-    assert "0.25<" in h                                                        # own model E 0.2515
-    assert scores.SECOND_SCALE_RU in h
-    assert re.search(r"На этой записи оценки своей модели в среднем на 0\.\d\d ниже, чем у OCEAN-AI\.", h)
-    for w in RELATIVE + ("процентил",):
-        assert w not in h.lower(), w
-
-
-def test_second_opinion_english_unchanged():
-    h = webparts._members_html(scores.clean_view(english("B")))
-    assert "Участники ансамбля: итоговая оценка — их среднее" in h
+def test_no_second_opinion_block():
+    """One model in the view (3.1): the framed block under the bars is empty for any job, old or new."""
+    assert webparts._members_html(scores.clean_view(rep("B"))) == ""
+    assert webparts._members_html(scores.clean_view(english("B"))) == ""
+    r = rep("B")
+    r["model"].update({"selected": "mm", "primary": "mm"})
+    r["variant_scores"] = {"mm": r["variant_scores"]["mm"]}
+    assert webparts._members_html(scores.clean_view(r)) == ""
 
 
 def test_pct_phrases_fiv2_only():

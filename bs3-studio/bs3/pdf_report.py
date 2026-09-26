@@ -105,7 +105,7 @@ def pct_phrase(pct, ref: str = "") -> str:
 
 def _ref_ru(ref: str) -> str:
     """percentile_ref from result.json (genitive, reads after «относительно») without technical English words."""
-    r = re.sub(r",\s*своя модель\s*$", "", ref or "")
+    r = re.sub(r",\s*(?:своя модель|AMLAI 1\.0)\s*$", "", ref or "")
     return r.replace("train First Impressions V2", "обучающей выборки First Impressions V2").replace(
         "train FIV2", "обучающей выборки FIV2")
 

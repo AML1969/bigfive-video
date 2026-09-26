@@ -4,9 +4,9 @@
   the borderline ones grey with a dashed underline; the name 12 pt bold; the labels 8.5 pt grey joined by « · »), then
   the paragraphs at 9 pt with bold leads (fpdf2 markdown); a paragraph that does not fit on the rest of the page starts
   the next one, so no paragraph is split between pages. «Границы вывода» (only caveats) is set at 8.5 pt.
-- `mbti_section(pdf, view, mb)` — section «Тип MBTI (перевод шкал Big Five)»: the type lines of the systems, the axis
-  table with the agreement and neuroticism, the agreement line, «Тип по ходу ролика» (letter strip, summary, C8,
-  C18 / C19) and the caveats C3, C4, C5, C6, C7, C9, C16 at 7.5 pt.
+- `mbti_section(pdf, view, mb)` — section «Тип MBTI (перевод шкал Big Five)»: the type line of the model that ran
+  (one model since 3.1), the axis table with neuroticism, «Тип по ходу ролика» (letter strip, summary, C8, C19) and
+  the caveats C3, C4, C5, C6, C7, C9, C16 at 7.5 pt.
 - `letter_strip(pdf, lanes)` — the letter strip drawn with cells: letters are text, not a picture; bold — clear,
   normal — moderate, grey in a dashed frame — on the border (the letter of the strict split), «—» on light grey — no
   score. Long videos are wrapped into blocks of at most 30 segments.
@@ -19,7 +19,7 @@ from __future__ import annotations
 import math
 
 from . import caveats
-from .mbti import AXES, AXIS_LABEL, agreement_line, load_config
+from .mbti import AXES, AXIS_LABEL, load_config
 from .mbti_html import TABLE_NOTE, TABLE_ROWS, corr_cell, summary_line
 from .pdf_report import NOTE_GREY, TEXT_W_MM, Report
 
@@ -31,8 +31,7 @@ STRIP_ROW_MM = 4.8
 STRIP_BLOCK = 30                 # at most this many segments in one row of the strip
 STRIP_LETTER_PT = 6.5
 HEADER_H = 10.0                  # height of the header line of the characterization
-SOURCE_TITLE = {"ocean_ai": "OCEAN-AI", "own_model": "Своя модель", "mean": "Среднее двух систем"}
-AGREE_PDF = {"agree": "= совпадает", "differ": "≠ расходится", "border": "≈ на границе"}
+SOURCE_TITLE = {"ocean_ai": "OCEAN-AI", "own_model": "Своя модель"}
 STRIP_LEGEND = ("Жирная буква — ось выражена отчётливо, обычная — умеренно; серая буква в пунктирной рамке — ось на "
                 "границе (показана буква строгого деления); «—» на сером — нет оценки. Над столбцами — начало отрезка "
                 "(мин:с).")
@@ -187,22 +186,22 @@ def _axis_cell(a: dict | None) -> str:
     return s + f" ({float(a.get('confidence') or 0):.2f})"
 
 
-def _axis_table(pdf: Report, systems: list[dict], agr: dict | None, cfg: dict) -> None:
+def _axis_table(pdf: Report, systems: list[dict], cfg: dict) -> None:
+    """The axis table of the model that ran: letter, word and confidence per axis, neuroticism, the correspondence of
+    the scales (no agreement column: one model since 3.1)."""
     corr = cfg.get("correspondence") or {}
     header = ["Ось", "Шкала Big Five"] + [SOURCE_TITLE.get(s.get("source"), str(s.get("source"))) for s in systems]
-    header += (["Согласие"] if agr else []) + ["Соответствие шкал"]
+    header += ["Соответствие шкал"]
     rows = []
     for ax, scale, _direction in TABLE_ROWS:
         row = [AXIS_LABEL[ax], scale]
         for s in systems:
             row.append(_axis_cell((s.get("axes") or {}).get(ax)))
-        if agr:
-            row.append(AGREE_PDF.get((agr.get("axes") or {}).get(ax), "—"))
         c = corr.get(ax) or {}
         row.append(corr_cell(c) if c.get("r") is not None else "—")
         rows.append(row)
     row = ["—", "Нейротизм"] + [((s.get("neuroticism") or {}).get("level") or "—") for s in systems]
-    rows.append(row + (["—"] if agr else []) + ["в MBTI не выражается"])
+    rows.append(row + ["в MBTI не выражается"])
     # column widths from the content (cells do not wrap); one step smaller while the table is wider than the page
     c_margin = pdf.c_margin
     pdf.c_margin = 1.0
@@ -220,8 +219,7 @@ def _axis_table(pdf: Report, systems: list[dict], agr: dict | None, cfg: dict) -
     pdf.table(header, rows, widths, size=size, zebra=True, first_left=True, row_h=5.4, min_rows=len(rows))
     pdf.c_margin = c_margin
     pdf.caption("Число в скобках после буквы — уверенность по оси (0 — на границе 0.5, 1 — у края шкалы), а не сама "
-                "оценка. " + ("«≈ на границе» — ось на границе хотя бы у одной из систем. " if agr else "")
-                + "Нейротизм = 1 − эмоциональная стабильность. Соответствие шкал: " + TABLE_NOTE[0].lower()
+                "оценка. Нейротизм = 1 − эмоциональная стабильность. Соответствие шкал: " + TABLE_NOTE[0].lower()
                 + TABLE_NOTE[1:], 7.5)
 
 
@@ -307,47 +305,30 @@ def letter_strip(pdf: Report, lanes: list[tuple[str, list[dict]]]) -> None:
             _lane_rows(pdf, t, chunk, cell, row_h)
 
 
-def _strip_lanes(mb: dict, lang: str) -> tuple[list, list[str], bool]:
-    """(lanes, summary lines, a second system without a strip -> C18)."""
-    main_who = "Основная система" if lang == "ru" else "Среднее двух систем"
+def _strip_lanes(mb: dict, lang: str) -> tuple[list, list[str]]:
+    """(lanes, summary lines) of the strip: the one model that ran (3.1)."""
     title_main = {"ocean_ai": "OCEAN-AI — основная оценка", "own_model": "Своя модель — основная оценка"}.get(
-        mb.get("source"), "Среднее двух систем")
+        mb.get("source"), str(mb.get("source")))
     lanes = [(title_main, mb.get("timeline") or [])]
-    lines = [summary_line(mb, main_who)]
-    missing_second = False
-    for s in mb.get("second") or []:
-        tl = s.get("timeline")
-        name = SOURCE_TITLE.get(s.get("source"), str(s.get("source")))
-        if not tl:
-            missing_second = True
-            continue
-        if sum(1 for e in tl if e.get("type_strict")) * 2 < len(tl):
-            continue
-        lanes.append((name + (" — второе мнение" if lang == "ru" else ""), tl))
-        lines.append(summary_line(s, name))
-    return lanes, [x for x in lines if x], missing_second
+    lines = [summary_line(mb, "Основная система")]
+    return lanes, [x for x in lines if x]
 
 
 def mbti_section(pdf: Report, view: dict, mb: dict | None) -> None:
-    """Section «Тип MBTI (перевод шкал Big Five)» right after the Big Five section (design 10.7, item 2)."""
+    """Section «Тип MBTI (перевод шкал Big Five)» right after the Big Five section (design 10.7, item 2): one model,
+    one type line, the axis table without an agreement column, one strip (3.1)."""
     if "mbti" not in pdf.plan or not mb:
         return
     cfg = load_config()
-    lang = (view.get("view_meta") or {}).get("lang") or ("en" if mb.get("source") == "mean" else "ru")
-    second = mb.get("second") or []
-    items = [mb] + second
-    agr = mb.get("agreement")
+    lang = (view.get("view_meta") or {}).get("lang") or "ru"
+    items = [mb]
     pdf.section("Тип MBTI (перевод шкал Big Five)", "mbti", keep_mm=7 * len(items) + 45)
     for i, it in enumerate(items):
         _type_line(pdf, _title(it, lang, i == 0), it, with_alternatives=(i == 0))
-    if lang == "ru" and mb.get("source") == "own_model":
+    if lang == "ru" and mb.get("source") == "own_model" and mb.get("primary_missing"):
         pdf.caption(caveats.text("C20"), 7.5)
     pdf.ln(1.5)
-    # axis table: the system columns are those the agreement compares (ru: main + second; en: mean + both systems)
-    _axis_table(pdf, items, agr, cfg)
-    line = agreement_line(agr) if agr else ""
-    if line:
-        pdf.para(line, 9)
+    _axis_table(pdf, items, cfg)
     # «Тип по ходу ролика»
     total = int(mb.get("segments_total") or len(mb.get("timeline") or []) or 1)
     typed = sum(1 for e in (mb.get("timeline") or []) if e.get("type_strict"))
@@ -355,7 +336,7 @@ def mbti_section(pdf: Report, view: dict, mb: dict | None) -> None:
         pdf.h3("Тип по ходу ролика", keep_mm=8)
         pdf.caption(caveats.text("C19"), 7.5)
     else:
-        lanes, lines, missing_second = _strip_lanes(mb, lang)
+        lanes, lines = _strip_lanes(mb, lang)
         first_h = _lane_height(_strip_geometry(max(len(e) for _, e in lanes))[3])
         pdf.h3("Тип по ходу ролика", keep_mm=first_h)
         if typed >= 2:
@@ -364,8 +345,6 @@ def mbti_section(pdf: Report, view: dict, mb: dict | None) -> None:
         if lines:
             pdf.para(" ".join(lines), 9)
         pdf.caption(caveats.text("C8"), 7.5)
-        if missing_second:
-            pdf.caption(caveats.text("C18"), 7.5)
     # how to read the type
     texts = [caveats.text("C3"), caveats.text("C4"), caveats.text("C5"), caveats.c6(lang), caveats.c7(lang),
              caveats.text("C9"), caveats.text("C16")]

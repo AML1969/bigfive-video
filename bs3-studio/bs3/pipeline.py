@@ -1,5 +1,6 @@
-"""BS Profiler 3.0 pipeline: Big Five (ensemble, segmented) + per-segment emotion, voice, face and speech analyses,
-explanations and plain-language texts. Produces one result.json per job; the web UI and the PDF only render it."""
+"""BS Profiler 3.1 pipeline: Big Five by ONE model chosen for the analysis (OCEAN-AI or AMLAI 1.0, segmented) +
+per-segment emotion, voice, face and speech analyses, explanations (AMLAI 1.0 only) and plain-language texts. The
+speech is always Russian (bs3.LANG). Produces one result.json per job; the web UI and the PDF only render it."""
 from __future__ import annotations
 
 import json
@@ -14,46 +15,64 @@ from typing import Callable, Dict, List
 
 import numpy as np
 
+from . import DEFAULT_MODEL, LANG, MODEL_TITLES
 from .norms import TRAIT_KEYS
 from .report import build_report, fmt_secs
 
 log = logging.getLogger("bs3.pipeline")
 
 
-class Studio:
-    """Lazily loaded models shared by all requests (one analysis at a time)."""
+def check_member(member: str) -> str:
+    """The internal key of a model the page offers ("oceanai" | "mm"); anything else is a Russian error for the page."""
+    if member not in MODEL_TITLES:
+        raise RuntimeError(f"Неизвестная модель «{member}». Выберите {' или '.join(MODEL_TITLES.values())}.")
+    return member
 
-    def __init__(self, members=("oceanai", "mm"), asr_model="openai/whisper-large-v3-turbo", ollama_model="qwen2.5vl:7b",
-                 mm_ckpt=None):
-        self.members, self.asr_model, self.ollama_model, self.mm_ckpt = tuple(members), asr_model, ollama_model, mm_ckpt
+
+class Studio:
+    """Lazily loaded models shared by all requests (one analysis at a time).
+
+    3.1: one Big Five model per analysis. `backend(member)` builds and caches the backend of that member only
+    (`EnsembleConfig(members=(member,))`, so the GPU holds one Big Five model and the other one is never run for a
+    second opinion); the speech language is fixed to Russian (bs3.LANG). The emotion, voice and face models are
+    shared by both members."""
+
+    def __init__(self, asr_model="openai/whisper-large-v3-turbo", ollama_model="qwen2.5vl:7b", mm_ckpt=None):
+        self.asr_model, self.ollama_model, self.mm_ckpt = asr_model, ollama_model, mm_ckpt
+        self.lang = LANG
         self._lock = threading.Lock()
-        self._be: Dict[str, object] = {}
-        self._an: Dict[str, object] = {}
+        self._be: Dict[str, object] = {}          # member -> loaded backend of that member alone
+        self._an: Dict[str, object] = {}          # member -> LongVideoAnalyzer over that backend
         self._text_emo = self._voice_emo = self._face_expr = None
         self.stop_event = threading.Event()
 
-    def backend(self, lang: str):
+    def backend(self, member: str = DEFAULT_MODEL):
+        member = check_member(member)
         with self._lock:
-            if lang not in self._be:
+            if member not in self._be:
                 from .backend_ensemble import EnsembleBackend, EnsembleConfig
                 from .backend_mm import MMConfig
                 from .backend_oceanai import BackendConfig
-                kw = dict(lang=lang, asr_model=self.asr_model, ollama_model=self.ollama_model)
+                kw = dict(lang=self.lang, asr_model=self.asr_model, ollama_model=self.ollama_model)
                 if self.mm_ckpt:
                     kw["checkpoint"] = self.mm_ckpt
-                self._be[lang] = EnsembleBackend(EnsembleConfig(members=self.members, lang=lang,
-                                                                oceanai_cfg=BackendConfig(lang=lang, asr_model=self.asr_model),
-                                                                mm_cfg=MMConfig(**kw))).load()
-            return self._be[lang]
+                cfg = EnsembleConfig(members=(member,), lang=self.lang, primary=member,
+                                     oceanai_cfg=BackendConfig(lang=self.lang, asr_model=self.asr_model)
+                                     if member == "oceanai" else None,
+                                     mm_cfg=MMConfig(**kw) if member == "mm" else None)
+                self._be[member] = EnsembleBackend(cfg).load()
+            return self._be[member]
 
-    def analyzer(self, lang: str):
+    def analyzer(self, member: str = DEFAULT_MODEL):
         from .longvideo import LongVideoAnalyzer
-        if lang not in self._an:
-            self._an[lang] = LongVideoAnalyzer(self.backend(lang), lang=lang, asr_model=self.asr_model)
-        return self._an[lang]
+        member = check_member(member)
+        if member not in self._an:
+            self._an[member] = LongVideoAnalyzer(self.backend(member), lang=self.lang, asr_model=self.asr_model)
+        return self._an[member]
 
-    def mm_backend(self, lang: str):
-        return self.backend(lang).backends.get("mm")
+    def mm_backend(self, member: str = DEFAULT_MODEL):
+        """The own model (AMLAI 1.0) when it is the chosen member, else None: explanations exist for it only."""
+        return self.backend(member).backends.get("mm") if member == "mm" else None
 
     @property
     def text_emotion(self):
@@ -166,10 +185,12 @@ def run_extra_analyses(studio: Studio, res: dict, lang: str, work_dir: Path, pro
     return out
 
 
-def run_analysis(studio: Studio, work_dir: Path, video_path: str, lang: str = "ru", explain: bool = True,
+def run_analysis(studio: Studio, work_dir: Path, video_path: str, member: str = DEFAULT_MODEL, explain: bool = True,
                  progress: Callable | None = None) -> dict:
-    """Whole request: copy the upload, Big Five (segmented ensemble), extra analyses, explanations, plain-language
-    texts; writes <job>/result.json and returns it with the job path."""
+    """Whole request: copy the upload, Big Five by the chosen model only (`member`: "oceanai" | "mm", segmented),
+    extra analyses, explanations (AMLAI 1.0 only), plain-language texts; writes <job>/result.json and returns it with
+    the job path. The speech language is Russian (bs3.LANG). result.json records the model as `model.selected` /
+    `model.selected_title` / `model.primary`; `variant_scores` holds that member only."""
     from .longvideo import AnalysisCancelled
     from .media import probe_media
     from .narrative import build_narrative
@@ -179,6 +200,9 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, lang: str = "r
         if progress is not None:
             progress(frac, f"[{fmt_secs(time.time() - t0)}] {desc if desc is not None else kw.get('desc', '')}")
 
+    member = check_member(member)
+    lang = LANG
+    title = MODEL_TITLES[member]
     t0 = time.time()
     studio.stop_event.clear()
     job = work_dir / time.strftime("%Y%m%d_%H%M%S")
@@ -188,34 +212,35 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, lang: str = "r
         raise RuntimeError("Файл загрузки не найден. Загрузите видео заново и дождитесь конца загрузки.")
     local = job / ("input" + src.suffix.lower())
     shutil.copy2(src, local)
-    step(0.03, "Загрузка моделей (первый запуск до минуты)")
-    be = studio.backend(lang)
-    an = studio.analyzer(lang)
-    step(0.10, "Речь, лицо, голос, описание поведения — Big Five")
+    step(0.03, f"Загрузка модели {title} (первый запуск до минуты)")
+    be = studio.backend(member)
+    an = studio.analyzer(member)
+    step(0.10, f"Речь, лицо, голос{', описание поведения' if member == 'mm' else ''} — Big Five ({title})")
     res = an.analyze(local, job / "segments", progress=lambda f, d: step(0.10 + 0.60 * f, d), should_stop=studio.stop_event.is_set)
-    primary = res.get("primary")
-    if primary:
-        from . import pool
-        pool.add(local, res["scores"], lang, primary, name=src.name)
-    rep = build_report(local, res, backend="ensemble", corpus=be.cfg.corpus, lang=lang, asr_model=studio.asr_model,
-                       modalities=tuple(getattr(be.cfg, "members", ())), pool_lang=lang if primary else None, primary=primary)
-    rep["variant_scores"] = res.get("variants", {})
+    from . import pool
+    pool.add(local, res["scores"], lang, member, name=src.name)
+    # the corpus of the member itself (MuPTA / the own model's checkpoints), not the ensemble wrapper's descriptor
+    inner = getattr(be, "backends", {}).get(member)
+    corpus = getattr(getattr(inner, "cfg", None), "corpus", None) or be.cfg.corpus
+    rep = build_report(local, res, backend=member, corpus=corpus, lang=lang, asr_model=studio.asr_model,
+                       modalities=(member,), pool_lang=lang, primary=member, selected=member)
+    rep["variant_scores"] = {m: v for m, v in (res.get("variants") or {}).items() if m == member}
     for key in ("duration_sec", "segments", "timeline", "representative_segment", "transcript_en", "chunks"):
         if res.get(key) is not None:
             rep[key] = res[key]
     rep["scores_std_across_segments"] = res.get("scores_std")
 
-    # ---- BS Profiler 3.0 analyses
+    # ---- BS Profiler 3.x analyses
     rep["analyses"] = run_extra_analyses(studio, {**res, "input": str(local)}, lang, job, progress=step,
                                          should_stop=studio.stop_event.is_set)
 
-    # ---- explanations (own model, representative segment)
+    # ---- explanations (AMLAI 1.0 only, representative segment)
     expl, frames = None, []
     if studio.stop_event.is_set():
         raise AnalysisCancelled("остановлено пользователем")
-    if explain and studio.mm_backend(lang) is not None:
+    if explain and member == "mm" and studio.mm_backend(member) is not None:
         step(0.92, "Объяснения: вклад модальностей, ключевые кадры, слова")
-        mmb = studio.mm_backend(lang)
+        mmb = studio.mm_backend(member)
         if res.get("timeline"):
             seg = res["timeline"][res["representative_segment"] - 1]
             x_video, x_text, x_beh = seg["file"], seg["transcript"], seg.get("behavior_description") or None
@@ -241,7 +266,8 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, lang: str = "r
     rep["timings_sec"]["total_wall"] = round(time.time() - t0, 1)
     rep["narrative"] = build_narrative(rep, expl)
     rep["job_dir"] = str(job)
-    # ---- MBTI section (design 7.2): computed once from the clean scores; a failure is logged, the job goes on
+    # ---- MBTI section (design 7.2; schema 3: one model): computed once from the clean scores; a failure is logged,
+    # the job goes on
     try:
         from .mbti import build_section
         from .scores import clean_view

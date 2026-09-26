@@ -1,5 +1,6 @@
 """MBTI notation of Big Five (design 4, 5, 7; tests 1-14 of design 13.1; change of 2026-09-26: the customer's formula
-on the absolute score 0…1 for both systems and both languages, no reference group)."""
+on the absolute score 0…1, no reference group; 3.1: the section describes one model, schema 3, no second opinion and
+no agreement)."""
 from __future__ import annotations
 
 import copy
@@ -35,7 +36,7 @@ def test_document_example_raw():
     assert _conf(r) == [0.44, 0.22, 0.04, 0.10]
     assert [r["axes"][ax]["borderline"] for ax in mbti.AXES] == [False, True, True, True]
     assert r["neuroticism"]["value"] == 0.33
-    for system, lang in (("oceanai", "ru"), ("mm", "ru"), ("mean", "en"), ("oceanai", "en")):
+    for system, lang in (("oceanai", "ru"), ("mm", "ru"), ("oceanai", "en"), ("mm", "en")):
         m = mbti.mbti_for(system, DOC, lang)
         assert m["type"] == "EXXX" and m["type_strict"] == "ENTJ" and m["type_name"] == "Руководитель"
         assert [m["axes"][ax]["confidence"] for ax in mbti.AXES] == [0.44, 0.22, 0.04, 0.10]
@@ -114,7 +115,9 @@ def test_absolute_scale_config():
     assert cfg["method"] == "raw" and cfg["raw_thresholds"] == {"EI": 0.5, "SN": 0.5, "TF": 0.5, "JP": 0.5}
     for key in ("references", "ru_prov_file", "thresholds"):
         assert key not in cfg, key
-    assert cfg["borderline"] == 0.15 and mbti.SCHEMA_VERSION == 2 and mbti.METHOD == "raw"
+    assert cfg["borderline"] == 0.15 and mbti.SCHEMA_VERSION == 3 and mbti.METHOD == "raw"
+    assert mbti.SOURCE_RU == {"ocean_ai": "OCEAN-AI", "own_model": "AMLAI 1.0"}
+    assert not hasattr(mbti, "agreement") and not hasattr(mbti, "agreement_line")
     b = rep("B")["variant_scores"]
     for system in ("oceanai", "mm"):
         types = {mbti.mbti_for(system, b[system], lang)["type"] for lang in ("ru", "en")}
@@ -139,24 +142,29 @@ def test_alternatives():
     assert mbti.alternatives("ESFX", axes) == ["ENFX"]
 
 
-# 9
-def test_agreement():
-    def m(source, letters, border=()):
-        return {"source": source, "axes": {ax: {"letter": letters[i], "borderline": ax in border}
-                                           for i, ax in enumerate(mbti.AXES)}}
-    a = mbti.agreement(m("ocean_ai", "ESFJ", {"SN"}), m("own_model", "ISTJ", {"TF", "JP"}))
-    assert a["axes"] == {"EI": "differ", "SN": "border", "TF": "border", "JP": "border"} and a["n_agree"] == 0
-    assert a["pair"] == ["ocean_ai", "own_model"]
-    b = mbti.agreement(m("ocean_ai", "ESFJ"), m("own_model", "ESFJ"))
-    assert b["n_agree"] == 4 and set(b["axes"].values()) == {"agree"}
-    assert mbti.agreement_line(b) == "Обе системы дают один и тот же тип."
-    assert mbti.agreement_line(a) == ("Уверенных совпадений нет; расходится E–I; на границе хотя бы у одной из систем: "
-                                      "S–N, T–F, J–P.")
-    c = mbti.agreement(m("ocean_ai", "ESFJ", {"SN", "TF"}), m("own_model", "ESTJ", {"SN"}))
-    assert mbti.agreement_line(c) == "Совпадают 2 из 4 осей; на границе хотя бы у одной из систем: S–N, T–F."
-    missing = m("own_model", "ESFJ")
-    missing["axes"]["EI"] = {"letter": None, "missing": True, "borderline": True}
-    assert mbti.agreement(m("ocean_ai", "ESFJ"), missing)["axes"]["EI"] == "border"
+# 9 (the agreement of two systems of 3.0 is gone: one model per analysis since 3.1)
+def test_section_has_one_model_only():
+    for name in ("A", "B"):
+        sec = mbti.build_section(scores.clean_view(rep(name)), computed_at="t")
+        assert "second" not in sec and "agreement" not in sec
+        assert sec["source"] == "ocean_ai" and sec["model"] == "oceanai" and sec["model_title"] == "OCEAN-AI"
+        assert sec["role"] == "main" and sec["primary_missing"] is False
+        assert json.dumps(sec, ensure_ascii=False).count('"role"') == 1
+    # a 3.1 job of AMLAI 1.0 (or an old job where OCEAN-AI gave nothing): its own type, with C20 only in the latter
+    r = rep("B")
+    r["model"].update({"selected": "mm", "primary": "mm"})
+    r["variant_scores"] = {"mm": r["variant_scores"]["mm"]}
+    for t in r["timeline"]:
+        t["members_used"] = ["mm"]
+    own = mbti.build_section(scores.clean_view(r), computed_at="t")
+    assert own["source"] == "own_model" and own["model"] == "mm" and own["model_title"] == "AMLAI 1.0"
+    assert own["type"] == "ISXX" and own["type_strict"] == "ISTP" and own["primary_missing"] is False
+    r = rep("B")
+    del r["variant_scores"]["oceanai"]
+    for t in r["timeline"]:
+        t["members_used"] = ["mm"]
+    fell = mbti.build_section(scores.clean_view(r), computed_at="t")
+    assert fell["source"] == "own_model" and fell["primary_missing"] is True and fell["type"] == "ISXX"
 
 
 # 10
@@ -167,8 +175,7 @@ def test_segments_old_and_new_formats():
     assert [e["segment"] for e in gaps] == [10, 11, 12, 14, 15, 26, 33]
     assert all(e["reason"] == "no_primary" for e in gaps)
     assert sec["stability"]["EI"]["of"] == 26
-    assert "timeline" not in sec["second"][0]                    # old jobs: no per-segment scores of the own model
-    # 3.0 format: variants per segment give lanes of both systems
+    # 3.x format: variants per segment; the section follows the recorded model
     r = rep("B")
     for t in r["timeline"]:
         mm = {k: r["variant_scores"]["mm"][k] for k in TRAIT_KEYS}
@@ -177,14 +184,17 @@ def test_segments_old_and_new_formats():
         t["primary_used"] = "oceanai" if oc else None
     sec3 = mbti.build_section(scores.clean_view(r), computed_at="t")
     assert len([e for e in sec3["timeline"] if e.get("type_strict")]) == 26
-    lane2 = sec3["second"][0]["timeline"]
-    assert len(lane2) == 33 and all(e["type_strict"] == "ISTP" for e in lane2)
-    assert sec3["second"][0]["stability"]["EI"] == {"same": 33, "of": 33}
+    r["model"].update({"selected": "mm", "primary": "mm"})
+    for t in r["timeline"]:
+        t["primary_used"] = "mm"
+    own = mbti.build_section(scores.clean_view(r), computed_at="t")
+    assert len(own["timeline"]) == 33 and all(e["type_strict"] == "ISTP" for e in own["timeline"])
+    assert own["stability"]["EI"] == {"same": 33, "of": 33} and own["segments_used"] == 33
     # no segments at all
     r = rep("B")
     r["timeline"] = []
     sec0 = mbti.build_section(scores.clean_view(r), computed_at="t")
-    assert sec0["timeline"] == [] and sec0["stability"] is None and "timeline" not in sec0["second"][0]
+    assert sec0["timeline"] == [] and sec0["stability"] is None
     assert sec0["segments_used"] == 1
 
 
@@ -198,20 +208,22 @@ def test_get_mbti_is_pure():
         loaded = json.loads(before_text)
         snapshot = copy.deepcopy(loaded)
         mb = mbti.get_mbti(loaded, scores.clean_view(loaded))
-        assert mb["computed_on_render"] is True and mb["schema_version"] == 2
+        assert mb["computed_on_render"] is True and mb["schema_version"] == 3
         assert loaded == snapshot and "mbti" not in loaded
         mb2 = mbti.get_mbti(loaded)                                   # the view is built inside
         assert mb2["type"] == mb["type"] and loaded == snapshot
         time.sleep(0.01)
         assert f.stat().st_mtime_ns == before_mtime and f.read_text(encoding="utf-8") == before_text
         assert sorted(os.listdir(d)) == ["result.json"]
-    saved = {**r, "mbti": {"schema_version": 2, "type": "SAVED"}}
+    saved = {**r, "mbti": {"schema_version": 3, "type": "SAVED"}}
     got = mbti.get_mbti(saved, scores.clean_view(saved))
-    assert got == {"schema_version": 2, "type": "SAVED"} and "computed_on_render" not in got
-    # a section of schema 1 (letters by the position in the reference group) is not shown: computed anew
-    old = {**r, "mbti": {"schema_version": 1, "type": "EXFJ"}}
-    got = mbti.get_mbti(old, scores.clean_view(old))
-    assert got["type"] == "ENFJ" and got["computed_on_render"] is True
+    assert got == {"schema_version": 3, "type": "SAVED"} and "computed_on_render" not in got
+    # a section of schema 1 (letters by the position in the reference group) or 2 (second opinion and agreement of
+    # two systems) is not shown: computed anew
+    for old_schema in (1, 2):
+        old = {**r, "mbti": {"schema_version": old_schema, "type": "EXFJ", "second": [{"type": "ISXX"}]}}
+        got = mbti.get_mbti(old, scores.clean_view(old))
+        assert got["type"] == "ENFJ" and got["computed_on_render"] is True and "second" not in got
     no_bf = {"model": {"lang": "ru", "primary": "oceanai"}, "traits": {}, "variant_scores": {}}
     assert mbti.get_mbti(no_bf) is None
 
@@ -251,11 +263,7 @@ def test_golden_sample_a():
     assert [scores.level(v["traits"][k]["score"]) for k in TRAIT_KEYS] == ["above", "above", "mid", "above", "mid"]
     assert mb["neuroticism"] == {"value": 0.64, "level": "средний уровень",
                                  "note": "шкала не имеет соответствия в MBTI, приводится отдельно"}
-    s = mb["second"][0]
-    assert s["source"] == "own_model" and s["type"] == "IXXX" and s["type_strict"] == "ISTJ"
-    assert _p(s) == [0.31, 0.41, 0.48, 0.51]
-    assert mb["agreement"]["axes"] == {"EI": "border", "SN": "border", "TF": "border", "JP": "border"}
-    assert mb["agreement"]["n_agree"] == 0
+    assert mb["source"] == "ocean_ai" and mb["model"] == "oceanai" and "second" not in mb and "agreement" not in mb
     assert v["view_meta"]["segments_without_primary"] == [16]
     assert mb["modal_types"] == [["ENFJ", 17]]
     assert all(mb["stability"][ax] == {"same": 17, "of": 17} for ax in mbti.AXES)
@@ -263,7 +271,14 @@ def test_golden_sample_a():
     assert mbti.border_counts(mb["timeline"]) == ({"EI": 17, "SN": 7, "TF": 6, "JP": 6}, 17)
     assert mbti.border_text(mb["timeline"]) == "ось E–I на границе во всех 17 отрезках, S–N — в 7, T–F — в 6, J–P — в 6"
     assert round(v["traits"]["extraversion"]["score"], 3) == 0.556
-    assert "timeline" not in s
+    # the same numbers as a job of AMLAI 1.0 (3.1) give the own model's type: IXXX, closest ISTJ
+    r = rep("A")
+    r["model"].update({"selected": "mm", "primary": "mm"})
+    for t in r["timeline"]:
+        t["members_used"] = ["mm"]
+    own = mbti.build_section(scores.clean_view(r), computed_at="t")
+    assert own["source"] == "own_model" and own["type"] == "IXXX" and own["type_strict"] == "ISTJ"
+    assert _p(own) == [0.31, 0.41, 0.48, 0.51]
 
 
 def test_golden_sample_b():
@@ -278,48 +293,58 @@ def test_golden_sample_b():
     assert [scores.level(v["traits"][k]["score"]) for k in TRAIT_KEYS] == ["above", "above", "above", "high", "mid"]
     assert mb["neuroticism"]["value"] == 0.47 and mb["neuroticism"]["level"] == "средний уровень"
     assert mb["neuroticism_note"] == "Шкала нейротизма (средний уровень) в MBTI не выражается, приводится отдельно"
-    s = mb["second"][0]
-    assert s["type"] == "ISXX" and s["type_strict"] == "ISTP"
-    assert _p(s) == [0.25, 0.34, 0.45, 0.48]
     assert mbti.border_counts(mb["timeline"]) == ({"EI": 0, "SN": 0, "TF": 0, "JP": 0}, 26)
     assert mbti.border_text(mb["timeline"]) == ""
-    assert mb["agreement"]["axes"] == {"EI": "differ", "SN": "differ", "TF": "border", "JP": "border"}
-    assert mb["agreement"]["n_agree"] == 0
     assert mb["segments_total"] == 33 and mb["segments_used"] == 26
     assert mb["modal_types"] == [["ENFJ", 26]]
     assert all(mb["stability"][ax] == {"same": 26, "of": 26} for ax in mbti.AXES)
-    assert "reference" not in mb and all("reference" not in x for x in mb["second"])
+    assert "reference" not in mb and "second" not in mb and "agreement" not in mb
     assert mb["reliability"]["EI"] == "высокая (r≈0.74)" and mb["reliability_r"]["TF"] == 0.44
-    assert mb["computed_by"] == "BS Profiler 3.0 3.0.0a1" and mb["method"] == "raw" and mb["llm"] is None
-    assert mb["schema_version"] == 2
-    assert mb["source"] == "ocean_ai" and mb["role"] == "main" and s["role"] == "second_opinion"
+    assert mb["computed_by"] == "BS Profiler 3.1 3.1.0a1" and mb["method"] == "raw" and mb["llm"] is None
+    assert mb["schema_version"] == 3
+    assert mb["source"] == "ocean_ai" and mb["model"] == "oceanai" and mb["role"] == "main"
+    # the own model on the same numbers (a 3.1 job of AMLAI 1.0): ISXX, closest ISTP
+    r = rep("B")
+    r["model"].update({"selected": "mm", "primary": "mm"})
+    for t in r["timeline"]:
+        t["members_used"] = ["mm"]
+    own = mbti.build_section(scores.clean_view(r), computed_at="t")
+    assert own["type"] == "ISXX" and own["type_strict"] == "ISTP" and _p(own) == [0.25, 0.34, 0.45, 0.48]
 
 
 def test_fact_card_and_journal_lines():
     mb = mbti.build_section(scores.clean_view(rep("B")), computed_at="t")
-    assert mbti.fact_card(mb) == ("Тип MBTI · OCEAN-AI", "ENFJ", "«Наставник» · своя модель: ISXX")
+    assert mbti.fact_card(mb) == ("Тип MBTI · OCEAN-AI", "ENFJ", "«Наставник»")
     lines = mbti.journal_lines(mb)
-    assert lines[0] == "Тип MBTI (OCEAN-AI): ENFJ «Наставник»; нейротизм — средний уровень"
-    assert lines[1] == ("Второе мнение MBTI (своя модель): ISXX, ближайший ISTP; уверенно совпадают 0 осей из 4 "
-                        "(E–I ≠, S–N ≠, T–F ≈, J–P ≈)")
+    assert lines == ["Тип MBTI (OCEAN-AI): ENFJ «Наставник»; нейротизм — средний уровень"]
     a = mbti.build_section(scores.clean_view(rep("A")), computed_at="t")
     label, value, note = mbti.fact_card(a)
-    assert value == "XNFJ" and note.startswith("ближайший ENFJ «Наставник»") and note.endswith("своя модель: IXXX")
-    assert mbti.journal_lines(a)[1].startswith("Второе мнение MBTI (своя модель): IXXX, тип не выражен")
+    assert value == "XNFJ" and note == "ближайший ENFJ «Наставник»"
+    assert mbti.journal_lines(a) == ["Тип MBTI (OCEAN-AI): XNFJ, ближайший ENFJ «Наставник», возможен INFJ; "
+                                     "нейротизм — средний уровень"]
     assert mbti.fact_card(None) is None
-    for text in [*lines, note]:
-        assert "сегмент" not in text and "определяет тип" not in text and "предварительн" not in text
+    assert mbti.journal_lines(None) == ["Тип MBTI: не рассчитан (нет оценок Big Five)"]
+    # the own model as the chosen one (3.1): its title everywhere, no «своя модель»
+    r = rep("A")
+    r["model"].update({"selected": "mm", "primary": "mm"})
+    for t in r["timeline"]:
+        t["members_used"] = ["mm"]
+    own = mbti.build_section(scores.clean_view(r), computed_at="t")
+    assert mbti.fact_card(own) == ("Тип MBTI · AMLAI 1.0", "IXXX", "тип не выражен: 3 оси из 4 на границе")
+    assert mbti.journal_lines(own) == ["Тип MBTI (AMLAI 1.0): IXXX, тип не выражен (формально ближайший ISTJ); "
+                                       "нейротизм — средний уровень"]
+    assert mbti.type_title(own) == "Тип MBTI · AMLAI 1.0" and mbti.source_title(mb) == "OCEAN-AI"
+    for text in [*lines, note, *mbti.journal_lines(own), mbti.fact_card(own)[2]]:
+        for w in ("сегмент", "определяет тип", "предварительн", "своя модель", "торое мнение", "MM-PSYCHE"):
+            assert w not in text, (w, text)
 
 
-def test_english_section():
+def test_old_english_job_section():
+    """An older English job (no primary, two members) is read as OCEAN-AI: no mean of two systems, no second list."""
     v = scores.clean_view(english("B"))
     mb = mbti.build_section(v, computed_at="t")
-    assert mb["source"] == "mean" and "reference" not in mb and mb["method"] == "raw"
-    assert mb["type"] == "XXFJ" and mb["type_strict"] == "ENFJ"                   # the mean of the two systems
-    assert [s["source"] for s in mb["second"]] == ["ocean_ai", "own_model"]
-    assert mb["agreement"]["pair"] == ["ocean_ai", "own_model"]
+    assert mb["source"] == "ocean_ai" and "reference" not in mb and mb["method"] == "raw"
+    assert mb["type"] == "ENFJ" and "second" not in mb and "agreement" not in mb
     label, _, note = mbti.fact_card(mb)
-    assert label == "Тип MBTI · среднее двух систем" and "предварительные" not in note
-    lines = mbti.journal_lines(mb)
-    assert lines[1].startswith("MBTI по системе (OCEAN-AI): ") and lines[2].startswith("MBTI по системе (своя модель): ")
-    assert not any("Второе мнение" in ln for ln in lines)
+    assert label == "Тип MBTI · OCEAN-AI" and "предварительные" not in note
+    assert mbti.journal_lines(mb) == ["Тип MBTI (OCEAN-AI): ENFJ «Наставник»; нейротизм — средний уровень"]

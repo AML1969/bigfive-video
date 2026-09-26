@@ -1,15 +1,18 @@
-"""One layer of clean scores for everything BS Profiler 3.0 shows (design 6.1, 5.2; change of 2026-09-26).
+"""One layer of clean scores for everything BS Profiler 3.1 shows (design 6.1, 5.2; changes of 2026-09-26).
 
 `clean_view(rep)` returns a deep copy of a result.json in the same shape (the original is not changed and nothing is
 written), in which
-- the main Big Five scores are those of the main system only (Russian speech: OCEAN-AI with the MuPTA weights,
-  `variant_scores[primary]`), never a mix of two scales;
-- a segment where the main system gave no score has `scores = None` and `no_primary = True` (charts already draw such a
+- the view holds ONE model (3.1): the one recorded in result.json (`model.selected` of a 3.1 job, `model.primary` of a
+  3.0 or an imported 2.0 job — OCEAN-AI), see `main_system`; the Big Five scores are that model's own
+  (`variant_scores[main]`), never a mix of two scales, and `variant_scores` (whole video and per segment) keeps that
+  member only, so an older job that carried two members shows one;
+- a segment where the model gave no score has `scores = None` and `no_primary = True` (charts already draw such a
   segment as a gap «нет оценки»), and the spread over segments is recomputed on the remaining ones;
 - Russian speech shows the scores themselves only: the percentiles against the pool of processed videos that older
-  jobs carry are removed from the view (no group of processed videos is compared with anywhere); English speech
+  jobs carry are removed from the view (no group of processed videos is compared with anywhere); an older English job
   keeps the percentile against the First Impressions V2 norms (6000 clips of that dataset, not our videos);
-- `view_meta` says which system is the main one and which segments were left out.
+- `view_meta` says which model the view shows (`main_system`, `selected`, `selected_title`) and which segments were
+  left out.
 
 Levels and MBTI letters use the absolute score of the system on [0, 1] (the customer's formula: threshold 0.5,
 borderline zone |v − 0.5| < 0.15). The five level bands are aligned with that zone, so a value with a confident
@@ -26,6 +29,7 @@ import copy
 import math
 import statistics
 
+from . import DEFAULT_MODEL, MODEL_TITLES
 from .norms import RU_NAMES, TRAIT_KEYS
 
 # the band edges, in one place: distance of the score from the middle of the scale 0.5
@@ -36,11 +40,11 @@ LEVELS = ("high", "above", "mid", "below", "low")
 LEVELS_RU = {"high": "высокий уровень", "above": "выше среднего", "mid": "средний уровень",
              "below": "ниже среднего", "low": "низкий уровень"}
 RELATIVE_KEYS = ("percentile", "percentile_ref", "percentile_vs_fiv2", "position")
-SOURCE_OF = {"oceanai": "ocean_ai", "mm": "own_model", "mean": "mean"}
+SOURCE_OF = {"oceanai": "ocean_ai", "mm": "own_model"}
 FALLBACK_ORDER = ("oceanai", "mm")
 
 __all__ = ["clean_view", "segment_ok", "level", "level_phrase", "score_text", "shown", "LEVELS_RU", "plural_ru",
-           "main_system", "data_json"]
+           "main_system", "recorded_model", "data_json"]
 
 
 def plural_ru(n, one: str, few: str, many: str) -> str:
@@ -63,32 +67,43 @@ def _has_scores(d) -> bool:
     return isinstance(d, dict) and any(_num(d.get(k)) is not None for k in TRAIT_KEYS)
 
 
+def recorded_model(rep: dict) -> str | None:
+    """The model result.json names: `model.selected` (3.1), else `model.primary` (3.0 and imported 2.0 jobs:
+    OCEAN-AI), else a single-model backend of a CLI report; None when the job names none."""
+    model = rep.get("model") or {}
+    for key in ("selected", "primary", "backend"):
+        if model.get(key) in MODEL_TITLES:
+            return model[key]
+    return None
+
+
 def main_system(rep: dict) -> tuple[str, bool]:
-    """(main system, primary_missing): the configured primary if it produced scores, else the first of oceanai, mm
-    that did; 'mean' when the job has no primary (English speech: the mean of the two systems)."""
-    primary = (rep.get("model") or {}).get("primary")
-    if not primary:
-        return "mean", False
+    """(the model the view shows, primary_missing): the recorded model (`recorded_model`) when it produced scores, or
+    when the job has no per-member scores at all (a single-model report keeps its traits); otherwise the first of
+    oceanai, mm that did, with primary_missing = True. A job that names no model is read as OCEAN-AI (3.1 shows one
+    model; there is no mean of two systems any more)."""
+    recorded = recorded_model(rep)
     var = rep.get("variant_scores") or {}
-    if _has_scores(var.get(primary)):
-        return primary, False
+    if recorded and (_has_scores(var.get(recorded)) or not any(_has_scores(v) for v in var.values())):
+        return recorded, False
     for s in FALLBACK_ORDER:
         if _has_scores(var.get(s)):
-            return s, True
-    return primary, True
+            return s, recorded is not None
+    return recorded or DEFAULT_MODEL, recorded is not None
 
 
 def segment_ok(rep: dict, t: dict) -> bool:
-    """Did the main system score this segment? Jobs of 3.0 say so in `primary_used`; older ones in `members_used`."""
+    """Did the shown model score this segment? Jobs of 3.x say so in `primary_used`; older ones in `members_used`."""
     main, _ = main_system(rep)
-    if main == "mean":
-        return True
     if "primary_used" in t and main == (rep.get("model") or {}).get("primary"):
         return t.get("primary_used") is not None
     variants = t.get("variants")
     if isinstance(variants, dict) and main in variants:
         return _has_scores(variants.get(main))
-    return main in (t.get("members_used") or [])
+    members = t.get("members_used")
+    if members is None and variants is None:
+        return isinstance(t.get("scores"), dict)      # a job without per-member records: its scores are the model's
+    return main in (members or [])
 
 
 def shown(v) -> float | None:
@@ -132,15 +147,15 @@ def clean_view(rep: dict) -> dict:
     docstring). Idempotent: clean_view(clean_view(rep)) == clean_view(rep)."""
     view = copy.deepcopy(rep)
     model = view.get("model") or {}
-    lang = "ru" if model.get("lang") == "ru" else "en"
+    lang = "ru" if model.get("lang", "ru") == "ru" else "en"
     main, primary_missing = main_system(view)
     var = view.get("variant_scores") or {}
     traits = view.get("traits")
     if not isinstance(traits, dict):
         traits = view["traits"] = {}
 
-    # 1-2. main scores = the main system's own means
-    if main != "mean" and _has_scores(var.get(main)):
+    # 1-2. the scores = the shown model's own means
+    if _has_scores(var.get(main)):
         for k in TRAIT_KEYS:
             v = _num(var[main].get(k))
             if v is None:
@@ -148,17 +163,24 @@ def clean_view(rep: dict) -> dict:
             t = traits.setdefault(k, {"name_ru": RU_NAMES[k]})
             t["score"] = v                  # unrounded: rounded once, at display (shown)
 
-    # 3. segments without the main system: gaps
+    # 3. segments without the shown model: gaps (decided before the other members are dropped from the segments)
     timeline = view.get("timeline") or []
     dropped = []
     for t in timeline:
         if not isinstance(t, dict):
             continue
-        if main != "mean" and not segment_ok(view, t):
+        if not segment_ok(view, t):
             dropped.append(t.get("segment"))
             t["scores"] = None
             t["no_primary"] = True
     kept = [t for t in timeline if isinstance(t, dict) and isinstance(t.get("scores"), dict)]
+
+    # 3a. one model in the view (3.1): the other members an older job carried are left out, whole video and segments
+    if isinstance(view.get("variant_scores"), dict):
+        view["variant_scores"] = {m: v for m, v in view["variant_scores"].items() if m == main}
+    for t in timeline:
+        if isinstance(t, dict) and isinstance(t.get("variants"), dict):
+            t["variants"] = {m: v for m, v in t["variants"].items() if m == main}
 
     # 4. spread over the remaining segments (population SD, as longvideo computes it)
     if dropped:
@@ -186,13 +208,14 @@ def clean_view(rep: dict) -> dict:
     used = [t for t in timeline if isinstance(t, dict) and isinstance(t.get("scores"), dict)]
     view["view_meta"] = {
         "main_system": main, "main_source": SOURCE_OF.get(main, main), "lang": lang,
+        "selected": main, "selected_title": MODEL_TITLES.get(main, main),
         "segments_total": len(timeline), "segments_used": len(used),
         "segments_without_primary": dropped, "primary_missing": bool(primary_missing),
     }
     return view
 
 
-SYSTEM_GEN = {"oceanai": "OCEAN-AI", "mm": "своей модели"}
+SYSTEM_GEN = {"oceanai": "OCEAN-AI", "mm": "модели AMLAI 1.0"}
 SECOND_SCALE_RU = ("Второе мнение — своя модель, обученная на англоязычных роликах First Impressions V2; у неё своя "
                    "шкала, поэтому оценки двух систем не усредняются.")
 

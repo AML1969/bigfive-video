@@ -1,5 +1,5 @@
 """Clean scores (design 6.1, 5.2, 13.1 test_view): scores.clean_view and the level bands of the absolute scale
-(change of 2026-09-26: no reference group, Russian speech shows the scores only)."""
+(changes of 2026-09-26: no reference group, Russian speech shows the scores only; 3.1: one model in the view)."""
 from __future__ import annotations
 
 import copy
@@ -27,6 +27,7 @@ def test_clean_view_sample_b_gaps():
     assert all(t.get("no_primary") for t in v["timeline"] if t["scores"] is None)
     meta = v["view_meta"]
     assert meta["main_system"] == "oceanai" and meta["main_source"] == "ocean_ai" and meta["lang"] == "ru"
+    assert meta["selected"] == "oceanai" and meta["selected_title"] == "OCEAN-AI"
     assert meta["segments_total"] == 33 and meta["segments_used"] == 26
     assert meta["segments_without_primary"] == gaps and meta["primary_missing"] is False
     assert "reference" not in meta
@@ -73,15 +74,56 @@ def test_clean_view_idempotent():
         assert json.dumps(v1, sort_keys=True) == json.dumps(v2, sort_keys=True)
 
 
-def test_clean_view_english_keeps_traits():
+def test_clean_view_one_model():
+    """3.1: the view holds the recorded model only — whole video and segments; an imported 2.0 job shows OCEAN-AI."""
+    r = rep("B")
+    for t in r["timeline"]:
+        t["variants"] = {"mm": dict(r["variant_scores"]["mm"])}
+        if "oceanai" in t["members_used"]:
+            t["variants"]["oceanai"] = dict(t["scores"])
+    v = scores.clean_view(r)
+    meta = v["view_meta"]
+    assert meta["selected"] == "oceanai" and meta["selected_title"] == "OCEAN-AI" and meta["main_system"] == "oceanai"
+    assert set(v["variant_scores"]) == {"oceanai"}
+    assert all(set(t["variants"]) <= {"oceanai"} for t in v["timeline"])
+    assert [t["segment"] for t in v["timeline"] if t["scores"] is None] == [10, 11, 12, 14, 15, 26, 33]
+    assert set(r["variant_scores"]) == {"mm", "oceanai"}                        # the original is not changed
+    # a 3.1 job of AMLAI 1.0: model.selected wins
+    r = rep("B")
+    r["model"].update({"selected": "mm", "selected_title": "AMLAI 1.0", "primary": "mm"})
+    r["variant_scores"] = {"mm": r["variant_scores"]["mm"]}
+    for t in r["timeline"]:
+        t["members_used"] = ["mm"]
+    v = scores.clean_view(r)
+    assert v["view_meta"]["main_system"] == "mm" and v["view_meta"]["selected_title"] == "AMLAI 1.0"
+    assert v["view_meta"]["primary_missing"] is False and set(v["variant_scores"]) == {"mm"}
+    assert round(v["traits"]["extraversion"]["score"], 4) == round(r["variant_scores"]["mm"]["extraversion"], 4)
+    assert all(t["scores"] is not None for t in v["timeline"])
+
+
+def test_recorded_model():
+    assert scores.recorded_model(rep("A")) == "oceanai"
+    assert scores.recorded_model({"model": {"selected": "mm", "primary": "oceanai"}}) == "mm"
+    assert scores.recorded_model({"model": {"backend": "mm"}}) == "mm"
+    assert scores.recorded_model({"model": {"backend": "ensemble"}}) is None
+    assert scores.recorded_model({}) is None
+    # a single-model CLI report without per-member scores keeps its traits and is read as its backend
+    r = {"model": {"lang": "ru", "backend": "mm"}, "traits": {k: {"score": 0.4} for k in TRAIT_KEYS},
+         "timeline": [{"segment": 1, "start": 0, "end": 20, "scores": {k: 0.4 for k in TRAIT_KEYS}}]}
+    v = scores.clean_view(r)
+    assert v["view_meta"]["main_system"] == "mm" and v["view_meta"]["primary_missing"] is False
+    assert v["traits"]["openness"]["score"] == 0.4 and v["timeline"][0]["scores"] is not None
+
+
+def test_clean_view_old_english_job_shows_one_model():
+    """An older English job (no primary, two members): no mean of two systems any more, OCEAN-AI is shown; the FIV2
+    percentile of English speech stays."""
     r = english("B")
     v = scores.clean_view(r)
+    assert v["view_meta"]["main_system"] == "oceanai" and v["view_meta"]["primary_missing"] is False
+    assert "reference" not in v["view_meta"] and "mean" not in v["view_meta"].values()
     for k in TRAIT_KEYS:
-        assert v["traits"][k]["score"] == r["traits"][k]["score"]
-        assert "percentile_ref" not in v["traits"][k] or v["traits"][k]["percentile_ref"] == r["traits"][k].get("percentile_ref")
-    assert [t["scores"] for t in v["timeline"]] == [t["scores"] for t in r["timeline"]]
-    assert v["scores_std_across_segments"] == r["scores_std_across_segments"]
-    assert v["view_meta"]["main_system"] == "mean" and "reference" not in v["view_meta"]
+        assert v["traits"][k]["score"] == r["variant_scores"]["oceanai"][k]
     r["traits"]["extraversion"].update({"percentile": 72.0, "percentile_ref": "train First Impressions V2 (6000 клипов)"})
     e = scores.clean_view(r)["traits"]["extraversion"]
     assert e["percentile"] == 72.0 and e["percentile_ref"].startswith("train First Impressions V2")   # FIV2 stays
@@ -151,7 +193,7 @@ def test_rounded_once():
     assert (ax["JP"]["value"], ax["JP"]["letter"], ax["JP"]["borderline"]) == (0.35, "P", False)
     assert (ax["EI"]["value"], ax["EI"]["borderline"]) == (0.48, True) and ax["TF"]["value"] == 0.75
     assert [scores.score_text(v) for v in (0.75499, 0.47531, 0.6497, 0.35049)] == ["0.75", "0.48", "0.65", "0.35"]
-    h = mbti_html.types_html({**m, "second": [], "agreement": None})
+    h = mbti_html.types_html(m)
     for s in ("открытость опыту 0.65 — выше среднего", "добросовестность 0.35 — ниже среднего",
               "экстраверсия 0.48 — средний уровень", "доброжелательность 0.75 — выше среднего"):
         assert s in h, s
@@ -174,6 +216,7 @@ def test_data_json():
     d, trimmed = scores.data_json(r)
     assert trimmed and "narrative" not in d and "percentile" not in d["traits"]["openness"]
     assert r == before
+    assert set(d["variant_scores"]) == {"mm", "oceanai"}         # the tab shows the file as it lies on disk
     e = english("B")
     d2, trimmed2 = scores.data_json(e)
     assert d2 == e and not trimmed2

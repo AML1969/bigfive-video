@@ -5,10 +5,11 @@ task T28, optional).
 
 Not needed for showing or re-rendering: the page and the PDF compute the section on the fly (mbti.get_mbti, which
 never writes). This script is the explicit way to store it. It refuses any job outside ~/bs3_data/web_jobs (in
-particular the jobs of 2.0 under ~/bs2_data, which 3.0 never writes); old jobs are brought over with import_job.py
-first. A job that already has a section of the current schema (2) is left as it is unless --force is given; an
-older section (schema 1, letters by the position in a reference group) is replaced. A job without Big Five
-scores gets no section (design 7.1) and its file is not touched.
+particular the jobs of 2.0 under ~/bs2_data, which 3.x never writes); old jobs are brought over with import_job.py
+first. A job that already has a section of the current schema (3: one model) is left as it is unless --force is
+given; an older section (schema 1, letters by the position in a reference group; schema 2, with a second opinion and
+an agreement of two systems) is replaced. A job without Big Five scores gets no section (design 7.1) and its file is
+not touched.
 """
 from __future__ import annotations
 

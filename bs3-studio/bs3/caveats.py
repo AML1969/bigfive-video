@@ -15,6 +15,7 @@ Where each caveat goes (design 11):
 """
 from __future__ import annotations
 
+from . import PRODUCT
 from .report import DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU
 
 C1 = DISCLAIMER_RU
@@ -67,7 +68,8 @@ C19 = "Ролик короче 30 с оценивается целиком, од
 C20 = ("Основная система OCEAN-AI не дала оценок по этому ролику, поэтому характеристика и тип построены по своей "
        "модели.")
 C21 = "Тип MBTI не рассчитан: в результате нет оценок Big Five."
-C22 = "Раздел mbti для этого задания посчитан при показе версией 3.0 и в файл result.json не записан."
+C22 = (f"Раздел mbti для этого задания посчитан при показе версией {PRODUCT.split()[-1]} и в файл result.json "
+       "не записан.")
 
 TEXTS = {
     "C1": C1, "C2": C2, "C3": C3, "C4": C4, "C5": C5, "C6-ru": C6_RU, "C6-en": C6_EN, "C7-ru": C7_RU, "C7-en": C7_EN,

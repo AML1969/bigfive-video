@@ -129,6 +129,10 @@ def test_work_dirs_under_bs3_data():
 def test_product_name_and_version():
     import bs3
     assert Path(bs3.__file__).resolve().parent == ROOT / "bs3", bs3.__file__
-    assert bs3.PRODUCT == "BS Profiler 3.0"
-    assert bs3.__version__ == "3.0.0a1"
+    assert bs3.PRODUCT == "BS Profiler 3.1"
+    assert bs3.__version__ == "3.1.0a1"
     assert bs3.PRODUCT_SLUG == "BS_Profiler_3"
+    assert bs3.MODEL_TITLES == {"oceanai": "OCEAN-AI", "mm": "AMLAI 1.0"} and bs3.DEFAULT_MODEL == "oceanai"
+    assert bs3.LANG == "ru"
+    text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'version = "3.1.0a1"' in text

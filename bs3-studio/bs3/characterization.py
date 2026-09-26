@@ -234,8 +234,7 @@ def _p_basis(view, mb, lang, T) -> str:
         where = B["where_whole"]
     else:
         where = B["where_segments"].format(n=n, segments=_plural(n, "отрезку", "отрезкам", "отрезкам"))
-    if lang != "ru":
-        return B["en"].format(where=where) + " " + B["scale"]
+    # one model per analysis (3.1): the basis names the model the view shows, for any speech language of an old job
     system = B["system"].get(meta.get("main_system"), B["system"]["oceanai"])
     return B["ru"].format(system=system, where=where) + " " + B["scale"]
 

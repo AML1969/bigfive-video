@@ -151,7 +151,7 @@ def _pct_phrase(pct, ref: str | None) -> tuple[str, bool]:
 
 def _ref_ru(ref: str) -> str:
     """percentile_ref from result.json (genitive, reads after «относительно») without technical English words."""
-    r = re.sub(r",\s*своя модель\s*$", "", ref or "")
+    r = re.sub(r",\s*(?:своя модель|AMLAI 1\.0)\s*$", "", ref or "")
     return r.replace("train First Impressions V2", "обучающей выборки First Impressions V2").replace(
         "train FIV2", "обучающей выборки FIV2")
 
@@ -206,7 +206,7 @@ def _members_html(rep: dict) -> str:
     """Framed block under the main bars: the second opinion (own model on the FIV2 scale) when one member is
     primary, otherwise a table of the members that were averaged."""
     var = rep.get("variant_scores") or {}
-    if not var:
+    if len(var) < 2:                  # one model per analysis (3.1; a clean view of an older job keeps one member)
         return ""
     model = rep.get("model") or {}
     primary = model.get("primary")
