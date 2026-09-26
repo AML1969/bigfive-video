@@ -140,7 +140,7 @@ class _FakeStudio:
 def test_signatures_one_member_russian_only():
     sig = inspect.signature(pipeline.run_analysis)
     assert "member" in sig.parameters and "lang" not in sig.parameters
-    assert sig.parameters["member"].default == "oceanai" == bs3.DEFAULT_MODEL
+    assert sig.parameters["member"].default == "mm" == bs3.DEFAULT_MODEL      # a run without a model: AMLAI 1.0
     assert "members" not in inspect.signature(pipeline.Studio.__init__).parameters
     assert bs3.LANG == "ru" and pipeline.Studio().lang == "ru"
     for bad in ("en", "ensemble", "scene", ""):

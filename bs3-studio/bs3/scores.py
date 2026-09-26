@@ -23,6 +23,10 @@ unrounded and they are rounded once, here, so a printed 0.65 never gets two read
 two ways:
 d = v − 0.5: d >= 0.30 high, 0.15 <= d < 0.30 above, |d| < 0.15 mid, −0.30 < d <= −0.15 below, d <= −0.30 low
 (v >= 0.80 high, 0.65 <= v < 0.80 above, 0.35 < v < 0.65 mid, 0.20 < v <= 0.35 below, v <= 0.20 low).
+
+The cards of «Ключевые факты» paint their value by the same bands, in three states instead of five: `scale_state`
+(neutral / below / above for a 0…1 measurement), `tempo_state` (words per minute, TEMPO_BAND) and `emotion_state`
+(the dominant emotion or facial expression, EMO_STATE). The colours themselves live in palette.FACT_VALUE.
 """
 from __future__ import annotations
 
@@ -44,8 +48,20 @@ RELATIVE_KEYS = ("percentile", "percentile_ref", "percentile_vs_fiv2", "position
 SOURCE_OF = {"oceanai": "ocean_ai", "mm": "own_model"}
 FALLBACK_ORDER = ("oceanai", "mm")
 
+# Where a measured value of «Ключевые факты» sits, in the three words the card colour says (palette.FACT_VALUE):
+# around neutral, below it, above it. The 0…1 scales are read with the bands above, so the page never calls a score
+# «средний уровень» in one place and paints it «выше» in another; the speech tempo has a band of its own.
+NEUTRAL, BELOW, ABOVE = "neutral", "below", "above"
+FACT_STATES = (NEUTRAL, BELOW, ABOVE)
+TEMPO_BAND = (100, 160)        # words per minute: the usual range of conversational Russian speech, ends included
+# emotions and facial expressions: «нейтрально» is the neutral state, the quiet emotions read as below it and the
+# loud ones as above it (the face labels share palette.EMO_ALIAS with the text emotions)
+EMO_STATE = {"neutral": NEUTRAL, "sadness": BELOW, "fear": BELOW, "disgust": BELOW,
+             "joy": ABOVE, "surprise": ABOVE, "anger": ABOVE}
+
 __all__ = ["clean_view", "segment_ok", "level", "level_phrase", "score_text", "shown", "LEVELS_RU", "plural_ru",
-           "main_system", "recorded_model", "data_json"]
+           "main_system", "recorded_model", "data_json", "scale_state", "tempo_state", "emotion_state",
+           "FACT_STATES", "TEMPO_BAND", "NEUTRAL", "BELOW", "ABOVE"]
 
 
 def plural_ru(n, one: str, few: str, many: str) -> str:
@@ -135,6 +151,33 @@ def level_phrase(v) -> str | None:
     """«высокий уровень» / «выше среднего» / «средний уровень» / «ниже среднего» / «низкий уровень»."""
     lv = level(v)
     return LEVELS_RU[lv] if lv else None
+
+
+def scale_state(v) -> str | None:
+    """Where a measurement on [0, 1] sits, for the colour of a key-fact value: the level band of `v` read as one of
+    three states (mid -> neutral, below/low -> below, above/high -> above); None for a missing value. With the bands
+    of this module that is 0.36…0.64 neutral, <= 0.35 below, >= 0.65 above on the printed two decimals."""
+    lv = level(v)
+    if lv is None:
+        return None
+    return NEUTRAL if lv == "mid" else (BELOW if lv in ("below", "low") else ABOVE)
+
+
+def tempo_state(wpm) -> str | None:
+    """Speech tempo, decided on the whole words per minute the card prints: TEMPO_BAND is neutral, slower is below,
+    faster is above; None when there is no tempo."""
+    x = _num(wpm)
+    if x is None:
+        return None
+    n = int(round(x))
+    lo, hi = TEMPO_BAND
+    return BELOW if n < lo else (ABOVE if n > hi else NEUTRAL)
+
+
+def emotion_state(key: str) -> str | None:
+    """State of a dominant emotion or facial expression (EMO_STATE); None for a label we do not place."""
+    from .palette import EMO_ALIAS
+    return EMO_STATE.get(EMO_ALIAS.get(key, key))
 
 
 def score_text(v) -> str | None:

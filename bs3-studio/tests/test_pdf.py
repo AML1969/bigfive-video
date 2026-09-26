@@ -15,7 +15,7 @@ from pathlib import Path
 
 from samples import english, rep
 
-from bs3 import caveats, characterization, mbti, pdf_mbti, pdf_report, scores
+from bs3 import caveats, characterization, mbti, narrative2, pdf_mbti, pdf_report, scores
 from bs3.narrative import NO_EXPLAIN_RU
 from bs3.norms import TRAIT_KEYS
 
@@ -103,8 +103,12 @@ def test_strip_geometry():
 def test_facts_start_with_type_card():
     view, mb, _ = _parts(rep("B"))
     facts = pdf_report._pdf_facts(view, False, mb)
-    assert facts[0] == mbti.fact_card(mb)
+    assert facts[0] == mbti.fact_card(mb)                      # the type card carries no state: never coloured
+    assert narrative2.card_item(facts[0])[3] is None
     assert pdf_report._pdf_facts(view, False, None)[0] != facts[0]
+    # trimming the tempo note for «Речь в цифрах» keeps the state of the card
+    trimmed = pdf_report._pdf_facts(view, True, mb)
+    assert [narrative2.card_item(f)[3] for f in trimmed] == [narrative2.card_item(f)[3] for f in facts]
 
 
 def test_segment_types_by_start():

@@ -132,7 +132,9 @@ def test_product_name_and_version():
     assert bs3.PRODUCT == "BS Profiler 3.1"
     assert bs3.__version__ == "3.1.0a1"
     assert bs3.PRODUCT_SLUG == "BS_Profiler_3"
-    assert bs3.MODEL_TITLES == {"oceanai": "OCEAN-AI", "mm": "AMLAI 1.0"} and bs3.DEFAULT_MODEL == "oceanai"
+    # AMLAI 1.0 is the default model and stands first, so the radio of the page offers it on the left, already chosen
+    assert bs3.MODEL_TITLES == {"mm": "AMLAI 1.0", "oceanai": "OCEAN-AI"} and bs3.DEFAULT_MODEL == "mm"
+    assert list(bs3.MODEL_TITLES) == ["mm", "oceanai"]
     assert bs3.LANG == "ru"
     text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert 'version = "3.1.0a1"' in text

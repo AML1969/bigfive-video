@@ -22,9 +22,9 @@ from fpdf import FPDF
 
 from . import MODALITIES, MODEL_TITLES, PRODUCT, caveats, frame_captions
 from .narrative import NO_EXPLAIN_RU
-from .narrative2 import analyses_parts, fix_counts, key_facts, plural_ru
+from .narrative2 import FACTS_LEGEND, analyses_parts, card_item, fix_counts, key_facts, plural_ru
 from .norms import RU_SHORT, TRAIT_KEYS
-from .palette import CARD_PDF, SCORE_BAR_PDF, TRAIT_BAR_PDF
+from .palette import CARD_PDF, FACT_VALUE_PDF, SCORE_BAR_PDF, TRAIT_BAR_PDF
 from .report import _SEC_LABEL, fmt_secs, seg_label
 from .ru_texts import transcript_shown, vocabulary_shown
 
@@ -339,7 +339,7 @@ class Report(FPDF):
         w = (self.epw - gap * (cols - 1)) / cols
         pad, inner = 1.8, (self.epw - gap * (cols - 1)) / cols - 3.6
         heights = []
-        for lab, val, note in items:
+        for lab, val, note, _state in (card_item(x) for x in items):
             self.set_font("ui", "", 7.5)
             n_lab = len(self.multi_cell(inner, 3.4, str(lab), dry_run=True, output="LINES"))
             self.set_font("ui", "B", 11)
@@ -359,9 +359,11 @@ class Report(FPDF):
         _, _, _, _, row_h = self._card_layout(items, cols, gap)
         return sum(row_h) + gap * 0.75 * (len(row_h) - 1) + 1.5
 
-    def cards(self, items, cols: int = 3, gap: float = 4.0):
-        """(label, value, note) -> a grid of outlined cards, as on the web page: label and note small and grey, the
-        value large and bold. The grid is never split between pages."""
+    def cards(self, items, cols: int = 3, gap: float = 4.0, value_first: bool = False):
+        """(label, value, note[, state]) -> a grid of outlined cards, as on the web page: label and note small and
+        grey, the value large and bold. `value_first`: the card reads value, then label, then note, and a value with
+        a state is printed in the colour of that state (palette.FACT_VALUE_PDF) — «Ключевые факты» of 3.1.
+        The grid is never split between pages."""
         if not items:
             return
         w, pad, inner, rows, row_h = self._card_layout(items, cols, gap)
@@ -370,20 +372,35 @@ class Report(FPDF):
         y = self.get_y()
         for r, rh in zip(rows, row_h):
             for j, i in enumerate(r):
-                lab, val, note = items[i]
+                lab, val, note, state = card_item(items[i])
                 x = self.l_margin + j * (w + gap)
                 self.set_fill_color(CARD_PDF["fill"]); self.set_draw_color(CARD_PDF["outline"]); self.set_line_width(0.2)
                 self.rect(x, y, w, rh, style="DF", round_corners=True, corner_radius=1.2)
                 self.set_xy(x + pad, y + pad)
-                self.set_font("ui", "", 7.5); self.set_text_color(NOTE_GREY)
-                self.multi_cell(inner, 3.4, str(lab), align="L", new_x="LEFT", new_y="NEXT")
-                self.set_y(self.get_y() + 0.6); self.set_x(x + pad)
-                self.set_font("ui", "B", 11); self.set_text_color(0)
-                self.multi_cell(inner, 5.0, str(val if val not in (None, "") else "—"), align="L", new_x="LEFT", new_y="NEXT")
-                if note:
-                    self.set_y(self.get_y() + 0.3); self.set_x(x + pad)
+
+                def small(text, lead=0.3):
+                    if lead:
+                        self.set_y(self.get_y() + lead); self.set_x(x + pad)
                     self.set_font("ui", "", 7.5); self.set_text_color(NOTE_GREY)
-                    self.multi_cell(inner, 3.4, str(note), align="L", new_x="LEFT", new_y="NEXT")
+                    self.multi_cell(inner, 3.4, str(text), align="L", new_x="LEFT", new_y="NEXT")
+
+                def big(lead=0.6):
+                    if lead:
+                        self.set_y(self.get_y() + lead); self.set_x(x + pad)
+                    self.set_font("ui", "B", 11)
+                    ink = _rgb(FACT_VALUE_PDF[state]) if (value_first and state) else (0, 0, 0)
+                    self.set_text_color(*ink)
+                    self.multi_cell(inner, 5.0, str(val if val not in (None, "") else "—"), align="L",
+                                    new_x="LEFT", new_y="NEXT")
+                # the same two gaps either way (0.6 + 0.3), so cards_height does not depend on the order
+                if value_first:
+                    big(lead=0)
+                    small(lab, lead=0.6)
+                else:
+                    small(lab, lead=0)
+                    big()
+                if note:
+                    small(note)
             y += rh + gap * 0.75
         self.set_text_color(0); self.set_draw_color(0)
         self.set_xy(self.l_margin, y - gap * 0.75 + 1.5)
@@ -743,7 +760,7 @@ def _pdf_facts(view: dict, speech_cards: bool, mb: dict | None = None) -> list:
     facts = key_facts(view)
     if speech_cards:
         facts = [(lab, val, ("только время, когда человек говорит" if "минуту" in str(val) else "")
-                            if lab == "Темп речи" else note) for lab, val, note in facts]
+                            if lab == "Темп речи" else note, state) for lab, val, note, state in facts]
     return ([card] if card else []) + facts
 
 
@@ -1470,8 +1487,11 @@ def _render(report: dict, explanation, media, frames: list, charts: dict, fname:
     facts = _pdf_facts(report, "voice_speech" in pdf.plan and bool((report.get("analyses") or {}).get("speech")), mb)
     if facts:
         cols = FACT_COLS.get(len(facts), 3)
-        pdf.h3("Ключевые факты", keep_mm=pdf.cards_height(facts, cols))
-        pdf.cards(facts, cols)
+        legend = any(card_item(f)[3] for f in facts)
+        pdf.h3("Ключевые факты", keep_mm=pdf.cards_height(facts, cols) + (4 if legend else 0))
+        pdf.cards(facts, cols, value_first=True)
+        if legend:
+            pdf.caption(FACTS_LEGEND)
     if "timeline" not in pdf.plan:
         dur = float(report.get("duration_sec") or 0)
         pdf.para(("Ролик короче 30 с оценивается целиком" if 0 < dur <= 30 else "Ролик оценён целиком, одним отрезком")

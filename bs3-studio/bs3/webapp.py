@@ -22,14 +22,14 @@ from .charts import (EMO_RU, VOICE_RU, fig_emotion_bars, fig_emotions_timeline, 
                      fig_speech_timeline, fig_traits_timeline, fig_voice_timeline, plot_html as _plot_html)
 from .mbti import fact_card, get_mbti
 from .narrative import NO_EXPLAIN_RU, method_notes
-from .narrative2 import fix_counts, key_facts, plural_ru
+from .narrative2 import FACTS_LEGEND, card_item, fix_counts, key_facts, plural_ru
 from .norms import TRAIT_KEYS
 from .palette import (ACCENT, BUTTON_PRIMARY, BUTTON_PRIMARY_HOVER, BUTTON_STOP, BUTTON_STOP_HOVER, CARD_TINT,
-                      HTML as PAL, PAGE_NOTE_OPACITY, SUBDUED_TEXT_LIGHT)
+                      FACT_VALUE, HTML as PAL, PAGE_NOTE_OPACITY, SUBDUED_TEXT_LIGHT)
 from .pipeline import Studio, run_analysis
 from .report import fmt_secs, mmss_labels, seg_label
 from .ru_texts import ensure_russian_job, transcript_shown, vocabulary_shown
-from .scores import clean_view, data_json
+from .scores import FACT_STATES, clean_view, data_json
 from .webparts import NOTE, TRAIT_TITLES, _bar_html, _contrib_html, _words_text, model_line, table_html, th_text
 
 log = logging.getLogger("bs3.web")
@@ -42,23 +42,43 @@ DATA_TRIMMED = ("В result.json ниже не показаны поля преж
 CARDS = "display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px"
 CARD = (f"padding:10px 14px;border:1px solid {PAL['card_border']};background:rgba(128,128,128,{CARD_TINT});"
         "border-radius:8px;min-width:0")
+CARD_VALUE = "font-size:20px;font-weight:600;line-height:1.25;font-variant-numeric:tabular-nums"
+# «Ключевые факты»: one class per state, so the value takes the colour of the theme the page is showing (the block
+# HTML is built once for both themes, Gradio puts `dark` on an ancestor of the container). The rules travel with the
+# block, so the same HTML also reads right outside the app (scripts/rerender_samples.py --html-dir).
+FACTS_CSS = "<style>" + "".join(f".bs3-fact-{s}{{color:{FACT_VALUE['light'][s]}}}"
+                                f".dark .bs3-fact-{s}{{color:{FACT_VALUE['dark'][s]}}}"
+                                for s in FACT_STATES) + "</style>"
 
 
-def _cards(items, min_px: int = 180) -> str:
-    """(label, value, note) -> a grid of cards; note may be empty."""
-    html = "".join(f"<div style='{CARD}'><div style='{NOTE}'>{lab}</div>"
-                   f"<div style='font-size:20px;font-weight:600;line-height:1.25;margin:3px 0;"
-                   f"font-variant-numeric:tabular-nums'>{val if val not in (None, '') else '—'}</div>"
-                   + (f"<div style='{NOTE}'>{note}</div>" if note else "") + "</div>" for lab, val, note in items)
+def _cards(items, min_px: int = 180, value_first: bool = False) -> str:
+    """(label, value, note[, state]) -> a grid of cards; note may be empty. `value_first`: the card reads value,
+    then label, then note, and a value with a state is painted by it (FACTS_CSS) — «Ключевые факты» of 3.1."""
+    html = ""
+    for item in items:
+        lab, val, note, state = card_item(item)
+        cls = f" class='bs3-fact-{state}'" if value_first and state else ""
+        value = (f"<div{cls} style='{CARD_VALUE};margin:"
+                 + ("0 0 2px" if value_first else "3px 0") + f"'>{val if val not in (None, '') else '—'}</div>")
+        label = f"<div style='{NOTE}'>{lab}</div>"
+        rest = f"<div style='{NOTE}'>{note}</div>" if note else ""
+        html += f"<div style='{CARD}'>" + (value + label if value_first else label + value) + rest + "</div>"
     grid = CARDS.replace("minmax(180px", f"minmax({int(min_px)}px")
     return f"<div style='{grid}'>{html}</div>" if html else ""
 
 
 def _facts_html(view: dict, mb: dict | None = None) -> str:
     """«Ключевые факты» in the left column (design 10.2): the MBTI type card first, then the cards of 2.0 from the clean
-    view; 150 px minimum, two cards in a row in the 320 px column."""
+    view; 150 px minimum, two cards in a row in the 320 px column. 3.1: every card reads value, label, explanation, and
+    the value of a measured card is coloured by where it sits; one line under the grid says what the colours mean."""
     card = fact_card(mb)
-    return _cards(([card] if card else []) + key_facts(view), min_px=150)
+    items = ([card] if card else []) + key_facts(view)
+    grid = _cards(items, min_px=150, value_first=True)
+    if not grid:
+        return ""
+    legend = (f"<p style='{NOTE};margin:8px 0 0'>{FACTS_LEGEND}</p>"
+              if any(card_item(i)[3] for i in items) else "")
+    return FACTS_CSS + grid + legend
 
 
 def _dominant(dist: dict) -> str:
@@ -620,8 +640,9 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
             with gr.Column(scale=1, min_width=320):
                 video = gr.Video(label="Видео", sources=["upload"], height=VIDEO_H)
                 # 3.1: the model is chosen by hand, one model runs per analysis; the speech is always Russian; the
-                # explanations follow the model (AMLAI 1.0 only), so there is no checkbox for them
-                model = gr.Radio(choices=[(MODEL_TITLES[m], m) for m in ("oceanai", "mm")], value=DEFAULT_MODEL,
+                # explanations follow the model (AMLAI 1.0 only), so there is no checkbox for them. AMLAI 1.0 is the
+                # left choice and is already selected (bs3.MODEL_TITLES keeps that order, bs3.DEFAULT_MODEL)
+                model = gr.Radio(choices=[(t, m) for m, t in MODEL_TITLES.items()], value=DEFAULT_MODEL,
                                  label="Модель")
                 with gr.Row():
                     btn = gr.Button("Анализировать", variant="primary")

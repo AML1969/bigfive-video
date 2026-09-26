@@ -72,6 +72,9 @@ for theme, bgs in P.WEB_BACKGROUNDS.items():
     check("card value on card", ink, (card,), 4.5)
     check("card label (.75) on card", ink, (card,), 4.5, 0.75)
     check("HTML.card_border on card", P.HTML["card_border"], (card,), 3.0)
+    # «Ключевые факты»: the value of a measured card is painted by where it sits, so it is text on the card
+    for k, c in P.FACT_VALUE[theme].items():
+        check(f"FACT_VALUE.{k} on card", c, (card, P.tint(page)), 4.5)
     # selected tab name and underline (on the page), checked boxes and radios (on the block)
     check("accent (selected tab, checkbox)", P.ACCENT[theme], bgs, 4.5)
     for k in ("text", "muted", "hover_text"):
@@ -124,6 +127,22 @@ for k in P.EMO_PDF:
     for step in (2, 3, 4):
         cell = P.emo_heat_pdf(k, step)
         check(f"heatmap number on {k} step {step}", P.emo_heat_text_pdf(cell), (cell,), 4.5)
+
+# «Ключевые факты» in the PDF: the value is text on the card fill, and the three states must still be told apart on a
+# black-and-white printer, so every pair of them keeps a greyscale contrast of palette.FACT_GREY_MIN
+pdf_card = "#%02x%02x%02x" % ((P.CARD_PDF["fill"],) * 3)
+for k, c in P.FACT_VALUE_PDF.items():
+    check(f"FACT_VALUE_PDF.{k}", c, (pdf_card, P.PDF_BACKGROUND), 4.5)
+keys = list(P.FACT_VALUE_PDF)
+for i, a in enumerate(keys):
+    for b in keys[i + 1:]:
+        ya, yb = lum(rgb(P.FACT_VALUE_PDF[a])[0]), lum(rgb(P.FACT_VALUE_PDF[b])[0])
+        r = (max(ya, yb) + 0.05) / (min(ya, yb) + 0.05)
+        need = P.FACT_GREY_MIN
+        if r < need:
+            fails.append(f"FACT_VALUE_PDF {a} vs {b} in greyscale: {r:.2f} < {need}")
+        print(f"  {'OK ' if r >= need else 'FAIL'} {'greyscale ' + a + ' vs ' + b:34s} "
+              f"{P.FACT_VALUE_PDF[a] + ' / ' + P.FACT_VALUE_PDF[b]:24s} on paper: {r:5.2f} (need {need})")
 
 print("\nFAILURES:" if fails else "\nall checks passed")
 for x in fails:

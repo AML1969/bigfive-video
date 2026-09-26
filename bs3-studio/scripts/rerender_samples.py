@@ -12,7 +12,8 @@ For every job:
 1. sha256 of every file of the source job (except segments/ and seg*.mp4) is taken;
 2. import_job.py copies result.json and explain/ into ~/bs3_data/web_jobs/<id>/ (an existing copy is replaced);
 3. webapp.page_outputs runs on the copy and the page is checked: 27 values; the characterization starts with its
-   header and «Коротко»; the first key fact is the MBTI card; the view and the `mbti` section hold one model (the
+   header and «Коротко»; the first key fact is the MBTI card, every card of «Ключевые факты» reads value, label,
+   explanation, the measured values are coloured and one line says what the colours mean; the view and the `mbti` section hold one model (the
    recorded one: OCEAN-AI for an imported 2.0 job), the tab «Тип MBTI» shows one panel and one letter strip titled by
    the model («OCEAN-AI, веса MuPTA» / «AMLAI 1.0»), no agreement line, no roles, and no block of the page says
    «второе мнение», «своя модель» or «MM-PSYCHE»; the score bars have no framed block under them; the tab
@@ -174,7 +175,7 @@ def check_pdf(c: Checks, src: Path, dest: Path, mb: dict | None, exp: dict | Non
 
 
 def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path | None = None) -> Checks:
-    from bs3 import caveats, mbti, mbti_html, webparts
+    from bs3 import caveats, mbti, mbti_html, narrative2, webparts
     from bs3.charts import fig_traits_timeline
     from bs3.narrative import NO_EXPLAIN_RU
     from bs3.scores import clean_view
@@ -209,12 +210,17 @@ def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path |
         c.ok(m_rel is None, f"nothing about a group of processed videos in {name}" + (f": «{m_rel.group(0)}»" if m_rel else ""))
     stem = Path(rep.get("original_file_name") or "").stem
     c.ok(not stem or stem not in char, "no file name in the characterization")
-    # key facts: the type card first
+    # key facts: every card reads value, label, explanation (3.1), and the type card is the first one
     title = mbti.type_title(mb) if mb else None
-    first_label = re.search(r"<div style='[^']*'><div style='[^']*'>([^<]*)</div>", facts)
-    c.ok(bool(first_label) and first_label.group(1) == title, f"first key fact is «{title}»")
     card = mbti.fact_card(mb)
-    c.ok(card is not None and f">{card[1]}</div>" in facts, "the type card shows the type")
+    i_card = facts.find("<div style='padding:10px")
+    i_val = facts.find(f">{card[1]}</div>", i_card) if card else -1
+    i_lab = facts.find(f">{title}</div>", i_card) if title else -1
+    c.ok(0 <= i_card < i_val < i_lab, f"first key fact is «{title}», value «{card and card[1]}» on the first line")
+    # a measured value is coloured by where it sits, and one line says what the colours mean
+    c.ok(facts.count("class='bs3-fact-") >= 2 and ".dark .bs3-fact-above" in facts,
+         "key facts: coloured values with a rule for each theme")
+    c.ok(narrative2.FACTS_LEGEND in facts, "key facts: the line about the colours")
     # one model (3.1): the view, the section, the tab «Тип MBTI» (one panel, one strip, no agreement line, no roles)
     c.ok(set(view.get("variant_scores") or {}) == {meta["main_system"]},
          f"the view holds one model: {meta['main_system']}")

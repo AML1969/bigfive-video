@@ -50,8 +50,9 @@ def test_page_builds_with_the_model_radio_and_no_checkbox():
     radios = [c for c in comps if isinstance(c, gr.Radio)]
     assert len(radios) == 1
     radio = radios[0]
-    assert radio.label == "Модель" and radio.value == bs3.DEFAULT_MODEL == "oceanai"
-    assert [c[0] for c in radio.choices] == ["OCEAN-AI", "AMLAI 1.0"] and [c[1] for c in radio.choices] == ["oceanai", "mm"]
+    # AMLAI 1.0 is the left choice and is already selected; OCEAN-AI is there for whoever wants it
+    assert radio.label == "Модель" and radio.value == bs3.DEFAULT_MODEL == "mm"
+    assert [c[0] for c in radio.choices] == ["AMLAI 1.0", "OCEAN-AI"] and [c[1] for c in radio.choices] == ["mm", "oceanai"]
     assert not getattr(radio, "info", None)
     assert not [c for c in comps if isinstance(c, gr.Checkbox)]                  # explanations follow the model
     labels = {getattr(c, "label", None) for c in comps}

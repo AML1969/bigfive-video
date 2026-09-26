@@ -110,24 +110,42 @@ def analyses_sentences(rep: dict) -> str:
     return " ".join(p for p in analyses_parts(rep).values() if p)
 
 
+# the one line under the card grid of «Ключевые факты», on the page and in the PDF: what the colour of a value means
+FACTS_LEGEND = "Цвет показателя: зелёный — около нейтрального, синий — ниже, оранжевый — выше."
+
+
+def card_item(item) -> tuple:
+    """(label, value, note, state) of one card: the key facts carry a state, the other card grids («Речь в цифрах»,
+    «Лицо») three fields and no state."""
+    lab, val, note, *rest = item
+    return lab, val, note, (rest[0] if rest else None)
+
+
 def key_facts(rep: dict) -> List[tuple]:
-    """(label, value, note) cards for the overview tab. Every number carries its unit or scale; counts use the
-    correct Russian plural; rounding matches the «Речь» tab (whole words per minute, whole fillers per 100 words)."""
+    """(label, value, note, state) cards for the overview tab. Every number carries its unit or scale; counts use the
+    correct Russian plural; rounding matches the «Речь» tab (whole words per minute, whole fillers per 100 words).
+
+    `state` is where the value sits — "neutral", "below" or "above" (scores.scale_state, tempo_state, emotion_state) —
+    and the card renderers paint the value by it (palette.FACT_VALUE). It is None on a card that is not a measurement
+    («Длительность ролика») and on one whose value is missing, and such a value keeps the plain text colour."""
+    from .scores import emotion_state, scale_state, tempo_state
     an = rep.get("analyses") or {}
     facts = []
     te = an.get("emotions_text")
     if te and te.get("mean"):
         k, v = max(te["mean"].items(), key=lambda kv: kv[1])
-        facts.append(("Эмоция по тексту речи", EMO_RU.get(k, k), f"{v:.0%} времени"))
+        facts.append(("Эмоция по тексту речи", EMO_RU.get(k, k), f"{v:.0%} времени", emotion_state(k)))
     fa = an.get("face")
     if fa and fa.get("mean"):
         k, v = max(fa["mean"].items(), key=lambda kv: kv[1])
-        facts.append(("Выражение лица", EMO_RU.get(k, k), f"{v:.0%} кадров"))
+        facts.append(("Выражение лица", EMO_RU.get(k, k), f"{v:.0%} кадров", emotion_state(k)))
     vo = an.get("voice")
     if vo and vo.get("mean"):
         m = vo["mean"]
+        # the value of the card is the arousal, so the colour is the arousal's (the two other dimensions are the note)
         facts.append(("Голос, шкала 0…1", f"возбуждение {m.get('arousal', 0):.2f}",
-                      f"уверенность {m.get('dominance', 0):.2f} · позитивность {m.get('valence', 0):.2f}"))
+                      f"уверенность {m.get('dominance', 0):.2f} · позитивность {m.get('valence', 0):.2f}",
+                      scale_state(m.get("arousal", 0))))
     sp = an.get("speech")
     if sp and sp.get("words"):
         wpm = sp.get("words_per_min_speech")
@@ -137,13 +155,17 @@ def key_facts(rep: dict) -> List[tuple]:
         else:
             value = f"{sp['words']} {plural_ru(sp['words'], 'слово', 'слова', 'слов')}"
         fillers = int(round(sp.get("fillers_per_100", 0) or 0))
+        # without a tempo the card shows the word count instead, and a word count has no band: no colour
         facts.append(("Темп речи", value, f"паузы — {sp.get('pause_share', 0):.0%} времени, "
-                                          f"заполнители — {fillers} на 100 слов"))
+                                          f"заполнители — {fillers} на 100 слов",
+                      tempo_state(wpm) if wpm else None))
     if rep.get("interview"):
-        facts.append(("Впечатление «собеседование»", f"{rep['interview']['score']:.2f}", "шкала 0…1, модель AMLAI 1.0"))
+        facts.append(("Впечатление «собеседование»", f"{rep['interview']['score']:.2f}", "шкала 0…1, модель AMLAI 1.0",
+                      scale_state(rep["interview"]["score"])))
     dur = rep.get("duration_sec")
     if dur:
         n = int(rep.get("segments") or 1)
         facts.append(("Длительность ролика", fmt_secs(dur),
-                      f"разбит на {n} {plural_ru(n, 'отрезок', 'отрезка', 'отрезков')}" if n > 1 else "один отрезок"))
+                      f"разбит на {n} {plural_ru(n, 'отрезок', 'отрезка', 'отрезков')}" if n > 1 else "один отрезок",
+                      None))
     return facts

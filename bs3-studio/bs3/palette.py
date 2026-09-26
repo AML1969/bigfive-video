@@ -94,6 +94,22 @@ HTML = dict(
 # tinted colour and not on the bare block: tint() below composites it, scripts/check_palette.py measures them there
 CARD_TINT = 0.06
 
+# «Ключевые факты»: the first line of a measured card is the value itself, painted by where the value sits — green
+# around neutral, blue below, dark orange above (change request 3.1 «Ключевые факты»). The colour praises nothing and
+# blames nothing, it only says where the value is, and it is never red. Cards that are not a measurement («Тип MBTI»,
+# «Длительность ролика») keep the theme text colour. These are text colours, so >= 4.5:1 on the card of their theme.
+# The light and PDF green is green-900 and not the green-700 #15803d of the charts: #15803d (luminance 0.159) and the
+# orange #c2410c (0.153) are one and the same grey on a black-and-white printer, and the report is printed. Making the
+# orange darker instead was tried and dropped: an orange dark enough to part from the green stops reading as orange,
+# while a dark green still reads as green. The three lightnesses are now 0.065 / 0.107 / 0.153, so every pair keeps
+# FACT_GREY_MIN in greyscale; scripts/check_palette.py checks both the contrast and that distance.
+FACT_VALUE = {
+    "dark": {"neutral": "#4ade80", "below": "#60a5fa", "above": "#fb923c"},
+    "light": {"neutral": "#14532d", "below": "#1d4ed8", "above": "#c2410c"},
+}
+FACT_VALUE_PDF = {"neutral": "#14532d", "below": "#1d4ed8", "above": "#c2410c"}
+FACT_GREY_MIN = 1.25          # smallest greyscale contrast the three PDF fact colours keep between one another
+
 # ---------------------------------------------------------------- PDF (white paper)
 TRAIT_PDF = {"openness": "#1d4ed8", "conscientiousness": "#0f766e", "extraversion": "#d97706",
              "agreeableness": "#7e22ce", "emotional_stability": "#b91c1c", "interview": "#8a6d3b"}

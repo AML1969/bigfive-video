@@ -6,7 +6,8 @@
   bs3 infer-dir DIR --out results.csv         score every media file in a folder
   bs3 eval-fiv2 --dir DIR --out eval.json     mACC/CCC on FIV2 clips (DIR has <stem>.mp4, <stem>.txt, labels.csv)
 
-Backends: --backend oceanai (default, all weights public) | mm (own model AMLAI 1.0) | sslmepr (benchmark) | ensemble.
+Backends: --backend mm (default, own model AMLAI 1.0, with explanations) | oceanai (all weights public) |
+sslmepr (benchmark) | ensemble.
 The speech language defaults to Russian (--lang ru); the page has no language control at all.
 """
 from __future__ import annotations
@@ -19,15 +20,17 @@ import tempfile
 import time
 from pathlib import Path
 
-from . import LANG, PRODUCT, __version__
+from . import DEFAULT_MODEL, LANG, PRODUCT, __version__
 from .norms import TRAIT_KEYS
 from .report import build_report
 
 
 def _add_common(p, lang_choices=("ru", "en")):
-    p.add_argument("--backend", default="oceanai", choices=["oceanai", "sslmepr", "ensemble", "mm"],
-                   help="oceanai = all public weights; mm = own model AMLAI 1.0 (MM-PSYCHE recipe); sslmepr = benchmark "
-                        "on scene+audio+text; ensemble = several members with one of them giving the main score")
+    # the default follows bs3.DEFAULT_MODEL, the model the page offers first: a run without --backend uses AMLAI 1.0
+    p.add_argument("--backend", default=DEFAULT_MODEL, choices=["oceanai", "sslmepr", "ensemble", "mm"],
+                   help="mm = own model AMLAI 1.0 (MM-PSYCHE recipe), the default; oceanai = all public weights; "
+                        "sslmepr = benchmark on scene+audio+text; ensemble = several members with one of them giving "
+                        "the main score")
     p.add_argument("--mm-ckpt", default=None, help="mm: checkpoint (default ~/bs/mm_runs_full/all4_interview/best.pt)")
     p.add_argument("--ensemble-members", default="oceanai,mm",
                    help="ensemble: comma-separated subset of oceanai,mm,scene")
