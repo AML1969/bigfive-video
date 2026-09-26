@@ -206,34 +206,46 @@ class MMBackend:
         cap.release()
         return out
 
-    def describe_behavior(self, video: Path) -> str:
-        """Behaviour description from a local Ollama vision model over uniformly sampled frames."""
+    def _ollama(self, prompt: str, images: list[str], num_predict: int, timeout: int = 900,
+                attempts: int = 3) -> dict:
+        """One /api/generate call to the local vision model, with retries while Ollama (re)loads a model.
+
+        "think": False -> Qwen3 models otherwise spend the whole token budget on hidden reasoning and
+        return an empty response."""
         if not self.cfg.ollama_url:
             self.cfg.ollama_url = default_ollama_url()
-        images = self._sample_frames_jpeg(video)
-        # "think": False -> Qwen3 models otherwise spend the whole token budget on hidden reasoning and
-        # return an empty response.
-        payload = {"model": self.cfg.ollama_model, "prompt": BEHAVIOR_PROMPT, "images": images, "stream": False,
-                   "think": False, "keep_alive": "30m", "options": {"num_predict": 320, "temperature": 0.2}}
+        payload = {"model": self.cfg.ollama_model, "prompt": prompt, "images": images, "stream": False,
+                   "think": False, "keep_alive": "30m", "options": {"num_predict": num_predict, "temperature": 0.2}}
         req = urllib.request.Request(f"{self.cfg.ollama_url}/api/generate", data=json.dumps(payload).encode("utf-8"),
                                      headers={"Content-Type": "application/json"})
-        data = None
-        for attempt in range(1, 4):          # Ollama occasionally drops a connection while (re)loading a model
+        for attempt in range(1, attempts + 1):
             try:
-                with urllib.request.urlopen(req, timeout=900) as r:
-                    data = json.loads(r.read().decode("utf-8"))
-                break
+                with urllib.request.urlopen(req, timeout=timeout) as r:
+                    return json.loads(r.read().decode("utf-8"))
             except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as e:
-                if attempt == 3:
+                if attempt == attempts:
                     raise
-                log.warning("Ollama request failed (%s); retry %d/3 in %ds", str(e).splitlines()[0][:80], attempt, 10 * attempt)
+                log.warning("Ollama request failed (%s); retry %d/%d in %ds", str(e).splitlines()[0][:80], attempt,
+                            attempts, 10 * attempt)
                 time.sleep(10 * attempt)
+        return {}
+
+    def describe_behavior(self, video: Path) -> str:
+        """Behaviour description from a local Ollama vision model over uniformly sampled frames."""
+        data = self._ollama(BEHAVIOR_PROMPT, self._sample_frames_jpeg(video), 320)
         text = " ".join(str(data.get("response", "")).split()).strip()
         if not text:
             log.warning("Ollama %s returned an empty description for %s (eval %.0fs, thinking=%s chars)",
                         self.cfg.ollama_model, video.name, data.get("eval_duration", 0) / 1e9,
                         len(str(data.get("thinking", ""))))
         return text
+
+    def describe_frame(self, image_b64: str) -> str:
+        """A few words about ONE key frame (the caption under it): the same local vision model, one image, a short
+        token budget and a shorter timeout — a caption is never worth holding the job for minutes."""
+        from .frame_captions import FRAME_PROMPT, PHRASE_NUM_PREDICT, PHRASE_TIMEOUT
+        data = self._ollama(FRAME_PROMPT, [image_b64], PHRASE_NUM_PREDICT, timeout=PHRASE_TIMEOUT, attempts=1)
+        return " ".join(str(data.get("response", "")).split()).strip()
 
     # ---------------------------------------------------------------- prediction
     @torch.no_grad()
@@ -285,15 +297,19 @@ class MMBackend:
         return out
 
     def explain_video(self, video: str | Path, out_dir: str | Path, asr: bool = True, transcript: str | None = None,
-                      behavior: str | None = None, top_k: int = 5) -> dict:
-        """Scores plus explanations: modality attribution, key frames (saved as JPEG), word attribution."""
-        from .mm.explain import frame_attribution, modality_attribution, save_key_frames, token_attribution
+                      behavior: str | None = None, top_k: int = 5, expression_fn=None, captions: bool = True) -> dict:
+        """Scores plus explanations: modality attribution, key frames (saved as JPEG), word attribution.
+
+        `expression_fn` — the facial-expression model of the report (analyses.face_expr.FaceExpression.on_crops),
+        called on the face crops of the key frames so their captions can name the expression; `captions=False`
+        skips both the expressions and the one-phrase-per-frame requests to the vision model."""
+        from .mm.explain import frame_attribution, key_frame_info, modality_attribution, save_key_frames, token_attribution
         self.load()
         video = Path(video).resolve()
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         t0 = time.time()
-        feats, face_seq = {}, None
+        feats, face_seq, crops = {}, None, []
         with tempfile.TemporaryDirectory(prefix="bs_mmx_") as tmp:
             tmpdir = Path(tmp)
             if self.face is not None:
@@ -320,7 +336,12 @@ class MMBackend:
         res["scores"] = res["modalities"].pop("scores")
         if face_seq is not None:
             fa = frame_attribution(self.model, face_seq, feats, dev, top_k=top_k)
-            fa["key_frame_files"] = save_key_frames(str(video), fa["top_frames_overall"], self.cfg.n_frames, out_dir)
+            raw: dict[str, str] = {}
+            fa["key_frame_files"] = save_key_frames(str(video), fa["top_frames_overall"], self.cfg.n_frames, out_dir,
+                                                    raw_jpegs=raw if captions else None)
+            fa["key_frame_info"] = key_frame_info(fa["key_frame_files"], crops, raw,
+                                                  expression_fn=expression_fn if captions else None,
+                                                  phrase_fn=self.describe_frame if captions else None)
             res["frames"] = fa
         if "text" in self.modalities and transcript:
             res["transcript_words"] = token_attribution(self.model, self.text, transcript_en or transcript, "text", feats, dev)

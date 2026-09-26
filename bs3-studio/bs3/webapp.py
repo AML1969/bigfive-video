@@ -166,13 +166,18 @@ FRAMES_CSS = (
     # thumbnails keep the frame's own proportions (no empty letterbox bands); tall portrait frames stop at 320 px
     ".bs3-kf img{display:block;width:100%;height:auto;max-height:320px;object-fit:contain;border-radius:8px;"
     "background:rgba(128,128,128,.12);outline:1px solid " + PAL["card_border"] + ";outline-offset:-1px}"
-    ".bs3-kf figcaption{text-align:center;font-size:14px;font-weight:600;margin-top:6px;font-variant-numeric:tabular-nums}"
+    # one short line under the frame: the moment and what is visible; it never grows past two lines, the rest of
+    # the story (expressions, what the frame did to the score) opens on hover as the figure's title
+    ".bs3-kf figcaption{text-align:center;font-size:13px;line-height:1.35;margin-top:6px;opacity:.75;"
+    "font-variant-numeric:tabular-nums;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;"
+    "overflow:hidden}"
+    ".bs3-kf figcaption b{font-weight:600}"
     ".bs3-kf figure.bs3-kf-big{cursor:zoom-out}"
     ".bs3-kf figure.bs3-kf-big img{position:fixed;inset:4vh 4vw;width:92vw;height:92vh;max-height:none;z-index:9999;"
     "border-radius:8px;background:rgba(0,0,0,.92);outline:0;box-shadow:0 0 0 100vmax rgba(0,0,0,.85)}"
     ".bs3-kf figure.bs3-kf-big figcaption{position:fixed;left:50%;bottom:calc(4vh + 14px);transform:translateX(-50%);"
     "z-index:10000;margin:0;padding:6px 14px;border-radius:8px;background:rgba(0,0,0,.8);color:#fff!important;"
-    "font-size:16px;white-space:nowrap;pointer-events:none}"
+    "font-size:16px;display:block;opacity:1;max-width:84vw;pointer-events:none}"
     ".bs3-kf figure:not(.bs3-kf-big) .bs3-kf-more{display:none}"
     "</style>")
 
@@ -182,14 +187,22 @@ NO_FRAMES_OCEANAI = ("Ключевых кадров нет: модель OCEAN-A
 NO_FRAMES_MM = "Ключевые кадры не построены: лицо в кадре не найдено или объяснения не удалось посчитать."
 
 
-def _frames_html(rep: dict, max_side: int = 640) -> str:
+def _frames_html(rep: dict, expl: dict | None = None, max_side: int = 640) -> str:
     """Key frames embedded as data-URI JPEGs. gr.Gallery depends on Gradio serving files from the job folder, which
     proved unreliable in this setup (images arrive broken); inline images always render. Click enlarges a frame.
     Key frames belong to AMLAI 1.0: an OCEAN-AI job shows one line instead (also an older job that carries the frames
-    of the second model of 3.0, since the page shows one model), a job of AMLAI 1.0 without frames says why."""
+    of the second model of 3.0, since the page shows one model), a job of AMLAI 1.0 without frames says why.
+
+    Under every frame one short line — the moment of the video and, in a few words, what is visible there
+    (frame_captions.build). Hovering the frame opens the rest in the figure's tooltip: the two strongest facial
+    expressions of that frame and what the frame did to the score, with a direction. The enlarged frame shows both
+    lines on its dark plate, so nothing is hidden from someone who never hovers."""
     import base64
     import io
+    from html import escape
     from PIL import Image
+
+    from . import frame_captions
 
     main = (rep.get("view_meta") or {}).get("main_system") or (rep.get("model") or {}).get("selected")
     if main != "mm":
@@ -197,58 +210,47 @@ def _frames_html(rep: dict, max_side: int = 640) -> str:
     paths = [p for p in rep.get("key_frames") or [] if Path(p).exists()]
     if not paths:
         return f"<p style='font-size:14px'>{NO_FRAMES_MM}</p>"
-    # frames come from the representative segment of a long video, otherwise from the whole video (no timeline): the
-    # moment is then counted from 0, the same rule as in the PDF
-    tl_all = rep.get("timeline") or []
-    seg = next((t for t in tl_all if t.get("segment") == rep.get("representative_segment")), None) if tl_all else None
-    fps = float((rep.get("media") or {}).get("fps") or 0) or None
-    seg_start = float(seg["start"]) if seg else 0.0
-    cells = []
+    shown, images = [], []
     for p in paths:
         try:
             im = Image.open(p).convert("RGB")
             im.thumbnail((max_side, max_side))
             buf = io.BytesIO()
             im.save(buf, format="JPEG", quality=82)
-            b64 = base64.b64encode(buf.getvalue()).decode("ascii")
         except Exception:  # noqa: BLE001
             continue
-        m = re.search(r"_frame(\d+)", Path(p).stem)
-        t = seg_start + int(m.group(1)) / fps if (m and fps and (seg or not tl_all)) else None
-        cells.append((b64, t))
-    # frames a fraction of a second apart would get the same «0:37» twice: then show tenths («0:37,2»)
-    whole = [f"{int(t) // 60}:{int(t) % 60:02d}" for _, t in cells if t is not None]
-    tenths = len(set(whole)) < len(whole)
-
-    def _moment(t):
-        if not tenths:
-            return f"{int(t) // 60}:{int(t) % 60:02d}"
-        d = int(t * 10)
-        return f"{d // 600}:{d // 10 % 60:02d},{d % 10}"
-
-    total = len(cells)
+        shown.append(p)
+        images.append(base64.b64encode(buf.getvalue()).decode("ascii"))
+    if not shown:
+        return f"<p style='font-size:14px'>{NO_FRAMES_MM}</p>"
+    # frames come from the representative segment of a long video, otherwise from the whole video (no timeline): the
+    # moment is then counted from 0, the same rule as in the PDF
+    tl_all = rep.get("timeline") or []
+    seg = next((t for t in tl_all if t.get("segment") == rep.get("representative_segment")), None) if tl_all else None
+    entries = frame_captions.build(rep, shown, expl)
+    tenths = frame_captions.has_tenths(rep, shown)
     figs = []
-    for i, (b64, t) in enumerate(cells, 1):
-        # with a moment: «0:37» under the frame; without one (no frame rate in the file): the frame's number in the row
-        if t is not None:
-            caption, more, tail, alt = _moment(t), f"Кадр {i} из {total} · момент ", "", f"Ключевой кадр, момент {_moment(t)}"
-        else:
-            caption, more, tail, alt = f"кадр {i}", "", f" из {total}", f"Ключевой кадр {i} из {total}"
+    for b64, e in zip(images, entries):
+        tip = e["tooltip"] or "Щёлкните, чтобы увеличить"
+        more = f" · {escape(e['tooltip'])}" if e["tooltip"] else ""
         figs.append(
-            f"<figure role='button' tabindex='0' title='Щёлкните, чтобы увеличить' onclick=\"this.classList.toggle('bs3-kf-big')\" "
+            f"<figure role='button' tabindex='0' title='{escape(tip)}' onclick=\"this.classList.toggle('bs3-kf-big')\" "
             "onkeydown=\"if(event.key==='Enter'||event.key===' '){event.preventDefault();this.classList.toggle('bs3-kf-big')}"
             "else if(event.key==='Escape'){this.classList.remove('bs3-kf-big')}\">"
-            f"<img src='data:image/jpeg;base64,{b64}' alt='{alt}'>"
-            f"<figcaption><span class='bs3-kf-more'>{more}</span>{caption}"
-            f"<span class='bs3-kf-more'>{tail} · щелчок закрывает</span></figcaption></figure>")
-    timed = any(t is not None for _, t in cells)
+            f"<img src='data:image/jpeg;base64,{b64}' alt='{escape(e['alt'])}'>"
+            f"<figcaption><b>{escape(e['label'])}</b>"
+            + (f" · {escape(e['tail'])}" if e["tail"] else "")
+            + f"<span class='bs3-kf-more'>{more} · щелчок закрывает</span></figcaption></figure>")
+    timed = frame_captions.any_moment(entries)
     where = f" (отрезок {seg_label(seg['start'], seg['end'])})" if seg else ""
     return (FRAMES_CSS + "<div class='bs3-kf' style='display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));"
             f"gap:12px'>{''.join(figs)}</div>"
             f"<p style='{NOTE};margin-top:10px'>Кадры, сильнее всего повлиявшие на оценку модели AMLAI 1.0{where}. "
-            + ("Рамкой на кадре отмечено найденное лицо, подпись под кадром — момент ролика (минуты:секунды"
-               + (", после запятой — десятые доли секунды" if tenths else "") + "). " if timed else
-               "Рамкой на кадре отмечено найденное лицо, подпись под кадром — его номер. ")
+            + ("Рамкой на кадре отмечено найденное лицо, под кадром — момент ролика (минуты:секунды"
+               + (", после запятой — десятые доли секунды" if tenths else "") + ") и коротко то, что на нём видно. "
+               if timed else
+               "Рамкой на кадре отмечено найденное лицо, под кадром — его номер и коротко то, что на нём видно. ")
+            + "Наведите мышь на кадр — покажутся выражение лица и то, как кадр сдвинул оценку. "
             + "Щелчок по кадру увеличивает его, повторный щелчок закрывает.</p>")
 
 
@@ -303,7 +305,7 @@ def page_outputs(rep: dict) -> tuple:
            _plot_html(fig_speech_timeline, view, fill=True), _plot_html(fig_emotion_bars, view),
            _segments_table(view), _speech_html(view),
            "\n\n".join(t for t in (note, transcript) if t), _face_html(view), _plot_html(fig_face_expr, view),
-           _frames_html(view), contrib,
+           _frames_html(view, expl if own else None), contrib,
            _words_text(expl, rep, lang, expl_path) if (expl and own) else "",
            mmss_labels(rep.get("behavior_description_ru") or "") if own else "", model_text(view, rep, mb),
            json.dumps(data, ensure_ascii=False, indent=2), str(job / "result.json"), str(job),

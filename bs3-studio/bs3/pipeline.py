@@ -269,15 +269,25 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, member: str = 
     if studio.stop_event.is_set():
         raise AnalysisCancelled("остановлено пользователем")
     if explain and member == "mm" and studio.mm_backend(member) is not None:
-        step(0.92, "Объяснения: вклад модальностей, ключевые кадры, слова")
+        step(0.92, "Объяснения: вклад модальностей, ключевые кадры и подписи к ним, слова")
         mmb = studio.mm_backend(member)
         if res.get("timeline"):
             seg = res["timeline"][res["representative_segment"] - 1]
             x_video, x_text, x_beh = seg["file"], seg["transcript"], seg.get("behavior_description") or None
         else:
             x_video, x_text, x_beh = local, res.get("transcript", ""), res.get("behavior_description") or None
+        # the captions under the key frames need the facial-expression model of the report (already loaded by the
+        # per-segment analyses above, so no second model goes on the GPU) and one short vision-model request per
+        # key frame; both are computed once and stored in explanation.json. A caption never breaks the
+        # explanation: when the expression model is not there, the frames keep their phrase alone.
         try:
-            expl = mmb.explain_video(x_video, job / "explain", asr=False, transcript=x_text, behavior=x_beh)
+            expr_fn = studio.face_expression.on_crops
+        except Exception as e:  # noqa: BLE001
+            log.warning("face expression model unavailable for the key-frame captions: %s", str(e)[:120])
+            expr_fn = None
+        try:
+            expl = mmb.explain_video(x_video, job / "explain", asr=False, transcript=x_text, behavior=x_beh,
+                                     expression_fn=expr_fn)
             frames = list(expl.get("frames", {}).get("key_frame_files", []))
         except Exception as e:  # noqa: BLE001
             log.warning("explanation failed: %s", str(e).splitlines()[0][:160])

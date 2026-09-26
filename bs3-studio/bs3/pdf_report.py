@@ -20,7 +20,7 @@ from pathlib import Path
 
 from fpdf import FPDF
 
-from . import MODALITIES, MODEL_TITLES, PRODUCT, caveats
+from . import MODALITIES, MODEL_TITLES, PRODUCT, caveats, frame_captions
 from .narrative import NO_EXPLAIN_RU
 from .narrative2 import analyses_parts, fix_counts, key_facts, plural_ru
 from .norms import RU_SHORT, TRAIT_KEYS
@@ -130,11 +130,6 @@ def _group_name(keys: list[str]) -> str:
 
 def _rgb(hexc: str) -> tuple:
     return tuple(int(hexc.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
-
-
-def _mmss(t: float) -> str:
-    s = int(t)
-    return f"{s // 60}:{s % 60:02d}"
 
 
 def _seg(report: dict, start, end) -> str:
@@ -955,6 +950,47 @@ def _frame_rows(pdf: Report, frames: list):
     return rows, cell_w, gap
 
 
+# caption under a key frame: 0.8 mm of air, two lines of 7 pt (3 mm each) and 1.7 mm before the next row
+FRAME_CAP_SIZE = 7
+FRAME_CAP_LINE = 3.0
+FRAME_CAP_H = 8.5
+
+
+def _clip_words(pdf: Report, text: str, width: float, size: float) -> str:
+    """`text` shortened by whole words until it fits `width`, with «…» where it was cut; "" when even the first
+    word plus the ellipsis is too wide."""
+    if not text:
+        return ""
+    pdf.set_font("ui", "", size)
+    if pdf.get_string_width(text) <= width:
+        return text
+    words = text.split(" ")
+    while len(words) > 1:
+        words.pop()
+        s = " ".join(words).rstrip(" ·,") + "…"
+        if s != "…" and pdf.get_string_width(s) <= width:
+            return s
+    return ""
+
+
+def _frame_caption(pdf: Report, entry: dict | None, x: float, y: float, width: float) -> None:
+    """Two centred lines under one key frame: «2:14 · улыбается, смотрит в камеру» and «радость 62% · повысил
+    экстраверсию». The cell is narrow (34.9 mm with five frames in a row), so the second line falls back to its
+    shorter forms («повысил экстраверсию», «радость 62%») and is dropped when none of them fits; the first line,
+    which carries the moment, is cut by whole words with «…» instead."""
+    if not entry:
+        return
+    pdf.set_font("ui", "", FRAME_CAP_SIZE)
+    first = _clip_words(pdf, entry.get("caption") or "", width, FRAME_CAP_SIZE) or (entry.get("label") or "")
+    pdf.set_xy(x, y)
+    pdf.cell(width, FRAME_CAP_LINE, first, align="C")
+    pdf.set_font("ui", "", FRAME_CAP_SIZE)
+    second = next((c for c in frame_captions.pdf_second_line(entry) if pdf.get_string_width(c) <= width), "")
+    if second:
+        pdf.set_xy(x, y + FRAME_CAP_LINE)
+        pdf.cell(width, FRAME_CAP_LINE, second, align="C")
+
+
 def _no_explain_note(pdf: Report, report: dict) -> None:
     """An OCEAN-AI job (3.1): one line under section 4 in place of section 5 — no empty section, no heading."""
     if "explain" in pdf.plan or _main_model(report) == "mm":
@@ -975,42 +1011,28 @@ def _explain_section(pdf: Report, report: dict, explanation, frames: list, chart
     else:
         intro = "Объяснения построены для модели AMLAI 1.0 по всему ролику."
     rows, cell_w, gap = _frame_rows(pdf, frames) if frames else ([], 0.0, 0.0)
-    first_h = (max(h for _, _, h in rows[0]) + 6 + 6) if rows else 20
+    first_h = (max(h for _, _, h in rows[0]) + FRAME_CAP_H + 6) if rows else 20
     pdf.section("Что повлияло на оценку модели AMLAI 1.0", "explain", keep_mm=pdf.para_height(intro, 8.5) + first_h)
     pdf.para(intro, 8.5)
     if rows:
         # frames come from the clip the explanations were computed on: the representative segment of a long video,
-        # otherwise the whole video; file names carry the frame index inside that clip (key_<i>_frame<N>.jpg)
-        seg_any = next((s for s in tl_all if s.get("segment") == report.get("representative_segment")), None) if tl_all else None
-        fps = float((media or {}).get("fps") or (report.get("media") or {}).get("fps") or 0)
-        seg_start = float(seg_any["start"]) if seg_any else 0.0
-
-        def moment(path: str):
-            m = re.search(r"_frame(\d+)", Path(path).stem)
-            return seg_start + int(m.group(1)) / fps if (m and fps > 0 and (seg_any or not tl_all)) else None
-
-        # frames a fraction of a second apart would share «0:37»: then every caption shows tenths («0:37,2»)
-        secs = [int(t) for t in map(moment, frames) if t is not None]
-        tenths = len(set(secs)) < len(secs)
-        timed = bool(secs)
-
-        def caption(n: int, path: str) -> str:
-            t = moment(path)
-            if t is None:
-                return f"кадр {n}"
-            if tenths:
-                d = int(t * 10)
-                return f"кадр {n} · {d // 600}:{d // 10 % 60:02d},{d % 10}"
-            return f"кадр {n} · {_mmss(t)}"
-
+        # otherwise the whole video; file names carry the frame index inside that clip (key_<i>_frame<N>.jpg).
+        # The captions are the ones of the page (frame_captions): the moment and, in a few words, what is visible;
+        # the second line names the expression and what the frame did to the score. The cell is narrow (34.9 mm
+        # with five frames in a row), so both lines are clipped by whole words and the second one is dropped
+        # rather than allowed to overflow.
+        entries = {e["path"]: e for e in frame_captions.build(report, frames, explanation, media)}
+        timed = frame_captions.any_moment(entries.values())
+        tenths = frame_captions.has_tenths(report, frames, media)
         note = ("Кадры, сильнее всего повлиявшие на оценку модели AMLAI 1.0. Рамкой отмечено найденное лицо; "
-                + (("под кадром — его номер и момент ролика (мин:с, после запятой — десятые доли секунды)." if tenths
-                    else "под кадром — его номер и момент ролика (мин:с).") if timed else "под кадром — его номер."))
-        pdf.h3("Ключевые кадры", keep_mm=max(h for _, _, h in rows[0]) + 6)
-        n_done, per_row = 0, len(rows[0])
+                + (("под кадром — момент ролика (мин:с, после запятой — десятые доли секунды) и коротко то, что на "
+                    "нём видно." if tenths else "под кадром — момент ролика (мин:с) и коротко то, что на нём видно.")
+                   if timed else "под кадром — его номер и коротко то, что на нём видно."))
+        pdf.h3("Ключевые кадры", keep_mm=max(h for _, _, h in rows[0]) + FRAME_CAP_H)
+        per_row = len(rows[0])
         for row in rows:
             row_h = max(h for _, _, h in row)
-            if pdf.get_y() + row_h + 6 > pdf.page_break_trigger:
+            if pdf.get_y() + row_h + FRAME_CAP_H > pdf.page_break_trigger:
                 pdf.add_page()
             y0 = pdf.get_y()
             # a last row shorter than the others is centred: an empty cell at the right edge reads as a missing frame
@@ -1021,10 +1043,8 @@ def _explain_section(pdf: Report, report: dict, explanation, frames: list, chart
                     pdf.image(q, x=x, y=y0 + (row_h - ih), w=iw, h=ih)
                 except Exception:  # noqa: BLE001
                     continue
-                pdf.set_xy(x_row + i * (cell_w + gap), y0 + row_h + 0.8)
-                pdf.set_font("ui", "", 8); pdf.cell(cell_w, 4, caption(n_done + i + 1, q), align="C")
-            n_done += len(row)
-            pdf.set_xy(pdf.l_margin, y0 + row_h + 5.5)
+                _frame_caption(pdf, entries.get(q), x_row + i * (cell_w + gap), y0 + row_h + 0.8, cell_w)
+            pdf.set_xy(pdf.l_margin, y0 + row_h + FRAME_CAP_H)
         pdf.caption(note, 8)
     if charts.get("modalities"):
         cap = ("Какая доля оценки модели AMLAI 1.0 пришлась на каждую модальность (по градиенту оценки: насколько "
