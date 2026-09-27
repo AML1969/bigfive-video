@@ -3,12 +3,17 @@
 «Тип MBTI», «Модель и время обработки», the AMLAI 1.0 modality block); the compact «Характеристика личности» window
 (APP_CSS: a flex item with a zero basis and a minimum height, its html-container scrolling) with the key facts as a
 row under the top pair; page_outputs of a synthetic OCEAN-AI job (the note of the tab «Объяснения», the model line)
-and of a job of AMLAI 1.0. Gradio is imported here (a few seconds); the Studio loads nothing until an analysis."""
+and of a job of AMLAI 1.0. Gradio is imported here (a few seconds); the Studio loads nothing until an analysis.
+What Gradio serves (in-process through TestClient, no port): no file of a job folder by /gradio_api/file=, the PDF of
+the button from a copy in Gradio's own temp folder, which Gradio deletes with its other temp files."""
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 import re
 import tempfile
+from datetime import timedelta
 from pathlib import Path
 
 from samples import rep
@@ -138,3 +143,160 @@ def test_page_outputs_own_model_job():
         assert "OCEAN-AI" not in outs[i] and "MuPTA" not in outs[i], i
     assert ">AMLAI 1.0</div>" in outs[24] and "AMLAI 1.0: строгий тип ISTP во всех 33 отрезках" in _strip(outs[25])
     assert "Оценки дала модель AMLAI 1.0" in _strip(outs[22]) and "MBTI по AMLAI 1.0" in outs[3]
+
+
+@contextlib.contextmanager
+def _gradio_temp(base: Path):
+    """GRADIO_TEMP_DIR -> base/gradio while the test runs (Gradio reads it when the page and the app are built), the
+    old value back afterwards."""
+    old = os.environ.get("GRADIO_TEMP_DIR")
+    up = base / "gradio"
+    up.mkdir()
+    os.environ["GRADIO_TEMP_DIR"] = str(up)
+    try:
+        yield up
+    finally:
+        if old is None:
+            os.environ.pop("GRADIO_TEMP_DIR", None)
+        else:
+            os.environ["GRADIO_TEMP_DIR"] = old
+
+
+JOB_FILES = ("input.mp4", "segments/seg01_0-20s.mp4", "segments/audio16k.wav", "segments/timeline.json", "result.json",
+             "explain/explanation.json", "explain/key_01_frame10.jpg", "charts/chart_profile.png",
+             f"{bs3.PRODUCT_SLUG}_report_video.pdf")
+
+
+def _job_folder(work_dir: Path) -> Path:
+    """A finished job folder with one file of every kind a real one holds (made-up content)."""
+    job = work_dir / "20000101_000000"
+    for name in JOB_FILES:
+        p = job / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"%PDF-1.4\n%%EOF\n" if name.endswith(".pdf") else name.encode())
+    return job
+
+
+def _client(demo):
+    """The app as launch() without allowed_paths serves it, in-process (no port)."""
+    from fastapi.testclient import TestClient
+    from gradio.routes import App
+    demo.allowed_paths, demo.blocked_paths = [], []
+    return TestClient(App.create_app(demo))
+
+
+def test_file_route_serves_no_job_file():
+    """/gradio_api/file=<path> gives 403 for every file of a job folder: the uploaded video, the segments, the
+    transcript in result.json, the key frames, the charts and the PDF. The page needs none of them (key frames are
+    data URIs, charts are srcdoc); the old launch(allowed_paths=[work dir]) served them to anyone with the path."""
+    from bs3.pipeline import Studio
+    with tempfile.TemporaryDirectory() as d, _gradio_temp(Path(d)):
+        wd = Path(d) / "web_jobs"
+        job = _job_folder(wd)
+        demo = webapp.build_app(Studio(), wd)
+        client = _client(demo)
+        files = sorted(p for p in job.rglob("*") if p.is_file())
+        assert len(files) == len(JOB_FILES)
+        for f in files:
+            r = client.get(f"/gradio_api/file={f}")
+            assert r.status_code == 403, (str(f.relative_to(job)), r.status_code)
+        # the control: the same request with the old allowed_paths gets the video, so the 403 above is the route's
+        demo.allowed_paths = [str(wd)]
+        assert client.get(f"/gradio_api/file={job / 'input.mp4'}").status_code == 200
+
+
+def test_pdf_for_download():
+    """The PDF button hands Gradio a copy of the stored PDF in Gradio's upload folder, in a new random folder per
+    click, under the same file name; the stored PDF stays in the job folder. Gradio serves the copy and takes it as
+    the button's output from any start directory, which the stored PDF itself does not pass without allowed_paths;
+    Gradio's hourly pass (delete_cache) deletes the copy with its other temp files after 22 hours."""
+    import gradio as gr
+    from gradio import processing_utils, route_utils
+    from gradio.context import LocalContext
+    from gradio.exceptions import InvalidPathError
+    from gradio.utils import get_upload_folder
+    from bs3.pipeline import Studio
+    with tempfile.TemporaryDirectory() as d, _gradio_temp(Path(d)) as up:
+        base = Path(d)
+        job = _job_folder(base / "web_jobs")
+        pdf = job / JOB_FILES[-1]
+        calls = []
+        export_pdf = webapp.export_pdf
+        webapp.export_pdf = lambda job_dir: calls.append(job_dir) or str(pdf)
+        try:
+            a, b = Path(webapp.pdf_for_download(job)), Path(webapp.pdf_for_download(str(job)))
+        finally:
+            webapp.export_pdf = export_pdf
+        assert calls == [job, str(job)]
+        for p in (a, b):
+            assert p.parent.parent == Path(get_upload_folder()) == up and re.fullmatch(r"[0-9a-f]{32}", p.parent.name)
+            assert p.name == pdf.name and p.read_bytes() == pdf.read_bytes() and job not in p.parents
+        assert a.parent != b.parent and pdf.exists()
+
+        demo = webapp.build_app(Studio(), base / "web_jobs")
+        client = _client(demo)
+        r = client.get(f"/gradio_api/file={a}")
+        # Gradio 5.8 sends a file of its own folder that is not an image, audio, video, text or json as an attachment
+        # of type application/octet-stream, the PDF too (it did the same with its cache copy of the stored PDF)
+        assert r.status_code == 200 and r.content == pdf.read_bytes()
+        disposition = r.headers["content-disposition"]
+        assert disposition.startswith("attachment") and pdf.name in disposition
+
+        # the button's output through Gradio's own check, as the launched app runs it after make_pdf, started from a
+        # directory that holds neither the job folder nor the system temp folder
+        btn = next(c for c in demo.blocks.values() if isinstance(c, gr.DownloadButton))
+        elsewhere = base / "elsewhere"
+        elsewhere.mkdir()
+        cwd, tmpdir = os.getcwd(), tempfile.tempdir
+        token = LocalContext.blocks.set(demo)
+        demo.has_launched = True
+        os.chdir(elsewhere)
+        tempfile.tempdir = str(elsewhere)
+        try:
+            out = processing_utils.move_files_to_cache(btn.postprocess(str(a)), btn, postprocess=True)
+            refused = False
+            try:
+                processing_utils.move_files_to_cache(btn.postprocess(str(pdf)), btn, postprocess=True)
+            except InvalidPathError:
+                refused = True
+        finally:
+            os.chdir(cwd)
+            tempfile.tempdir = tmpdir
+            demo.has_launched = False
+            LocalContext.blocks.reset(token)
+        assert refused, "the stored PDF passed without allowed_paths: the check above proves nothing"
+        assert out["path"] == str(a) and out["orig_name"] == pdf.name
+        assert client.get(out["url"]).status_code == 200
+
+        # delete_cache: the hourly pass of Gradio deletes the copy once it is older than the age, and keeps it an hour
+        # after the click. Gradio 5.8 compares timedelta.seconds (the part under a day), so the age stays under a day
+        # with room for two passes; a full day (86400) would never delete anything
+        frequency, age = demo.delete_cache
+        assert (frequency, age) == (3600, 79200) and age <= 86400 - 2 * frequency
+        real_datetime = route_utils.datetime
+        shift = timedelta(0)
+
+        class Later(real_datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return real_datetime.now(tz) + shift
+
+        route_utils.datetime = Later
+        try:
+            shift = timedelta(hours=1)
+            route_utils.delete_files_created_by_app(demo, age)
+            assert a.exists()
+            shift = timedelta(seconds=age + frequency)
+            route_utils.delete_files_created_by_app(demo, age)
+            assert not a.exists()
+        finally:
+            route_utils.datetime = real_datetime
+        assert pdf.exists()                                                     # the job folder is not Gradio's
+
+
+def test_launch_without_allowed_paths():
+    """The web app and the preview start Gradio without allowed_paths (what the two tests above rely on)."""
+    root = Path(webapp.__file__).resolve().parents[1]
+    for f in (root / "bs3" / "webapp.py", root / "scripts" / "ui_preview.py"):
+        src = f.read_text(encoding="utf-8")
+        assert ".launch(" in src and "allowed_paths=" not in src, f.name

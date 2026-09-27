@@ -29,5 +29,6 @@ from bs3.webapp import build_app  # noqa: E402
 
 print("preview job:", job, "port:", port, flush=True)
 demo = build_app(Studio(), jobs, preview_job=job)
-demo.queue(default_concurrency_limit=1).launch(server_name="0.0.0.0", server_port=port, show_api=False, show_error=True,
-                                                allowed_paths=[str(jobs)])
+# no allowed_paths: the page shows no file of the job folder (key frames are data URIs, charts are srcdoc), and the PDF
+# is handed to Gradio from its own temp folder (webapp.pdf_for_download)
+demo.queue(default_concurrency_limit=1).launch(server_name="0.0.0.0", server_port=port, show_api=False, show_error=True)

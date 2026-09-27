@@ -13,6 +13,8 @@ import json
 import logging
 import os
 import re
+import secrets
+import shutil
 import threading
 import time
 from pathlib import Path
@@ -368,6 +370,19 @@ def export_pdf(job_dir: str | Path) -> str:
                      mbti=mb, character=ch)
 
 
+def pdf_for_download(job_dir: str | Path) -> str:
+    """The PDF button: the PDF of export_pdf (it stays in the job folder) copied into a new folder with a random name
+    in Gradio's upload folder. Gradio serves its own folder without allowed_paths, from any start directory, and
+    deletes the copy with its other temp files (delete_cache in build_app). The download keeps the PDF file name."""
+    pdf = Path(export_pdf(job_dir))
+    from gradio.utils import get_upload_folder
+    d = Path(get_upload_folder()) / secrets.token_hex(16)
+    d.mkdir(parents=True)
+    out = d / pdf.name
+    shutil.copy2(pdf, out)
+    return str(out)
+
+
 def analysis_error_ru(e: BaseException) -> str:
     """A failed analysis in words for the error dialog: the exceptions of the models are English (and show_error=True
     would print them as they are); the original goes to the server log."""
@@ -612,7 +627,7 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
         if not job_dir:
             raise gr.Error("Сначала проанализируйте видео", title=ERROR_TITLE)
         try:
-            return export_pdf(job_dir)
+            return pdf_for_download(job_dir)
         except Exception:  # noqa: BLE001
             log.exception("PDF export failed for %s", job_dir)
             raise gr.Error("Не удалось собрать PDF. Подробности записаны в журнал сервера.", title=ERROR_TITLE)
@@ -626,8 +641,12 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
                        + list(classes))
 
     force_russian_gradio()
+    # delete_cache: every hour Gradio deletes its own temp files older than 22 hours (the uploaded videos, the PDF
+    # copies of pdf_for_download), and all of them when the server stops; the job folders are not Gradio's and stay.
+    # Not 24 hours: Gradio 5.8 compares timedelta.seconds, the part of the age under a day, so an age of a full day
+    # never passes; 22 hours leaves two hourly passes before a file turns a day old
     with gr.Blocks(title=f"{PRODUCT} — характеристика личности, Big Five, MBTI, эмоции, голос, речь", theme=_theme(),
-                   css=APP_CSS) as demo:
+                   css=APP_CSS, delete_cache=(3600, 79200)) as demo:
         job_state = gr.State("")
         with gr.Row():
             with gr.Column(scale=4):
@@ -750,6 +769,7 @@ def main(port: int = 7880, work_dir: str | None = None, share: bool = False,
     wd.mkdir(parents=True, exist_ok=True)
     studio = Studio(asr_model=asr_model, ollama_model=ollama_model, mm_ckpt=mm_ckpt, models_dir=models_dir)
     demo = build_app(studio, wd)
-    # allowed_paths: key-frame JPEGs live in the job folder, Gradio 5 refuses to serve files outside it
+    # no allowed_paths: the page shows no file of the job folder (key frames are data URIs, charts are srcdoc), and the
+    # PDF is handed to Gradio from its own temp folder (pdf_for_download); /gradio_api/file= serves no job file
     demo.queue(default_concurrency_limit=1).launch(server_name=host, server_port=port, share=share, show_api=False,
-                                                    show_error=True, quiet=False, allowed_paths=[str(wd)])
+                                                    show_error=True, quiet=False)
