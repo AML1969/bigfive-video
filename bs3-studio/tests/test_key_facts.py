@@ -157,9 +157,9 @@ def test_facts_block_carries_the_colours_and_the_line_under_the_grid():
 
 def _draw_cards(items, **kw):
     """(text, ink) of every line the card grid prints, ink as the (r, g, b) the card asked for."""
-    from bs3 import pdf_report
+    from bs3.pdf.document import Report
 
-    class Recorder(pdf_report.Report):
+    class Recorder(Report):
         _depth = 0                      # fpdf re-dispatches multi_cell to itself: record the outermost call only
 
         def __init__(self):
@@ -187,11 +187,11 @@ def _draw_cards(items, **kw):
 
 
 def test_pdf_card_prints_the_value_first_and_in_colour():
-    from bs3 import pdf_report
+    from bs3.pdf.document import NOTE_GREY
     drawn = _draw_cards([("Темп речи", "200 слов в минуту", "паузы — 21% времени", ABOVE)], cols=1, value_first=True)
     assert [t for t, _ in drawn] == ["200 слов в минуту", "Темп речи · выше", "паузы — 21% времени"]
     orange = tuple(int(palette.FACT_VALUE_PDF[ABOVE].lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
-    assert drawn[0][1] == orange and drawn[1][1] == drawn[2][1] == (pdf_report.NOTE_GREY,) * 3
+    assert drawn[0][1] == orange and drawn[1][1] == drawn[2][1] == (NOTE_GREY,) * 3
     # a card with no state keeps black ink, and «Речь в цифрах» keeps label, value, note
     plain = _draw_cards([("Длительность ролика", "11:00", "", None)], cols=1, value_first=True)
     assert [t for t, _ in plain] == ["11:00", "Длительность ролика"] and plain[0][1] == (0, 0, 0)
@@ -200,8 +200,8 @@ def test_pdf_card_prints_the_value_first_and_in_colour():
 
 
 def test_pdf_card_height_counts_the_state_word_and_not_the_order():
-    from bs3 import pdf_report
-    pdf = pdf_report.Report(file_label="t", total_pages=1)
+    from bs3.pdf.document import Report
+    pdf = Report(file_label="t", total_pages=1)
     pdf.add_page()
     items = [("Темп речи", "200 слов в минуту", "паузы — 21% времени", ABOVE),
              ("Длительность ролика", "11:00", "разбит на 33 отрезка", None)]

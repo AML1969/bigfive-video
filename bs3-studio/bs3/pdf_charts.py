@@ -5,7 +5,7 @@ Colours come from palette.py (the *_PDF dictionaries, contrast-checked on white 
 from the web palettes: a colour that reads on the dark Gradio block fails on paper and vice versa.
 
 Sizes: every figure is drawn at its printed size (TEXT_W_MM wide — the page width minus the margins of
-pdf_report.Report — except the radar, which stands beside the plain-language explanation), and pdf_report places it at
+pdf/document.Report — except the radar, which stands beside the plain-language explanation), and pdf_report places it at
 exactly that width, so 1 pt in matplotlib is 1 pt on paper: tick labels, legends and value labels 8 pt, axis titles
 9 pt, chart titles 9.5-10 pt. PNGs are rendered at 300 dpi. Every legend sits OUTSIDE the axes, under them, so the
 plot area keeps the full width and the text never covers data. The time charts share one plot area (PLOT_LEFT_MM /
@@ -23,7 +23,7 @@ from .norms import RU_TITLES, TRAIT_KEYS
 from .palette import (BARS_PDF, EMO_ALIAS, EMO_HEAT_L, EMO_HEAT_PDF, MODALITY_PDF, RADAR_PDF, SPEECH_PDF, THEME,
                       TRAIT_MARKER_PDF, TRAIT_PDF, VOICE_MARKER_PDF, VOICE_PDF, emo_heat_pdf, emo_heat_step,
                       emo_heat_text_pdf, emo_pdf)
-from .pdf_report import TEXT_W_MM
+from .pdf.layout import TEXT_W_MM
 from .segments import as_float, dominant_emotion, emotion_shares, representative, scored, seg_words
 from .textfmt import clock
 

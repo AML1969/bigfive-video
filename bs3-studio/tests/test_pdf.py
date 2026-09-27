@@ -19,6 +19,7 @@ from samples import english, rep
 from bs3 import caveats, characterization, mbti, narrative2, pdf_mbti, pdf_report, scores
 from bs3.narrative import NO_EXPLAIN_RU
 from bs3.norms import TRAIT_KEYS
+from bs3.pdf.document import TEXT_W_MM, Report
 
 # words of 3.0 that no report of 3.1 may carry (outside the transcript, which the fixtures do not have)
 GONE = ("торое мнение", "своя модель", "своей модели", "Своя модель", "MM-PSYCHE", "ансамбл", "Язык речи", "язык речи",
@@ -72,12 +73,12 @@ def _text(path: Path) -> str:
 
 def test_plan_puts_mbti_after_profile():
     view, mb, _ = _parts(rep("B"))
-    pdf = pdf_report.Report()
+    pdf = Report()
     pdf_report._plan(pdf, view, None, [], {}, mb)
     keys = list(pdf.plan)
     assert keys[:2] == ["profile", "mbti"], keys
     assert pdf.plan["mbti"] == 2
-    pdf2 = pdf_report.Report()
+    pdf2 = Report()
     pdf_report._plan(pdf2, view, None, [], {}, None)            # no type: no section, numbers close up
     assert "mbti" not in pdf2.plan and list(pdf2.plan)[1] != "mbti"
 
@@ -85,14 +86,14 @@ def test_plan_puts_mbti_after_profile():
 def test_plan_explain_section_for_own_model_only():
     """Section 5 exists only for a job of AMLAI 1.0 with an explanation or key frames (3.1)."""
     view, mb, _ = _parts(rep("B"))
-    pdf = pdf_report.Report()
+    pdf = Report()
     pdf_report._plan(pdf, view, EXPL, ["frame.jpg"], {}, mb)
     assert "explain" not in pdf.plan                            # OCEAN-AI: never, whatever the job carries
     own, mb2, _ = _parts(_own("B"))
-    pdf = pdf_report.Report()
+    pdf = Report()
     pdf_report._plan(pdf, own, EXPL, [], {}, mb2)
     assert "explain" in pdf.plan
-    pdf = pdf_report.Report()
+    pdf = Report()
     pdf_report._plan(pdf, own, None, [], {}, mb2)
     assert "explain" not in pdf.plan
 
@@ -101,7 +102,7 @@ def test_strip_geometry():
     assert pdf_mbti._strip_geometry(33) == (2, 17, 6.0, 4.8)       # 17 + 16, not 30 + 3
     assert pdf_mbti._strip_geometry(18)[:3] == (1, 18, 6.0)
     blocks, per, cell, row_h = pdf_mbti._strip_geometry(90)
-    assert (blocks, per) == (3, 30) and abs(cell - (pdf_report.TEXT_W_MM - 18) / 30) < 1e-9 and row_h <= cell
+    assert (blocks, per) == (3, 30) and abs(cell - (TEXT_W_MM - 18) / 30) < 1e-9 and row_h <= cell
 
 
 def test_facts_start_with_type_card():
@@ -243,7 +244,7 @@ def test_interview_label_and_c2_follow_the_model():
             t["scores"]["interview"] = 0.4
     view, mb, ch = _parts(r)
     assert "interview" not in view
-    pdf = pdf_report.Report()
+    pdf = Report()
     assert pdf._bar_rows(view["traits"], view.get("interview")) == [(k, view["traits"][k]) for k in TRAIT_KEYS]
     out = Path(tempfile.mkdtemp(dir=_TMP.name)) / "oa.pdf"
     pdf_report.build_pdf(view, out, mbti=mb, character=ch)
@@ -275,7 +276,7 @@ def test_short_transcript_stays_with_appendix_a():
     view = scores.clean_view(r)
     seen = set()
     for y0 in range(60, 280, 2):
-        pdf = pdf_report.Report()
+        pdf = Report()
         pdf_report._plan(pdf, view, None, [], {}, None)
         assert set(pdf.appx) == {"file", "transcript"}
         pdf.add_page()
@@ -292,7 +293,7 @@ def test_short_transcript_stays_with_appendix_a():
     # a long transcript flows as before (no tightening: _transcript_size handles its tail)
     r["transcript"] = " ".join(["Это длинный транскрипт из многих предложений."] * 60)
     view = scores.clean_view(r)
-    pdf = pdf_report.Report()
+    pdf = Report()
     pdf_report._plan(pdf, view, None, [], {}, None)
     pdf.add_page()
     pdf.set_y(200)

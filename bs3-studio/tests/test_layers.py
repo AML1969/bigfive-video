@@ -49,8 +49,6 @@ NO_BS3_IMPORTS = ("palette", "settings", "jobfiles", "textfmt", "frame_phrase")
 
 # (importer, imported, the stage of the refactoring plan that removes the edge)
 ALLOW = {
-    ("pdf_charts", "pdf_report", 12),              # TEXT_W_MM -> pdf.layout
-    ("pdf_mbti", "pdf_report", 12),                # Report, NOTE_GREY, TEXT_W_MM -> pdf.document
     ("pdf_mbti", "mbti_html", 14),                 # READ_CAVEATS -> caveats.MBTI_READ; the shared table and lines
     ("webapp", "longvideo", 20),                   # AnalysisCancelled -> errors
 }

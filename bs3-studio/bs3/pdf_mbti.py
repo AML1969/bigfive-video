@@ -22,7 +22,7 @@ from . import caveats
 from .labels import mbti_model_title
 from .mbti import AXES, AXIS_LABEL, load_config, source_title
 from .mbti_html import READ_CAVEATS, TABLE_NOTE, TABLE_ROWS, corr_cell, summary_line
-from .pdf_report import NOTE_GREY, TEXT_W_MM, Report
+from .pdf.document import NOTE_GREY, TEXT_W_MM, Report
 from .textfmt import clock
 
 FRAME_GREY = 130                 # dashed frames and rules, as the #808080 outline of the page

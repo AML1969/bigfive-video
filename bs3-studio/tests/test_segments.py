@@ -1,11 +1,14 @@
-"""bs3/segments.py (refactoring plan of 3.1, stage 12): the per-segment helpers left pdf_report, pdf_charts, charts
-and narrative and give what the copies gave; each place that shows the representative segment keeps its own rule.
+"""bs3/segments.py and the PDF core (refactoring plan of 3.1, stage 12): the per-segment helpers left pdf_report,
+pdf_charts, charts and narrative and give what the copies gave; each place that shows the representative segment keeps
+its own rule; class Report and the layout constants are bs3/pdf/document.py and bs3/pdf/layout.py, and the cycle
+pdf_report <-> pdf_charts <-> pdf_mbti is gone.
 
 OLD_RULES keeps the five lookups of the representative segment as they were written before the move; every run
 compares them with `representative` over a grid of timelines with 0 to 4 segments, each scored or not.
 """
 from __future__ import annotations
 
+import ast
 import inspect
 import itertools
 import math
@@ -16,6 +19,7 @@ from pathlib import Path
 from bs3 import (charts, frame_captions, labels, narrative, pdf_charts, pdf_mbti, pdf_report, scores, segments,
                  textfmt, webapp)
 from bs3.norms import TRAIT_KEYS
+from bs3.pdf import document, layout
 from bs3.segments import (behavior_by_segment, dominant_emotion, emotion_shares, empty_text, odd_segments,
                           representative, scored, seg_words, segment_rows)
 
@@ -263,8 +267,25 @@ def test_odd_segments():
     assert narrative.odd_segments is odd_segments                   # method_notes takes it from segments
 
 
+# ---------------------------------------------------------------- the PDF core
+def test_report_lives_in_pdf_document():
+    from bs3.pdf.document import NOTE_GREY, TEXT_W_MM, Report
+    assert pdf_report.Report is Report and pdf_mbti.Report is Report
+    assert (layout.MARGIN_MM, layout.TEXT_W_MM, layout.RADAR_W_MM, layout.ROW_GAP_MM, layout.NOTE_GREY) == \
+        (10, 190, 80, 4, 85)
+    assert (TEXT_W_MM, NOTE_GREY) == (layout.TEXT_W_MM, layout.NOTE_GREY)
+    assert pdf_charts.TEXT_W_MM == pdf_mbti.TEXT_W_MM == document.TEXT_W_MM == 190
+    assert set(document.__all__) >= {"Report", "MARGIN_MM", "TEXT_W_MM", "RADAR_W_MM", "ROW_GAP_MM", "NOTE_GREY",
+                                      "FONT_CANDIDATES"}
+    assert document.FONT_CANDIDATES is layout.FONT_CANDIDATES and len(layout.FONT_CANDIDATES) == 3
+    pdf = Report(file_label="clip.mp4", total_pages=2)
+    pdf.add_page()
+    assert (pdf.l_margin, pdf.t_margin, pdf.r_margin) == (10, 10, 10) and abs(pdf.epw - 190) < 0.01   # A4: 210.0016
+
+
 def test_the_copies_are_gone():
-    gone = {pdf_report: ("_empty_text", "_seg_words", "_scored", "_rep_segment", "_segment_rows"),
+    gone = {pdf_report: ("_empty_text", "_seg_words", "_scored", "_rep_segment", "_segment_rows", "MARGIN_MM",
+                         "TEXT_W_MM", "NOTE_GREY", "FONT_CANDIDATES", "FPDF", "_rgb", "_group_name"),
             pdf_charts: ("_num", "_segments", "_empty_text", "_seg_words"), charts: ("_segments",)}
     for mod, names in gone.items():
         for name in names:
@@ -282,13 +303,42 @@ def test_the_copies_are_gone():
     assert segments.as_float("0.5") == 0.5 and segments.as_float(True) == 1.0
 
 
+def _imports(mod) -> tuple[set, set]:
+    """({bs3 modules imported at module level}, {… inside functions}) of one module, relative names resolved."""
+    tree = ast.parse(Path(mod.__file__).read_text(encoding="utf-8"))
+    top, inner = set(), set()
+
+    def visit(node, in_func):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.ImportFrom) and child.level == 1:
+                names = [child.module] if child.module else [a.name for a in child.names]
+                (inner if in_func else top).update(names)
+            visit(child, in_func or isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)))
+    visit(tree, False)
+    return top, inner
+
+
+def test_the_pdf_modules_import_each_other_once():
+    """pdf_report imports pdf_charts and pdf_mbti at module level; those two take the page from pdf.document or
+    pdf.layout and the segment data from segments, never pdf_report or the web charts; no import among the three is
+    left inside a function."""
+    three = {"pdf_report", "pdf_charts", "pdf_mbti"}
+    top, inner = _imports(pdf_report)
+    assert {"pdf_charts", "pdf_mbti", "pdf.document", "segments"} <= top and not inner & three
+    for mod, page in ((pdf_charts, "pdf.layout"), (pdf_mbti, "pdf.document")):
+        top, inner = _imports(mod)
+        assert page in top and not (top | inner) & {"pdf_report", "charts", "webparts", "webapp"}, mod.__name__
+        assert not inner & three, mod.__name__
+    assert "segments" in _imports(pdf_charts)[0]
+
+
 def test_the_data_modules_stay_light():
     """segments loads no numpy until odd_segments runs; the PDF modules load no matplotlib, plotly or torch on
-    import."""
+    import (pdf_report now imports pdf_charts at module level, which draws with matplotlib only when asked)."""
     code = ("import sys\n"
             "import bs3.segments\n"
             "print(sorted(m for m in ('numpy', 'matplotlib', 'fpdf') if m in sys.modules))\n"
-            "import bs3.pdf_report\n"
+            "import bs3.pdf_report, bs3.pdf.document\n"
             "print(sorted(m for m in ('matplotlib', 'plotly', 'torch', 'cv2', 'gradio') if m in sys.modules))\n")
     r = subprocess.run([sys.executable, "-c", code], cwd=str(ROOT), capture_output=True, text=True, timeout=120)
     assert r.returncode == 0, r.stderr[-2000:]
