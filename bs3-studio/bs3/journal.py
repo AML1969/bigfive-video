@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 from . import MODEL_TITLES, settings
+from .textfmt import clock
 
 log = logging.getLogger("bs3.journal")
 
@@ -29,11 +30,6 @@ _DEVICES = (("iPhone", "iPhone"), ("iPad", "iPad"), ("Android", "Android"), ("Wi
             ("Macintosh", "Mac"), ("Linux", "Linux"))
 _BROWSERS = (("YaBrowser", "Яндекс Браузер"), ("Edg", "Edge"), ("OPR/", "Opera"), ("Firefox", "Firefox"),
              ("FxiOS", "Firefox"), ("CriOS", "Chrome"), ("Chrome", "Chrome"), ("Safari", "Safari"))
-
-
-def _mmss(sec: float) -> str:
-    sec = int(round(sec or 0))
-    return f"{sec // 3600}:{sec % 3600 // 60:02d}:{sec % 60:02d}" if sec >= 3600 else f"{sec // 60}:{sec % 60:02d}"
 
 
 def _agent(ua: str) -> str:
@@ -121,7 +117,7 @@ def start(request, video, member: str) -> None:
 
 def result(request, rep: dict, wall_sec: float) -> None:
     name = rep.get("original_file_name") or Path(str(rep.get("input", ""))).name
-    tail = f"файл «{name}», ролик {_mmss(rep.get('duration_sec', 0))}, обработка {_mmss(wall_sec)}"
+    tail = f"файл «{name}», ролик {clock(rep.get('duration_sec', 0))}, обработка {clock(wall_sec)}"
     try:
         body = result_lines(rep)
     except Exception:  # noqa: BLE001

@@ -24,13 +24,13 @@ from .charts import (EMO_RU, fig_emotion_bars, fig_emotions_timeline, fig_face_e
                      fig_traits_timeline, fig_voice_timeline, plot_html as _plot_html)
 from .mbti import fact_card, get_mbti
 from .narrative import NO_EXPLAIN_RU, method_notes
-from .narrative2 import FACTS_LEGEND, card_item, fact_label, fix_counts, key_facts, plural_ru
+from .narrative2 import FACTS_LEGEND, card_item, fact_label, key_facts
 from .palette import (ACCENT, BUTTON_PRIMARY, BUTTON_PRIMARY_HOVER, BUTTON_STOP, BUTTON_STOP_HOVER, CARD_TINT,
                       FACT_VALUE, HTML as PAL, PAGE_NOTE_OPACITY, SUBDUED_TEXT_LIGHT)
 from .pipeline import Studio, run_analysis
-from .report import fmt_secs, mmss_labels, seg_label
 from .ru_texts import ensure_russian, ensure_russian_job, transcript_shown, vocabulary_shown
 from .scores import FACT_STATES, clean_view, data_json
+from .textfmt import clock, fix_counts, fmt_secs, mmss_labels, plural_ru, seg_label
 from .webparts import NOTE, _bar_html, _contrib_html, _words_text, model_line, table_html, th_text
 
 log = logging.getLogger("bs3.web")
@@ -97,11 +97,6 @@ def _dominant(dist: dict) -> str:
     return f"{EMO_RU.get(k, k)} {float(v):.0%}"
 
 
-def _clock(sec: float, hours: bool) -> str:
-    s = int(sec)
-    return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}" if hours else f"{s // 60}:{s % 60:02d}"
-
-
 def _segments_table(rep: dict) -> str:
     per = (rep.get("analyses") or {}).get("per_segment") or []
     if not per:
@@ -111,7 +106,8 @@ def _segments_table(rep: dict) -> str:
     if t_max >= 60:
         hours = t_max >= 3600
         seg_head = th_text("Отрезок", "ч:мин:с" if hours else "мин:с")
-        when = [f"{_clock(r['start'], hours)}–{_clock(r['end'], hours)}" for r in per]
+        when = [f"{clock(r['start'], hours, truncate=True)}–{clock(r['end'], hours, truncate=True)}"
+                for r in per]
     else:
         seg_head = th_text("Отрезок", "мин:с")
         when = [seg_label(r["start"], r["end"]) for r in per]

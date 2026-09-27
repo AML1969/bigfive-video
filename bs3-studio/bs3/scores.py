@@ -64,15 +64,9 @@ TEMPO_BAND = (100, 160)        # words per minute: the usual range of conversati
 EMO_STATE = {"neutral": NEUTRAL, "sadness": BELOW, "fear": BELOW, "disgust": BELOW,
              "joy": ABOVE, "surprise": ABOVE, "anger": ABOVE}
 
-__all__ = ["clean_view", "segment_ok", "level", "level_phrase", "score_text", "shown", "LEVELS_RU", "plural_ru",
+__all__ = ["clean_view", "segment_ok", "level", "level_phrase", "score_text", "shown", "LEVELS_RU",
            "main_system", "recorded_model", "data_json", "scale_state", "tempo_state", "emotion_state",
            "FACT_STATES", "TEMPO_BAND", "NEUTRAL", "BELOW", "ABOVE", "READ_FALLBACK", "scored"]
-
-
-def plural_ru(n, one: str, few: str, many: str) -> str:
-    """narrative2.plural_ru, imported on use (narrative2 pulls in the chart libraries)."""
-    from .narrative2 import plural_ru as _plural
-    return _plural(n, one, few, many)
 
 
 def _num(x) -> float | None:

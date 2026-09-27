@@ -24,6 +24,7 @@ from .palette import (BARS_PDF, EMO_ALIAS, EMO_HEAT_L, EMO_HEAT_PDF, MODALITY_PD
                       TRAIT_MARKER_PDF, TRAIT_PDF, VOICE_MARKER_PDF, VOICE_PDF, emo_heat_pdf, emo_heat_step,
                       emo_heat_text_pdf, emo_pdf)
 from .pdf_report import TEXT_W_MM, _empty_text, _seg_words
+from .textfmt import clock
 
 log = logging.getLogger("bs3.pdf")
 
@@ -128,11 +129,10 @@ def _time_axis(ax, dur: float, max_ticks: int = TIME_TICKS, label: bool = True) 
     step = next((s for s in (5, 10, 15, 20, 30, 60, 120, 180, 300, 600, 900, 1200, 1800, 3600) if dur / s <= max_ticks), 7200)
     ax.xaxis.set_major_locator(MultipleLocator(step))
     if dur >= 3600:
-        ax.xaxis.set_major_formatter(FuncFormatter(
-            lambda v, _: f"{int(round(v)) // 3600}:{int(round(v)) % 3600 // 60:02d}:{int(round(v)) % 60:02d}"))
+        ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _: clock(v, hours=True)))
         text = "время ролика, ч:мин:с"
     else:
-        ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{int(round(v)) // 60}:{int(round(v)) % 60:02d}"))
+        ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _: clock(v, hours=False)))
         text = "время ролика, мин:с"
     if label:
         ax.set_xlabel(text)

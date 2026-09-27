@@ -16,7 +16,8 @@ from typing import Callable, Dict, List
 import numpy as np
 
 from . import DEFAULT_MODEL, LANG, MODALITIES, MODEL_TITLES, jobfiles, ollama, settings
-from .report import build_report, fmt_secs
+from .report import build_report
+from .textfmt import fmt_secs
 
 log = logging.getLogger("bs3.pipeline")
 

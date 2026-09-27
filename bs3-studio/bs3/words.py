@@ -11,7 +11,7 @@ import re
 from collections import Counter
 from typing import Dict
 
-from .report import clean_word
+from .textfmt import clean_word
 
 STOP_EN = set("""
 a an the and or but if so as of to in on at by for from with without into onto over under about above below between

@@ -1,7 +1,7 @@
-"""JSON report for one video, following the TZ schema (section 6)."""
+"""JSON report for one video, following the TZ schema (section 6). The formatters that used to live here (fmt_secs,
+seg_label, mmss_labels, clean_word) are in textfmt.py."""
 from __future__ import annotations
 import datetime as _dt
-import re
 from pathlib import Path
 
 from . import MODEL_TITLES, PRODUCT, __version__
@@ -19,42 +19,6 @@ DISCLAIMER_RU = ("Кажущаяся личность, как её воспри�
 INTERVIEW_DISCLAIMER_RU = ("Метка «собеседование» ChaLearn: как часто разметчики говорили, что пригласили бы человека на "
                            "собеседование после 15-секундного первого впечатления. Не рекомендация о найме; авторы датасета "
                            "просят не использовать её для решений, влияющих на людей.")
-
-
-def fmt_secs(x) -> str:
-    """Durations for the interface: '45 с' below a minute, '6 мин 5 с' above, '1 ч 02 мин' above an hour."""
-    try:
-        x = float(x)
-    except (TypeError, ValueError):
-        return str(x)
-    if x < 60:
-        return f"{x:.0f} с" if x >= 10 else f"{x:.1f} с"
-    m, s = divmod(int(round(x)), 60)
-    if m < 60:
-        return f"{m} мин {s:02d} с"
-    h, m = divmod(m, 60)
-    return f"{h} ч {m:02d} мин"
-
-
-def clean_word(w: str) -> str:
-    """Attributed tokens carry their punctuation ('that.', '[in]'); strip it for display."""
-    return str(w).strip(" .,;:!?\"'()[]{}«»—-").strip()
-
-
-def seg_label(start, end) -> str:
-    """Position of a segment in the video, always m:ss ('0:00–0:20', '6:00–6:20'), so a timeline column never mixes
-    two formats."""
-    s, e = int(round(float(start))), int(round(float(end)))
-    return f"{s // 60}:{s % 60:02d}–{e // 60}:{e % 60:02d}"
-
-
-_SEC_LABEL = re.compile(r"\[(\d+(?:[.,]\d+)?)\s*[–-]\s*(\d+(?:[.,]\d+)?)\s*(?:с|s)\]")
-
-
-def mmss_labels(text) -> str:
-    """Segment labels inside behaviour descriptions ('[100–120 с]') in the timeline format ('[1:40–2:00]')."""
-    return _SEC_LABEL.sub(lambda m: "[" + seg_label(float(m.group(1).replace(",", ".")),
-                                                    float(m.group(2).replace(",", "."))) + "]", str(text or ""))
 
 
 def build_report(video: str | Path, result: dict, *, backend: str, corpus: str, lang: str,

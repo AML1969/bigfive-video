@@ -9,7 +9,7 @@ import numpy as np
 
 from . import MODEL_TITLES
 from .norms import RU_TITLES, TRAIT_KEYS
-from .report import seg_label
+from .textfmt import plural_ru, seg_label
 
 # where the scores come from, by the model that ran (one model per analysis since 3.1)
 SOURCE_RU = {
@@ -22,16 +22,6 @@ SCALE_RU = "Уровни черт и буквы MBTI считаются по с�
 # section 3, the owner's final decision): explanations exist for AMLAI 1.0 only
 NO_EXPLAIN_RU = ("Модель OCEAN-AI не строит объяснений: ключевые кадры, вклад модальностей и слова, повлиявшие на "
                  "оценку, есть только для модели AMLAI 1.0.")
-
-
-def plural_ru(n: int, forms: tuple) -> str:
-    """plural_ru(21, ("отрезок", "отрезка", "отрезков")) -> "отрезок"."""
-    n = abs(int(n))
-    if n % 10 == 1 and n % 100 != 11:
-        return forms[0]
-    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
-        return forms[1]
-    return forms[2]
 
 
 def _name(k: str) -> str:
@@ -92,7 +82,7 @@ def method_notes(view: dict) -> str:
     std = view.get("scores_std_across_segments") or view.get("scores_std") or {}
     if tl and std:
         n = len(tl)
-        count = f"{n} {plural_ru(n, ('отрезок', 'отрезка', 'отрезков'))} с оценкой {MODEL_TITLES.get(main, main)}"
+        count = f"{n} {plural_ru(n, 'отрезок', 'отрезка', 'отрезков')} с оценкой {MODEL_TITLES.get(main, main)}"
         worst = max(TRAIT_KEYS, key=lambda k: std.get(k, 0))
         if std.get(worst, 0) <= 0.05:
             parts.append(f"По ходу ролика ({count}) оценки устойчивы: разброс не больше ±{std[worst]:.2f}.")

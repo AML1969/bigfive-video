@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from . import MODEL_TITLES, PRODUCT
 from .report import DISCLAIMER_RU, INTERVIEW_DISCLAIMER_RU
+from .textfmt import plural_ru
 
 C1 = DISCLAIMER_RU
 C2 = INTERVIEW_DISCLAIMER_RU
@@ -77,16 +78,6 @@ TEXTS = {
 CODES = tuple(f"C{i}" for i in range(1, 23) if i != 18)      # C18 (the second strip of 3.0) is gone with 3.1
 
 
-def _plural(n: int, one: str, few: str, many: str) -> str:
-    """Russian noun form for a count (the same rule as narrative2.plural_ru, which pulls in the chart libraries)."""
-    n = abs(int(n))
-    if n % 10 == 1 and n % 100 != 11:
-        return one
-    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
-        return few
-    return many
-
-
 def text(code: str, **values) -> str:
     """The caveat `code` ('C1' … 'C22' without C18). Templates are filled with `values` (C13: k, segments_k, n, model,
     these, shown); the helper c13 computes these values itself."""
@@ -98,7 +89,7 @@ def c13(k: int, n: int, model: str = "oceanai") -> str:
     """«В 7 отрезках из 33 модель OCEAN-AI не дала оценки …; эти отрезки не вошли … показаны пропусками.»
     `model`: the internal key of the model the view shows ("oceanai" | "mm"), named by its title."""
     one = int(k) == 1
-    return C13.format(k=k, segments_k=_plural(k, "отрезке", "отрезках", "отрезках"), n=n,
+    return C13.format(k=k, segments_k=plural_ru(k, "отрезке", "отрезках", "отрезках"), n=n,
                       model=MODEL_TITLES.get(model, str(model)),
                       these="этот отрезок не вошёл" if one else "эти отрезки не вошли",
                       shown="показан пропуском" if one else "показаны пропусками")

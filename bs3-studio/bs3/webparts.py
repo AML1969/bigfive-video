@@ -10,13 +10,13 @@ CSS variables such as --block-background-fill switch with the theme by themselve
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
 
 from . import MODEL_TITLES
 from .norms import TRAIT_KEYS
 from .palette import HTML as PAL
 from .scores import scored
+from .textfmt import fiv2_ref_ru
 
 log = logging.getLogger("bs3.web")
 
@@ -145,13 +145,6 @@ def _pct_phrase(pct, ref: str | None) -> tuple[str, bool]:
     return (f"выше, чем у {p:.0f}% {group}" if p > 50 else f"ниже, чем у {100 - p:.0f}% {group}"), True
 
 
-def _ref_ru(ref: str) -> str:
-    """percentile_ref from result.json (genitive, reads after «относительно») without technical English words."""
-    r = re.sub(r",\s*(?:своя модель|AMLAI 1\.0)\s*$", "", ref or "")
-    return r.replace("train First Impressions V2", "обучающей выборки First Impressions V2").replace(
-        "train FIV2", "обучающей выборки FIV2")
-
-
 TICK_NOTE = ("Риска на полоске — процентиль в First Impressions V2: у какой доли людей этого датасета оценка ниже; "
              "риска посередине — медиана датасета.")
 SCALE_NOTE = "Длина полоски — оценка системы от 0 до 1; уровни черт и буквы MBTI считаются по этой же шкале, середина — 0.5."
@@ -168,7 +161,7 @@ def _bar_html(traits: dict, interview: dict | None) -> str:
         ref = t.get("percentile_ref", "train FIV2" if pct is not None else "")
         phrase, tick_ok = _pct_phrase(pct, ref)
         if phrase:
-            groups.setdefault(_ref_ru(ref), []).append(k)
+            groups.setdefault(fiv2_ref_ru(ref), []).append(k)
         any_tick = any_tick or tick_ok
         score = float(t["score"])
         fill = PAL["interview_fill"] if k == "interview" else PAL["main_fill"]

@@ -15,7 +15,7 @@ from typing import List
 from .norms import RU_TITLES, TRAIT_KEYS
 from .palette import (BARS_WEB, EMO_ALIAS, FONT_FAMILY, RADAR_WEB, SPEECH_WEB, THEME, TRAIT_SYMBOL, TRAIT_WEB,
                       VOICE_SYMBOL, VOICE_WEB, emo)
-from .report import seg_label
+from .textfmt import clock, seg_label
 
 EMO_RU = {"joy": "радость", "surprise": "удивление", "neutral": "нейтрально", "sadness": "грусть", "fear": "страх",
           "anger": "злость", "disgust": "отвращение",
@@ -82,13 +82,6 @@ def _axes(fig, theme: str, **selector):
     fig.update_yaxes(**common, **selector)
 
 
-def _clock(sec: float) -> str:
-    s = int(round(sec))
-    h, rest = divmod(s, 3600)
-    m, ss = divmod(rest, 60)
-    return f"{h}:{m:02d}:{ss:02d}" if h else f"{m}:{ss:02d}"
-
-
 def _time_axis(fig, theme: str, t_max: float, axes=("xaxis",), with_title: bool = True, **selector) -> dict:
     """x axis in m:ss. Ticks every 60 s (30 s / 10 s / 5 s for short videos); the iframe script thins them out when the
     plot is too narrow. Returns the meta entry the script needs."""
@@ -96,7 +89,7 @@ def _time_axis(fig, theme: str, t_max: float, axes=("xaxis",), with_title: bool 
     base = 60 if t_max > 240 else 30 if t_max > 90 else 10 if t_max > 20 else 5
     thin = {60: [1, 2, 5, 10, 15, 30, 60], 30: [1, 2, 4, 10, 20, 60], 10: [1, 3, 6, 12], 5: [1, 2, 4]}[base]
     vals = list(range(0, int(t_max) + 1, base))
-    text = [_clock(v) for v in vals]
+    text = [clock(v) for v in vals]
     kw = dict(range=[0, t_max], tickmode="array", tickvals=vals, ticktext=text, hoverformat=".0f",
               unifiedhovertitle=dict(text="отрезок около %{x:.0f} с"))
     fig.update_xaxes(**kw, **selector)

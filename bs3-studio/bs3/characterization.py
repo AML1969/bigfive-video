@@ -27,6 +27,7 @@ from importlib import resources
 from . import caveats
 from .norms import TRAIT_KEYS
 from .scores import level, level_phrase, score_text, shown
+from .textfmt import plural_ru
 
 AXES = ("EI", "SN", "TF", "JP")
 AXIS_LABEL = {"EI": "E–I", "SN": "S–N", "TF": "T–F", "JP": "J–P"}
@@ -44,10 +45,6 @@ def load_lexicon() -> dict:
         with resources.files("bs3").joinpath("config/lexicon_ru.json").open("r", encoding="utf-8") as f:
             _lex = json.load(f)
     return copy.deepcopy(_lex)
-
-
-def _plural(n, one: str, few: str, many: str) -> str:
-    return caveats._plural(n, one, few, many)
 
 
 def _num(x) -> float | None:
@@ -232,7 +229,7 @@ def _p_basis(view, mb, T) -> str:
     if total <= 1 or n <= 0:
         where = B["where_whole"]
     else:
-        where = B["where_segments"].format(n=n, segments=_plural(n, "отрезку", "отрезкам", "отрезкам"))
+        where = B["where_segments"].format(n=n, segments=plural_ru(n, "отрезку", "отрезкам", "отрезкам"))
     # one model per analysis (3.1): the basis names the model the view shows, for any speech language of an old job
     system = B["system"].get(meta.get("main_system"), B["system"]["oceanai"])
     return B["ru"].format(system=system, where=where) + " " + B["scale"]
@@ -299,11 +296,11 @@ def _p_mbti(mb, T, type_names) -> str:
         unstable = [ax for ax in AXES if st.get(ax) and st[ax]["same"] < st[ax]["of"]]
         if not unstable:
             out.append(M["stable_strict" if border else "stable_all"].format(
-                n=n, segments=_plural(n, "отрезке", "отрезках", "отрезках")))
+                n=n, segments=plural_ru(n, "отрезке", "отрезках", "отрезках")))
         else:
             first = unstable[0]
             s = M["part_first"].format(axis=AXIS_LABEL[first], k=st[first]["same"], n=st[first]["of"],
-                                       segments=_plural(st[first]["of"], "отрезка", "отрезков", "отрезков"))
+                                       segments=plural_ru(st[first]["of"], "отрезка", "отрезков", "отрезков"))
             for ax in unstable[1:]:
                 s += M["part_more"].format(axis=AXIS_LABEL[ax], k=st[ax]["same"])
             if len(unstable) < len([ax for ax in AXES if st.get(ax)]):
@@ -327,7 +324,7 @@ def _p_behavior(view, T, ps) -> str:
         pauses = "" if pause is None else Bh["pauses"]["few" if pause * 100 < 10 else ("some" if pause * 100 < 25
                                                                                          else "many")]
         out.append(Bh["tempo"].format(tempo=Bh["tempo_words"][tempo], wpm=n,
-                                      words=_plural(n, "слово", "слова", "слов"), pauses=pauses))
+                                      words=plural_ru(n, "слово", "слова", "слов"), pauses=pauses))
     vo = (an.get("voice") or {}).get("mean") or {}
     arousal = _num(vo.get("arousal"))
     if arousal is not None:

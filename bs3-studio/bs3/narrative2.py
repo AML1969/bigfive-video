@@ -2,38 +2,10 @@
 cards. Deterministic templates over the numbers in result.json."""
 from __future__ import annotations
 
-import re
 from typing import List
 
 from .charts import EMO_RU
-from .report import fmt_secs
-
-
-def plural_ru(n, one: str, few: str, many: str) -> str:
-    """Russian noun form for a count: plural_ru(21, "отрезок", "отрезка", "отрезков") -> "отрезок"."""
-    n = abs(int(round(float(n))))
-    if n % 10 == 1 and n % 100 != 11:
-        return one
-    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
-        return few
-    return many
-
-
-# texts stored in result.json by other modules say «92 слов в минуту», «31 сегментов»: fix the noun form on display
-_COUNT_NOUNS = {"слов": ("слово", "слова", "слов"), "сегментов": ("отрезок", "отрезка", "отрезков"),
-                "отрезков": ("отрезок", "отрезка", "отрезков")}
-_GENITIVE_BEFORE = {"из", "до", "от", "около", "без", "для", "больше", "меньше", "более", "менее", "свыше"}
-
-
-def fix_counts(text: str) -> str:
-    """«92 слов в минуту» -> «92 слова в минуту», «(31 сегментов)» -> «(31 сегмент)». Only where the count is in the
-    nominative/accusative; after «из», «до», «больше» … the genitive plural is correct and stays."""
-    def repl(m):
-        prev, n, word = m.group(1) or "", int(m.group(2)), m.group(3)
-        if prev.strip().lower() in _GENITIVE_BEFORE:
-            return m.group(0)
-        return f"{prev}{n} {plural_ru(n, *_COUNT_NOUNS[word])}"
-    return re.sub(r"(\b\w+\s)?(\d+)\s(слов|сегментов|отрезков)\b", repl, text or "")
+from .textfmt import fix_counts, fmt_secs, plural_ru
 
 
 # «уверенность низкая», «возбуждение низкое»: the level agrees with the gender of the voice dimension

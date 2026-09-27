@@ -22,6 +22,7 @@ from . import caveats
 from .mbti import AXES, AXIS_LABEL, load_config, source_title
 from .mbti_html import READ_CAVEATS, TABLE_NOTE, TABLE_ROWS, corr_cell, panel_title, summary_line
 from .pdf_report import NOTE_GREY, TEXT_W_MM, Report
+from .textfmt import clock
 
 FRAME_GREY = 130                 # dashed frames and rules, as the #808080 outline of the page
 NO_SCORE_FILL = 232              # light grey behind «—» (no score in the segment)
@@ -34,11 +35,6 @@ HEADER_H = 10.0                  # height of the header line of the characteriza
 STRIP_LEGEND = ("Жирная буква — ось выражена отчётливо, обычная — умеренно; серая буква в пунктирной рамке — ось на "
                 "границе (показана буква строгого деления); «—» на сером — нет оценки. Над столбцами — начало отрезка "
                 "(мин:с).")
-
-
-def _mmss(sec) -> str:
-    s = int(round(float(sec or 0)))
-    return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}" if s >= 3600 else f"{s // 60}:{s % 60:02d}"
 
 
 def _dashed_underline(pdf: Report, x0: float, x1: float, y: float) -> None:
@@ -221,7 +217,7 @@ def _lane_rows(pdf: Report, title: str, chunk: list[dict], cell: float, row_h: f
     pdf.set_text_color(NOTE_GREY)
     for j in range(0, len(chunk), 3):
         pdf.set_xy(x0 + STRIP_LABEL_MM + j * cell, y)
-        pdf.cell(3 * cell, 3, _mmss(chunk[j].get("start")), align="L")
+        pdf.cell(3 * cell, 3, clock(chunk[j].get("start")), align="L")
     pdf.set_text_color(0)
     y += 3.3
     inset = 0.35

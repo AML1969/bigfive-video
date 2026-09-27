@@ -21,7 +21,8 @@ from . import caveats
 from .mbti import AXES, AXIS_LABEL, border_text, load_config, source_title
 from .norms import RU_NAMES
 from .palette import HTML as PAL
-from .scores import LEVELS_RU, level_phrase, plural_ru, score_text
+from .scores import LEVELS_RU, level_phrase, score_text
+from .textfmt import clock, plural_ru
 from .webparts import NOTE, table_html, th_text
 
 OUTLINE = PAL["track_outline"]
@@ -47,11 +48,6 @@ def corr_cell(c: dict) -> str:
 
 def _e(s) -> str:
     return _html.escape(str(s), quote=True)
-
-
-def _mmss(sec) -> str:
-    s = int(round(float(sec or 0)))
-    return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}" if s >= 3600 else f"{s // 60}:{s % 60:02d}"
 
 
 def panel_title(mb: dict) -> str:
@@ -187,7 +183,7 @@ def types_html(mb: dict | None) -> str:
 def _cell(e: dict, i: int, word: str | None, who: str) -> str:
     base = ("width:26px;height:26px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;"
             "border-radius:3px;line-height:1")
-    when = f"{_mmss(e.get('start'))}–{_mmss(e.get('end'))}"
+    when = f"{clock(e.get('start'))}–{clock(e.get('end'))}"
     ts = e.get("type_strict")
     if not ts:
         return (f"<div title='{_e(when + ' · нет оценки ' + who)}' style='{base};background:{HATCH};opacity:.9'>"
@@ -212,7 +208,7 @@ def _lane(entries: list[dict], title: str, who: str) -> str:
     for j in range(0, n, 3):                          # the start time above every third column
         span = min(3, n - j)
         cells.append(f"<div style='grid-column:span {span};font-size:12px;opacity:.75;white-space:nowrap;"
-                     f"font-variant-numeric:tabular-nums;align-self:end'>{_mmss(entries[j].get('start'))}</div>")
+                     f"font-variant-numeric:tabular-nums;align-self:end'>{clock(entries[j].get('start'))}</div>")
     for i, ax in enumerate(AXES):
         cells.append(f"<div style='font-weight:600;align-self:center'>{AXIS_LABEL[ax]}</div>")
         for e in entries:

@@ -29,7 +29,8 @@ from importlib import resources
 
 from . import MODEL_TITLES, PRODUCT, __version__
 from .norms import TRAIT_KEYS
-from .scores import level_phrase, plural_ru, shown
+from .scores import level_phrase, shown
+from .textfmt import plural_ru
 
 AXES = ("EI", "SN", "TF", "JP")
 AXIS_LABEL = {"EI": "E–I", "SN": "S–N", "TF": "T–F", "JP": "J–P"}

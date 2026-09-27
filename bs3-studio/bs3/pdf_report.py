@@ -22,12 +22,12 @@ from fpdf import FPDF
 
 from . import MODALITIES, MODEL_TITLES, PRODUCT, caveats, frame_captions, settings
 from .narrative import NO_EXPLAIN_RU
-from .narrative2 import FACTS_LEGEND, analyses_parts, card_item, fact_label, fix_counts, key_facts, plural_ru
+from .narrative2 import FACTS_LEGEND, analyses_parts, card_item, fact_label, key_facts
 from .norms import RU_SHORT, TRAIT_KEYS
 from .palette import CARD_PDF, FACT_VALUE_PDF, SCORE_BAR_PDF, TRAIT_BAR_PDF
-from .report import _SEC_LABEL, fmt_secs, seg_label
 from .ru_texts import transcript_shown, vocabulary_shown
 from .scores import scored
+from .textfmt import SEC_LABEL, clock, fiv2_ref_ru, fix_counts, fmt_secs, plural_ru, seg_label
 
 TITLES = {
     "openness": "Открытость опыту", "conscientiousness": "Добросовестность", "extraversion": "Экстраверсия",
@@ -99,13 +99,6 @@ def pct_phrase(pct, ref: str = "") -> str:
     return _pct_phrase(pct, ref)[0]
 
 
-def _ref_ru(ref: str) -> str:
-    """percentile_ref from result.json (genitive, reads after «относительно») without technical English words."""
-    r = re.sub(r",\s*(?:своя модель|AMLAI 1\.0)\s*$", "", ref or "")
-    return r.replace("train First Impressions V2", "обучающей выборки First Impressions V2").replace(
-        "train FIV2", "обучающей выборки FIV2")
-
-
 def _asr_ru(name) -> str:
     """'openai/whisper-large-v3-turbo' -> 'Whisper large-v3-turbo': the model name without the hub prefix."""
     m = re.match(r"^(?:[\w.-]+/)?whisper-(.+)$", str(name or ""), re.I)
@@ -132,15 +125,11 @@ def _rgb(hexc: str) -> tuple:
 
 
 def _seg(report: dict, start, end) -> str:
-    """«1:20–1:40» as report.seg_label, but h:mm:ss from an hour on, like the time axis of the charts and the
+    """«1:20–1:40» as textfmt.seg_label, but h:mm:ss from an hour on, like the time axis of the charts and the
     «Отрезок» column of the web table: one report never prints «1:05:00» on a chart and «65:00» in a table."""
     if float(report.get("duration_sec") or 0) < 3600:
         return seg_label(start, end)
-
-    def f(t) -> str:
-        t = int(round(float(t)))
-        return f"{t // 3600}:{t % 3600 // 60:02d}:{t % 60:02d}"
-    return f"{f(start)}–{f(end)}"
+    return f"{clock(start, hours=True)}–{clock(end, hours=True)}"
 
 
 def _hms_text(text: str, dur: float) -> str:
@@ -439,7 +428,7 @@ class Report(FPDF):
             pct = t.get("percentile", t.get("percentile_vs_fiv2"))
             ref = t.get("percentile_ref", "train First Impressions V2 (6000 клипов)" if pct is not None else "")
             if pct is not None and pct_phrase(pct, ref):
-                groups.setdefault(f"относительно {_ref_ru(ref)}", []).append(k)
+                groups.setdefault(f"относительно {fiv2_ref_ru(ref)}", []).append(k)
         parts = ["Длина полоски — оценка модели от 0 до 1; уровни черт и буквы MBTI считаются по этой же шкале, "
                  "середина — 0.5."]
         interview_named = False
@@ -652,7 +641,7 @@ def _rep_segment(report: dict):
 def behavior_by_segment(report: dict) -> list:
     """[(start, end, text)] of behavior_description_ru split on its «[0–20 с]» labels; [] when it has none."""
     text = str(report.get("behavior_description_ru") or "")
-    ms = list(_SEC_LABEL.finditer(text))
+    ms = list(SEC_LABEL.finditer(text))
     out = []
     for i, m in enumerate(ms):
         s, e = float(m.group(1).replace(",", ".")), float(m.group(2).replace(",", "."))

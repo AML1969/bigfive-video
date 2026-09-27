@@ -17,7 +17,7 @@ import torch
 
 from . import settings
 from .norms import TRAIT_KEYS
-from .report import fmt_secs, seg_label
+from .textfmt import fmt_secs, seg_label
 
 
 class AnalysisCancelled(RuntimeError):
