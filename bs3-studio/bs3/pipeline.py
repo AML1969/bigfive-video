@@ -253,8 +253,6 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, *, member: str
     an = studio.analyzer(member)
     step(0.10, f"Речь, лицо, голос{', описание поведения' if member == 'mm' else ''} — Big Five ({title})")
     res = an.analyze(local, job / "segments", progress=lambda f, d: step(0.10 + 0.60 * f, d), should_stop=studio.stop_event.is_set)
-    from . import pool
-    pool.add(local, res["scores"], lang, member, name=src.name)
     # the corpus of the member itself (MuPTA / the own model's checkpoints), not the ensemble wrapper's descriptor
     inner = getattr(be, "backends", {}).get(member)
     corpus = getattr(getattr(inner, "cfg", None), "corpus", None) or be.cfg.corpus

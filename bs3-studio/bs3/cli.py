@@ -75,9 +75,6 @@ def cmd_infer(a):
         mods = {"oceanai": ("audio", "video", "text"),
                 "mm": tuple(getattr(be, "modalities", ("face", "audio", "text", "behavior")))}[a.backend]
         primary = res.get("primary")
-        if primary:
-            from .pool import add as pool_add
-            pool_add(v, res["scores"], LANG, primary)
         rep = build_report(v, res, backend=a.backend, corpus=be.cfg.corpus, lang=be.cfg.lang,
                            asr_model=None if (a.no_asr or transcript is not None) else a.asr_model,
                            modalities=mods, primary=primary)

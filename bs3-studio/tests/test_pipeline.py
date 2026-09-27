@@ -16,7 +16,7 @@ import types
 from pathlib import Path
 
 import bs3
-from bs3 import pipeline, pool
+from bs3 import pipeline
 from bs3.norms import TRAIT_KEYS
 
 MEMBERS = ("oceanai", "mm")
@@ -316,15 +316,12 @@ def _run(member: str, explain: bool, tmp: Path):
     video = tmp / "clip.mp4"
     video.write_bytes(b"\x00" * 2048)
     work = tmp / "jobs" / member
-    old_pool = pool.POOL_DIR
-    pool.POOL_DIR = tmp / "pool"
     log = logging.getLogger("bs3.pipeline")
     old_level = log.level
     log.setLevel(logging.CRITICAL)            # the fakes fail on purpose; the pipeline logs and goes on
     try:
         rep_ = pipeline.run_analysis(studio, work, str(video), member=member, explain=explain, progress=lambda f, d: None)
     finally:
-        pool.POOL_DIR = old_pool
         log.setLevel(old_level)
     return studio, rep_, work
 
@@ -401,3 +398,15 @@ def test_run_analysis_oceanai_skips_explanations_even_when_asked():
         assert studio.explained == [] and r["key_frames"] == []
         studio, r, _ = _run("mm", explain=False, tmp=Path(d) / "b")
         assert studio.explained == [] and r["key_frames"] == []
+
+
+def test_no_pool_of_processed_videos():
+    """The pool of processed videos is gone (owner decision of 2026-09-27): it was collected and never read. Neither
+    an analysis from the page nor `bs3 infer` registers the scores of a video anywhere besides the job and the report."""
+    import importlib.util
+    assert importlib.util.find_spec("bs3.pool") is None
+    root = Path(pipeline.__file__).resolve().parent
+    for p in sorted([*root.rglob("*.py"), *(root.parent / "scripts").glob("*.py")]):
+        text = p.read_text(encoding="utf-8")
+        for bad in ("BS3_POOL_DIR", "POOL_DIR", "bs3_data/pool", "pool.add", "pool_add", "from .pool", "import pool"):
+            assert bad not in text, (str(p.relative_to(root.parent)), bad)

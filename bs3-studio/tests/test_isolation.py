@@ -111,15 +111,14 @@ def test_no_bs2_references_in_bs3_studio():
 
 
 def test_work_dirs_under_bs3_data():
-    env = {k: v for k, v in os.environ.items() if k not in ("BS3_JOURNAL", "BS3_POOL_DIR")}
-    code = ("import sys, bs3.pool, bs3.journal; "
-            "print(bs3.pool.POOL_DIR); print(bs3.journal.PATH); "
+    env = {k: v for k, v in os.environ.items() if k != "BS3_JOURNAL"}
+    code = ("import sys, bs3.journal; "
+            "print(bs3.journal.PATH); "
             "print(sorted(m for m in sys.modules if m == 'bs2' or m.startswith('bs2.')))")
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env, cwd=str(ROOT))
     assert r.returncode == 0, r.stderr
-    pool, journal, bs2_mods = r.stdout.strip().splitlines()[-3:]
+    journal, bs2_mods = r.stdout.strip().splitlines()[-2:]
     base = str(Path.home() / "bs3_data")
-    assert pool.startswith(base + os.sep), pool
     assert journal.startswith(base + os.sep), journal
     assert bs2_mods == "[]", bs2_mods
     web = (ROOT / "bs3" / "webapp.py").read_text(encoding="utf-8")
