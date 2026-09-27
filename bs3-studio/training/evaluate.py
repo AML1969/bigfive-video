@@ -3,7 +3,10 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from .norms import FIV2_COLUMNS, OCEANAI_COLUMNS, TRAIT_KEYS
+from bs3.norms import OCEANAI_COLUMNS, TRAIT_KEYS
+
+# column names of the Big Five labels in the FIV2 csv files, in the order of TRAIT_KEYS
+FIV2_COLUMNS = ["openness", "conscientiousness", "extraversion", "agreeableness", "non-neuroticism"]
 
 
 def ccc(y_true: np.ndarray, y_pred: np.ndarray) -> float:

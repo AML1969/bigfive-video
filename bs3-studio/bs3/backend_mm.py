@@ -20,13 +20,12 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-import pandas as pd
 import torch
 
 from .mm.extractors import ClapAudioEncoder, ClipFaceEncoder, EmoRobertaTextEncoder, mean_std
 from .mm.faces import get_face_crops, select_uniform_frames
 from .mm.model import ModelConfig, PersonalityFusionModel
-from .norms import OCEANAI_COLUMNS, TRAIT_KEYS
+from .norms import TRAIT_KEYS
 
 log = logging.getLogger("bs.mm")
 
@@ -355,22 +354,3 @@ class MMBackend:
         res["seconds"] = round(time.time() - t0, 2)
         (out_dir / "explanation.json").write_text(json.dumps(res, ensure_ascii=False, indent=2), encoding="utf-8")
         return res
-
-    def predict_dir(self, directory: str | Path, asr: bool = True,
-                    exts=(".mp4", ".mov", ".mkv", ".avi", ".webm")) -> pd.DataFrame:
-        self.load()
-        rows = []
-        files = sorted(p for p in Path(directory).iterdir() if p.suffix.lower() in exts)
-        for i, p in enumerate(files, 1):
-            txt = p.with_suffix(".txt")
-            transcript = txt.read_text(encoding="utf-8") if (not asr and txt.exists()) else None
-            beh_file = p.with_suffix(".behavior.txt")
-            behavior = beh_file.read_text(encoding="utf-8") if beh_file.exists() else None
-            try:
-                r = self.predict_video(p, asr=asr, transcript=transcript, behavior=behavior)
-                rows.append({"Path": p.name, **{c: r["scores"][k] for k, c in zip(TRAIT_KEYS, OCEANAI_COLUMNS)}})
-            except Exception as e:
-                log.warning("%s failed: %s", p.name, e)
-            if i % 20 == 0:
-                log.info("scored %d/%d", i, len(files))
-        return pd.DataFrame(rows)

@@ -1,8 +1,8 @@
 """Extract and cache MM-PSYCHE-style features for one FIV2 split.
 
-  python -m bs3.mm.extract --split train --modalities audio,text,behavior
-  python -m bs3.mm.extract --split train --modalities face --shard 0/6     # one of 6 parallel shards
-  python -m bs3.mm.extract --split train --modalities face --merge         # merge shard files
+  python -m training.mm_extract --split train --modalities audio,text,behavior
+  python -m training.mm_extract --split train --modalities face --shard 0/6     # one of 6 parallel shards
+  python -m training.mm_extract --split train --modalities face --merge         # merge shard files
 
 Shard files: features/<split>/<modality>.shard<i>of<n>.pt ; merged: features/<split>/<modality>.pt
 """
@@ -15,10 +15,11 @@ from pathlib import Path
 
 import torch
 
-from .data import DEFAULT_ROOT, extract_audio, feature_file, load_split_table, save_features, video_path, audio_path
-from .extractors import ClapAudioEncoder, ClipFaceEncoder, EmoRobertaTextEncoder, FEATURE_DIMS
-from .extractors_audio import AUDIO_ENCODERS, AUDIO_FEATURE_DIMS
-from .faces import get_face_crops
+from bs3.mm.extractors import ClapAudioEncoder, ClipFaceEncoder, EmoRobertaTextEncoder, FEATURE_DIMS
+from bs3.mm.extractors_audio import AUDIO_ENCODERS, AUDIO_FEATURE_DIMS
+from bs3.mm.faces import get_face_crops
+
+from .mm_data import DEFAULT_ROOT, extract_audio, feature_file, load_split_table, save_features, video_path, audio_path
 
 ALL_DIMS = {**FEATURE_DIMS, **AUDIO_FEATURE_DIMS}
 

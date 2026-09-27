@@ -2,7 +2,7 @@
 
 faces.py       - 30 uniform frames, MediaPipe face detection, crops (port of MM-PSYCHE video_preprocessor)
 extractors.py  - frozen encoders: CLIP ViT-B/32 (face), CLAP (audio), EmoRoBERTa (transcript, behavior text)
-data.py        - FIV2 index from the MM-PSYCHE csv files, audio extraction, per-modality feature cache
 model.py       - MCDM fusion model (MultiModalFusionModel_v1 port) with the personality head only
-train.py       - training / evaluation
+
+Feature extraction and training on FIV2 live outside the package, in bs3-studio/training/.
 """

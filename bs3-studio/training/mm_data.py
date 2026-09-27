@@ -29,7 +29,7 @@ TARGET_SETS = {"big5": LABEL_COLUMNS, "big5+interview": LABEL_COLUMNS + [INTERVI
 MODALITIES = ("face", "audio", "text", "behavior")
 
 _HERE = Path(__file__).resolve()
-DEFAULT_CSV_DIR = _HERE.parents[3] / "MM-PSYCHE" / "data" / "fiv2"       # BS/MM-PSYCHE/data/fiv2
+DEFAULT_CSV_DIR = _HERE.parents[2] / "MM-PSYCHE" / "data" / "fiv2"       # BS/MM-PSYCHE/data/fiv2
 INTERVIEW_CSV = _HERE.parent / "interview_labels.csv"
 DEFAULT_ROOT = Path(os.path.expanduser("~/data/fiv2"))
 
@@ -37,13 +37,14 @@ DEFAULT_ROOT = Path(os.path.expanduser("~/data/fiv2"))
 def load_split_table(split: str, csv_dir: Path = DEFAULT_CSV_DIR, drop_empty_text: bool = True,
                      with_interview: bool = False) -> pd.DataFrame:
     """MM-PSYCHE reads the csv with pandas and drops rows with any NaN (= empty transcript).
-    with_interview=True merges the ChaLearn interview label (scripts/fetch_interview_labels.py)."""
+    with_interview=True merges the ChaLearn interview label from INTERVIEW_CSV, which is committed next to this file
+    (taken from the HF mirror of FIV2)."""
     df = pd.read_csv(csv_dir / f"{split}_full_with_description.csv")
     if drop_empty_text:
         df = df.dropna(subset=["text", "text_llm"] + LABEL_COLUMNS)
     if with_interview:
         if not INTERVIEW_CSV.exists():
-            raise FileNotFoundError(f"{INTERVIEW_CSV} missing: run scripts/fetch_interview_labels.py")
+            raise FileNotFoundError(f"{INTERVIEW_CSV} missing: it is part of the repository, restore it with git")
         iv = pd.read_csv(INTERVIEW_CSV)[["video_name", INTERVIEW_COLUMN]]
         df = df.merge(iv, on="video_name", how="left").dropna(subset=[INTERVIEW_COLUMN])
     return df.reset_index(drop=True)

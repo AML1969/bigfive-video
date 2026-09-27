@@ -4,7 +4,7 @@ Recipe (MM-PSYCHE config.toml): MAE loss, Adam lr 1e-4 wd 1e-5, batch 32, up to 
 patience 15, ReduceLROnPlateau on the dev metric, selection metric = mean(mACC, CCC) on dev, seed 42.
 
 Usage:
-  python -m bs3.mm.train --modalities face,audio,text,behavior --out ~/bs/mm_runs/all
+  python -m training.mm_train --modalities face,audio,text,behavior --out ~/bs/mm_runs/all
 """
 from __future__ import annotations
 
@@ -18,9 +18,10 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from .data import DEFAULT_ROOT, FeatureTable
-from .model import ModelConfig, PersonalityFusionModel
-from ..norms import TRAIT_KEYS
+from bs3.mm.model import ModelConfig, PersonalityFusionModel
+from bs3.norms import TRAIT_KEYS
+
+from .mm_data import DEFAULT_ROOT, FeatureTable
 
 log = logging.getLogger("bs.mm.train")
 
@@ -151,7 +152,7 @@ def train(args):
     # per-clip test predictions for later comparison / ensembling
     p = predict(model, te, device)
     import pandas as pd
-    from ..norms import OCEANAI_COLUMNS
+    from bs3.norms import OCEANAI_COLUMNS
     cols = (OCEANAI_COLUMNS + ["Interview"])[: p.shape[1]]
     df = pd.DataFrame(p, columns=cols)
     df.insert(0, "Path", [n + ".mp4" for n in te.names])

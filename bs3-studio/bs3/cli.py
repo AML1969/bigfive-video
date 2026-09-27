@@ -3,20 +3,18 @@
   bs3 web [--port 7880]                       the web page: one model per analysis (OCEAN-AI or AMLAI 1.0), Russian speech
   bs3 infer VIDEO [VIDEO ...] --out out.json  score videos (ASR on by default)
   bs3 explain VIDEO --out DIR                 AMLAI 1.0 only: scores, modality/frame/word attributions, key frames
-  bs3 eval-fiv2 --dir DIR --out eval.json     mACC/CCC on FIV2 clips (DIR has <stem>.mp4, <stem>.txt, labels.csv)
 
 Models: --backend mm (default, own model AMLAI 1.0; `bs3 explain` is the command that writes its explanations,
 `bs3 infer` does not) | oceanai (OCEAN-AI, all weights public; MuPTA weights for Russian speech).
 The speech is Russian (bs3.LANG); neither the page nor `web`, `infer` and `explain` have a language option.
+The accuracy on FIV2 clips is research code outside the package: `python -m training.eval_fiv2` from bs3-studio.
 """
 from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 import sys
 import tempfile
-import time
 from pathlib import Path
 
 from . import DEFAULT_MODEL, LANG, MODEL_TITLES, PRODUCT, __version__
@@ -45,7 +43,7 @@ def _add_models(p, backend: bool = True, models_dir: bool = True):
 
 def _backend(a, lang: str = LANG, corpus: str | None = None):
     """The one model the command runs, loaded: AMLAI 1.0 (`--backend mm`) or OCEAN-AI (`--backend oceanai`). `lang`
-    and `corpus` differ from the Russian defaults only for `eval-fiv2`."""
+    and `corpus` differ from the Russian defaults only for the FIV2 evaluation (training/eval_fiv2.py)."""
     if a.backend == "mm":
         from .backend_mm import MMBackend, MMConfig
         mm_kw = dict(lang=lang, asr_model=a.asr_model, ollama_model=a.ollama_model)
@@ -127,41 +125,6 @@ def cmd_web(a):
              mm_ckpt=a.mm_ckpt, host=a.host, models_dir=a.models_dir)
 
 
-def cmd_eval(a):
-    import pandas as pd
-    from .evaluate import evaluate
-
-    d = Path(a.dir)
-    labels = pd.read_csv(a.labels or (d / "labels.csv"))
-    be = _backend(a, lang=a.lang, corpus=a.corpus)
-    t0 = time.time()
-    if a.limit:
-        # score a subset through a temporary folder of links
-        tmp = Path(tempfile.mkdtemp(prefix="bs_eval_"))
-        for n in labels["video_name"].tolist()[: a.limit]:
-            for ext in (".mp4", ".txt"):
-                src = d / (n + ext)
-                if src.exists():
-                    os.symlink(src.resolve(), tmp / (n + ext))
-        pred = be.predict_dir(tmp, asr=a.asr)
-    else:
-        pred = be.predict_dir(d, asr=a.asr)
-    secs = time.time() - t0
-    res = evaluate(pred, labels)
-    res["failed_files"] = list(pred.attrs.get("failed", []))
-    res.update({
-        "seconds_total": round(secs, 1), "seconds_per_clip": round(secs / max(1, len(pred)), 2),
-        "backend": a.backend, "corpus": be.cfg.corpus, "lang": be.cfg.lang, "asr": a.asr,
-        "dir": str(d), "bs_version": __version__,
-    })
-    out = Path(a.out)
-    pred.to_csv(out.with_suffix(".pred.csv"), index=False)
-    out.write_text(json.dumps(res, indent=2), encoding="utf-8")
-    print(json.dumps({k: v for k, v in res.items() if k != "per_trait"}, indent=2))
-    print(pd.DataFrame(res["per_trait"]).T.to_string())
-    print(f"[ok] wrote {out} and {out.with_suffix('.pred.csv')}")
-
-
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="bs3", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--version", action="version", version=f"{PRODUCT} ({__version__})")
@@ -194,18 +157,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--share", action="store_true", help="also create a public gradio.live link")
     _add_models(p, backend=False)                         # the page chooses the model per analysis
     p.set_defaults(fn=cmd_web)
-
-    p = sub.add_parser("eval-fiv2", help="accuracy on FIV2 clips")
-    _add_models(p)
-    p.add_argument("--lang", default=LANG, choices=["ru", "en"],
-                   help="language of speech (oceanai: ru -> MuPTA weights, en -> FIV2 weights)")
-    p.add_argument("--corpus", default=None, choices=["fi", "mupta"], help="oceanai: override the weight set")
-    p.add_argument("--dir", required=True)
-    p.add_argument("--labels", default=None)
-    p.add_argument("--out", required=True)
-    p.add_argument("--limit", type=int, default=0)
-    p.add_argument("--asr", action="store_true", help="use Whisper instead of the .txt transcripts")
-    p.set_defaults(fn=cmd_eval)
     return ap
 
 

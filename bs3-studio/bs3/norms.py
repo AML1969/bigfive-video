@@ -2,9 +2,8 @@
 from __future__ import annotations
 
 TRAIT_KEYS = ["openness", "conscientiousness", "extraversion", "agreeableness", "emotional_stability"]
-# column names in OCEAN-AI output / FIV2 csv
+# column names in OCEAN-AI output
 OCEANAI_COLUMNS = ["Openness", "Conscientiousness", "Extraversion", "Agreeableness", "Non-Neuroticism"]
-FIV2_COLUMNS = ["openness", "conscientiousness", "extraversion", "agreeableness", "non-neuroticism"]
 RU_NAMES = {
     "openness": "открытость опыту",
     "conscientiousness": "добросовестность",

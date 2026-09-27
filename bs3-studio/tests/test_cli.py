@@ -1,6 +1,7 @@
-"""The command line of BS Profiler 3.1 (bs3.cli): `web`, `infer` and `explain` (and `eval-fiv2` until the evaluation
-moves out of the package) with the options that are used. The speech language is not an option: it is bs3.LANG.
-Nothing loads a model: `webapp.main` and the backend modules are replaced by fakes, `cli._backend` by a canned one."""
+"""The command line of BS Profiler 3.1 (bs3.cli): `web`, `infer` and `explain` with the options that are used (the
+FIV2 evaluation is research code in training/, test_training.py). The speech language is not an option: it is
+bs3.LANG. Nothing loads a model: `webapp.main` and the backend modules are replaced by fakes, `cli._backend` by a
+canned one."""
 from __future__ import annotations
 
 import argparse
@@ -47,8 +48,8 @@ def _modules(**mods):
 def test_subcommands_are_web_infer_explain():
     ap = cli.build_parser()
     sub = next(a for a in ap._actions if isinstance(a, argparse._SubParsersAction))
-    assert set(sub.choices) == {"web", "infer", "explain", "eval-fiv2"}, sorted(sub.choices)
-    for gone in ("setup-weights", "infer-dir"):
+    assert set(sub.choices) == {"web", "infer", "explain"}, sorted(sub.choices)
+    for gone in ("setup-weights", "infer-dir", "eval-fiv2"):
         assert _exit_code([gone, "x"]) == 2, gone
 
 
@@ -106,14 +107,6 @@ def test_infer_and_explain_options():
     assert "backend" not in vars(a) and "models_dir" not in vars(a)         # always AMLAI 1.0
     for opt in (["--backend", "oceanai"], ["--lang", "ru"], ["--models-dir", "m"]):
         assert _exit_code(["explain", "a.mp4", "--out", "d", *opt]) == 2, opt
-
-
-def test_eval_fiv2_keeps_its_options():
-    a = cli.parse_args(["eval-fiv2", "--dir", "d", "--out", "o.json", "--backend", "oceanai", "--lang", "en",
-                        "--corpus", "fi", "--models-dir", "m", "--limit", "5", "--asr"])
-    assert (a.backend, a.lang, a.corpus, a.models_dir, a.limit, a.asr) == ("oceanai", "en", "fi", "m", 5, True)
-    assert cli.parse_args(["eval-fiv2", "--dir", "d", "--out", "o"]).lang == bs3.LANG
-    assert _exit_code(["eval-fiv2", "--dir", "d", "--out", "o", "--backend", "ensemble"]) == 2
 
 
 def test_backend_builds_one_model_with_russian_speech():
