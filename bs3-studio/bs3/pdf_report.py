@@ -27,6 +27,7 @@ from .norms import RU_SHORT, TRAIT_KEYS
 from .palette import CARD_PDF, FACT_VALUE_PDF, SCORE_BAR_PDF, TRAIT_BAR_PDF
 from .report import _SEC_LABEL, fmt_secs, seg_label
 from .ru_texts import transcript_shown, vocabulary_shown
+from .scores import scored
 
 TITLES = {
     "openness": "Открытость опыту", "conscientiousness": "Добросовестность", "extraversion": "Экстраверсия",
@@ -777,7 +778,8 @@ def _profile_section(pdf: Report, report: dict, explanation, charts: dict) -> No
     text_x = pdf.l_margin + RADAR_W_MM + ROW_GAP_MM
     text_w = pdf.l_margin + pdf.epw - text_x
     radar_h = pdf.chart_height(radar, RADAR_W_MM) if radar else 0.0
-    bars_h = pdf.score_bars_height(report["traits"], report.get("interview"))
+    interview = scored(report.get("interview"))       # an entry without a numeric score is not shown
+    bars_h = pdf.score_bars_height(report["traits"], interview)
 
     def layout(size: float):
         lh = size * 0.5
@@ -818,7 +820,7 @@ def _profile_section(pdf: Report, report: dict, explanation, charts: dict) -> No
         pdf.para(narrative, size)
     # ---- the score bars of the one model (3.1: no second opinion, no table of averaged members)
     pdf.h3("Оценки по чертам", keep_mm=bars_h)
-    pdf.score_bars(report["traits"], report.get("interview"))
+    pdf.score_bars(report["traits"], interview)
 
 
 def _timeline_section(pdf: Report, report: dict, charts: dict, has_expl: bool) -> None:
@@ -1116,7 +1118,7 @@ HOW_TO_READ = ("C1", "C2", "C10", "C11", "C14", "C15")       # «Как чита
 def _how_to_read(pdf: Report, report: dict) -> None:
     """«Как читать результаты»: the caveats HOW_TO_READ, word for word from caveats.py. C2 explains the label
     «собеседование» and is printed only when the report carries that label (a job of AMLAI 1.0)."""
-    texts = [caveats.text(c) for c in HOW_TO_READ if c != "C2" or report.get("interview")]
+    texts = [caveats.text(c) for c in HOW_TO_READ if c != "C2" or scored(report.get("interview"))]
     # 7.5 pt like the caveats of the MBTI section: six caveats instead of the three of 2.0
     pdf.section("Как читать результаты", "how_to_read", keep_mm=sum(pdf.para_height(t, 7.5) for t in texts))
     for t in texts:
@@ -1153,9 +1155,9 @@ def _analysis_rows(report: dict) -> list:
     modalities the model looked at (a job of 3.1 records them; a job of 3.0 recorded the member names instead, and
     those are replaced by the modalities of the shown model, bs3.MODALITIES), version, segments, time. The speech is
     always Russian, so no language row."""
-    m = report.get("model", {})
+    m = report.get("model") or {}
     main = _main_model(report)
-    mods = [x for x in report.get("modalities_used", []) if x not in MODEL_TITLES] or list(MODALITIES.get(main, ()))
+    mods = [x for x in report.get("modalities_used") or [] if x not in MODEL_TITLES] or list(MODALITIES.get(main, ()))
     rows = [("Модель", model_title(report)),
             ("Распознавание речи", _asr_ru(m.get("asr_model")) if m.get("asr_model") else "готовый транскрипт"),
             ("Обучающие данные", TRAINED_ON.get(main) or str(m.get("trained_on") or "—")),
@@ -1165,7 +1167,7 @@ def _analysis_rows(report: dict) -> list:
         n_seg = int(report["segments"])
         rows.append(("Отрезки", f"{n_seg} по ~20 с; итог — среднее с весом по длительности" if n_seg > 1
                      else "один отрезок (весь ролик)"))
-    t = report.get("timings_sec", {})
+    t = report.get("timings_sec") or {}
     if t:
         rows.append(("Время обработки", fmt_secs(t.get("total_wall", t.get("total")))))
     return rows

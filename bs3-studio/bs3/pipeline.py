@@ -3,7 +3,6 @@ per-segment emotion, voice, face and speech analyses, explanations (AMLAI 1.0 on
 speech is always Russian (bs3.LANG). Produces one result.json per job; the web UI and the PDF only render it."""
 from __future__ import annotations
 
-import json
 import logging
 import secrets
 import shutil
@@ -16,7 +15,7 @@ from typing import Callable, Dict, List
 
 import numpy as np
 
-from . import DEFAULT_MODEL, LANG, MODALITIES, MODEL_TITLES, ollama, settings
+from . import DEFAULT_MODEL, LANG, MODALITIES, MODEL_TITLES, jobfiles, ollama, settings
 from .report import build_report, fmt_secs
 
 log = logging.getLogger("bs3.pipeline")
@@ -254,7 +253,8 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, *, member: str
     be = studio.backend(member)
     an = studio.analyzer(member)
     step(0.10, f"Речь, лицо, голос{', описание поведения' if member == 'mm' else ''} — Big Five ({title})")
-    res = an.analyze(local, job / "segments", progress=lambda f, d: step(0.10 + 0.60 * f, d), should_stop=studio.stop_event.is_set)
+    res = an.analyze(local, job / jobfiles.SEGMENTS_DIR, progress=lambda f, d: step(0.10 + 0.60 * f, d),
+                     should_stop=studio.stop_event.is_set)
     # the corpus of the member itself (MuPTA / the own model's checkpoints), not the ensemble wrapper's descriptor
     inner = getattr(be, "backends", {}).get(member)
     corpus = getattr(getattr(inner, "cfg", None), "corpus", None) or be.cfg.corpus
@@ -292,7 +292,7 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, *, member: str
             log.warning("face expression model unavailable for the key-frame captions: %s", str(e)[:120])
             expr_fn = None
         try:
-            expl = mmb.explain_video(x_video, job / "explain", asr=False, transcript=x_text, behavior=x_beh,
+            expl = mmb.explain_video(x_video, job / jobfiles.EXPLAIN_DIR, asr=False, transcript=x_text, behavior=x_beh,
                                      expression_fn=expr_fn)
             frames = list(expl.get("frames", {}).get("key_frame_files", []))
         except Exception as e:  # noqa: BLE001
@@ -301,7 +301,7 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, *, member: str
     step(0.97, "Тексты и перевод")
     ensure_russian(rep, expl)
     if expl:
-        (job / "explain" / "explanation.json").write_text(json.dumps(expl, ensure_ascii=False, indent=2), encoding="utf-8")
+        jobfiles.write_json(jobfiles.explanation_path(job), expl)
     try:
         rep["media"] = probe_media(local)
         rep["media"]["file_name"] = src.name
@@ -321,5 +321,5 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, *, member: str
             rep["mbti"] = mb
     except Exception as e:  # noqa: BLE001
         log.warning("mbti section failed: %s", str(e).splitlines()[0][:160] if str(e) else type(e).__name__)
-    (job / "result.json").write_text(json.dumps(rep, ensure_ascii=False, indent=2), encoding="utf-8")
+    jobfiles.write_json(job / jobfiles.RESULT, rep)
     return rep

@@ -18,7 +18,8 @@ import threading
 import time
 from pathlib import Path, PurePosixPath
 
-from . import DEFAULT_MODEL, MODEL_TITLES, PRODUCT, PRODUCT_SLUG, caveats, characterization, journal, mbti_html, settings
+from . import (DEFAULT_MODEL, MODEL_TITLES, PRODUCT, PRODUCT_SLUG, caveats, characterization, jobfiles, journal,
+               mbti_html, settings)
 from .charts import (EMO_RU, fig_emotion_bars, fig_emotions_timeline, fig_face_expr, fig_radar, fig_speech_timeline,
                      fig_traits_timeline, fig_voice_timeline, plot_html as _plot_html)
 from .mbti import fact_card, get_mbti
@@ -28,7 +29,7 @@ from .palette import (ACCENT, BUTTON_PRIMARY, BUTTON_PRIMARY_HOVER, BUTTON_STOP,
                       FACT_VALUE, HTML as PAL, PAGE_NOTE_OPACITY, SUBDUED_TEXT_LIGHT)
 from .pipeline import Studio, run_analysis
 from .report import fmt_secs, mmss_labels, seg_label
-from .ru_texts import ensure_russian_job, transcript_shown, vocabulary_shown
+from .ru_texts import ensure_russian, ensure_russian_job, transcript_shown, vocabulary_shown
 from .scores import FACT_STATES, clean_view, data_json
 from .webparts import NOTE, _bar_html, _contrib_html, _words_text, model_line, table_html, th_text
 
@@ -234,7 +235,8 @@ def _frames_html(rep: dict, expl: dict | None = None, max_side: int = 640) -> st
     main = (rep.get("view_meta") or {}).get("main_system") or (rep.get("model") or {}).get("selected")
     if main != "mm":
         return f"<p style='font-size:14px'>{NO_FRAMES_OCEANAI}</p>"
-    paths = [p for p in rep.get("key_frames") or [] if Path(p).exists()]
+    # the frames of the job folder being shown, found by name (jobfiles); without a folder there are none
+    paths = [str(p) for p in jobfiles.key_frame_paths(rep["job_dir"], rep)] if rep.get("job_dir") else []
     if not paths:
         return f"<p style='font-size:14px'>{NO_FRAMES_MM}</p>"
     shown, images = [], []
@@ -331,11 +333,18 @@ def page_outputs(rep: dict) -> tuple:
     (percentiles, the stored 2.0 summary) are left out, with a note (scores.data_json), and that the paths on the server
     are shown as file and folder names (_without_server_paths); «Сохранено в» is the name of the job folder. The last
     of the first 22 values, the job folder the PDF button reads, stays the full path: it goes into a gr.State, which
-    Gradio keeps on the server and does not send to the browser with the results of an analysis."""
-    job = Path(rep["job_dir"])
-    expl_path = job / "explain" / "explanation.json"
-    expl = json.loads(expl_path.read_text(encoding="utf-8")) if expl_path.exists() else None
-    ensure_russian_job(job, rep, expl)
+    Gradio keeps on the server and does not send to the browser with the results of an analysis.
+
+    The files of the job (explanation.json, the key frames) are read from the folder `rep["job_dir"]` (jobfiles). A
+    `rep` without it renders without them: no explanation, no key frames, and «Сохранено в» and the job folder of the
+    PDF button stay empty."""
+    job = Path(rep["job_dir"]) if rep.get("job_dir") else None
+    expl_path = jobfiles.explanation_path(job) if job else None
+    expl = jobfiles.read_json(expl_path) if job else None
+    if job:
+        ensure_russian_job(job, rep, expl)
+    else:
+        ensure_russian(rep, expl)
     view = clean_view(rep)
     mb = get_mbti(rep, view)
     ch = characterization.build(view, mb)
@@ -359,7 +368,8 @@ def page_outputs(rep: dict) -> tuple:
            _frames_html(view, expl if own else None), contrib,
            _words_text(expl, rep, expl_path) if (expl and own) else "",
            mmss_labels(rep.get("behavior_description_ru") or "") if own else "", model_text(view, rep, mb),
-           json.dumps(_without_server_paths(data), ensure_ascii=False, indent=2), job.name, str(job),
+           json.dumps(_without_server_paths(data), ensure_ascii=False, indent=2), job.name if job else "",
+           str(job) if job else "",
            # the five blocks after the first 22 (design 10.3, 10.5)
            mbti_html.method_html(method_notes(view)), mbti_html.emo_intro_html(view),
            mbti_html.types_html(mb), mbti_html.strip_html(mb), mbti_html.read_html(mb))
@@ -372,18 +382,16 @@ def export_pdf(job_dir: str | Path) -> str:
     from .media import probe_media
     from .pdf_report import build_pdf
     job = Path(job_dir)
-    rep = json.loads((job / "result.json").read_text(encoding="utf-8"))
-    expl_path = job / "explain" / "explanation.json"
-    expl = json.loads(expl_path.read_text(encoding="utf-8")) if expl_path.exists() else None
+    rep, expl = jobfiles.load_job(job)          # the files of this folder, whatever paths result.json stores
     ensure_russian_job(job, rep, expl)          # jobs processed before the Russian texts: translate once, store back
     view = clean_view(rep)                      # the PDF shows the same clean numbers as the page (design 6.1)
     mb = get_mbti(rep, view)                    # saved section or computed now; never written (design 7.2)
     ch = characterization.build(view, mb)
-    view["chart_files"] = save_pdf_charts(view, job / "charts", expl)
-    frames = sorted(str(p) for p in (job / "explain").glob("key_*.jpg")) if (job / "explain").exists() else []
+    view["chart_files"] = save_pdf_charts(view, job / jobfiles.CHARTS_DIR, expl)
+    frames = [str(p) for p in jobfiles.key_frame_paths(job, rep)]
     media = view.get("media")
     if not media or "error" in media:
-        inp = next(job.glob("input.*"), None)
+        inp = jobfiles.input_file(job)
         media = probe_media(inp) if inp else None
     stem = re.sub(r"[^A-Za-z0-9А-Яа-яЁё._-]+", "_", Path(view.get("original_file_name") or "video").stem)[:60]
     return build_pdf(view, job / f"{PRODUCT_SLUG}_report_{stem}.pdf", explanation=expl, media=media, key_frames=frames,
@@ -765,8 +773,7 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
         if preview_job:
             # the finished job becomes the initial value of every output (set before the page config is built), so
             # the page arrives filled; a demo.load event did not always reach the browser
-            rep = json.loads((Path(preview_job) / "result.json").read_text(encoding="utf-8"))
-            rep["job_dir"] = str(preview_job)
+            rep, _ = jobfiles.load_job(preview_job)
             filled = (_status_html(1.0, "предпросмотр готового результата", state="done"),) + page_outputs(rep)
             for comp, value in zip(outputs, filled):
                 comp.value = value

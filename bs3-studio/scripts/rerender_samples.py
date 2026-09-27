@@ -50,7 +50,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # bs3-studio/: `import bs3` is this working tree
 from import_job import import_job, tree_sha256  # noqa: E402
 
-from bs3 import PRODUCT  # noqa: E402
+from bs3 import PRODUCT, jobfiles  # noqa: E402
 
 # golden values of the design samples (design 13.2, recomputed for the absolute scale of 2026-09-26; 3.1: OCEAN-AI
 # only): type, the clean extraversion, segments without OCEAN-AI and the summary of the letter strip
@@ -168,7 +168,7 @@ def check_pdf(c: Checks, src: Path, dest: Path, mb: dict | None, exp: dict | Non
         c.ok(pages <= n_old + MAX_EXTRA_PAGES, f"PDF has {pages} pages, the old one {n_old} (at most +{MAX_EXTRA_PAGES})")
     else:
         print(f"  note: no PDF of the old version in the source job, page growth not checked ({pages} pages)")
-    c.ok("mbti" not in json.loads((dest / "result.json").read_text(encoding="utf-8")),
+    c.ok("mbti" not in jobfiles.read_json(dest / jobfiles.RESULT),
          "result.json of the copy still has no mbti section after the PDF")
     if pdf_dir:
         pdf_dir.mkdir(parents=True, exist_ok=True)
@@ -187,15 +187,15 @@ def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path |
     print(f"== {label}")
     before = tree_sha256(src)                                                  # 1
     dest = import_job(src, force=True)                                         # 2
-    res = dest / "result.json"
-    rep = json.loads(res.read_text(encoding="utf-8"))
+    res = dest / jobfiles.RESULT
+    rep = jobfiles.read_json(res)                          # as stored: the job_dir import_job wrote is checked
     c.ok(rep.get("job_dir") == str(dest), "job_dir of the copy points into the copy")
     outs = page_outputs(rep)                                                   # 3
     c.ok(len(outs) == N_PAGE == 27, f"page_outputs gives 27 values (N_REST − 1), got {len(outs)}")
     (radar, bars, facts, char, traits_plot, _emo, _voice, _speech, _bars2, _segs, _sp, _tr, _face, _fplot, _frames,
      _contrib, _words, _desc, members, raw, _path, _job, method, emo_intro, types, strip, read) = outs
 
-    view = clean_view(json.loads(res.read_text(encoding="utf-8")))
+    view = clean_view(jobfiles.read_json(res))
     mb = mbti.get_mbti(rep, view)
     meta = view["view_meta"]
 
@@ -285,7 +285,7 @@ def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path |
     c.ok(not any(isinstance(o, str) and "Краткие выводы" in o for o in outs), "«Краткие выводы» nowhere on the page")
     for name, h in (("method", method), ("emo_intro", emo_intro), ("types", types), ("strip", strip), ("read", read)):
         c.ok("сегмент" not in h, f"no «сегмент» in {name}")
-    c.ok("mbti" not in json.loads(res.read_text(encoding="utf-8")), "result.json of the copy has no mbti section")
+    c.ok("mbti" not in jobfiles.read_json(res), "result.json of the copy has no mbti section")
 
     # the design samples: golden values (design 13.2)
     exp = EXPECT.get(tag or "")

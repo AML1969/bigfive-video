@@ -231,6 +231,7 @@ def _job_with_frames(d: Path, expl: dict, size: tuple = (200, 120)) -> tuple:
     for t in r["timeline"]:
         t.update({"members_used": ["mm"], "primary_used": "mm", "variants": {"mm": dict(mm)}, "scores": dict(mm)})
     r["key_frames"] = paths
+    r["job_dir"] = str(d)                         # the page finds the frames in the folder of the job (jobfiles)
     r["media"] = {"fps": 30.0}
     r["representative_segment"] = 3
     expl["frames"]["key_frame_files"] = paths

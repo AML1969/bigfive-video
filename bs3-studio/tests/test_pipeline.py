@@ -357,6 +357,9 @@ def test_run_analysis_one_member_each():
             assert job.parent == work and (job / "result.json").exists()
             assert re.fullmatch(r"\d{8}_\d{6}_[0-9a-f]{8}", job.name), job.name     # time stamp + random suffix
             saved = json.loads((job / "result.json").read_text(encoding="utf-8"))
+            # written through jobfiles.write_json byte for byte as before (indent 2, UTF-8), no temporary file left
+            assert (job / "result.json").read_bytes() == json.dumps(r, ensure_ascii=False, indent=2).encode("utf-8")
+            assert not [p.name for p in job.iterdir() if p.name.endswith(".tmp")]
             assert saved["model"]["selected"] == member and set(saved["variant_scores"]) == {member}
             assert saved["mbti"]["schema_version"] == 3
             text = json.dumps(saved, ensure_ascii=False)

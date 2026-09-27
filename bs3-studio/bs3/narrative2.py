@@ -133,7 +133,7 @@ def key_facts(rep: dict) -> List[tuple]:
     `state` is where the value sits — "neutral", "below" or "above" (scores.scale_state, tempo_state, emotion_state) —
     and the card renderers paint the value by it (palette.FACT_VALUE). It is None on a card that is not a measurement
     («Длительность ролика») and on one whose value is missing, and such a value keeps the plain text colour."""
-    from .scores import emotion_state, scale_state, tempo_state
+    from .scores import emotion_state, scale_state, scored, tempo_state
     an = rep.get("analyses") or {}
     facts = []
     te = an.get("emotions_text")
@@ -166,9 +166,10 @@ def key_facts(rep: dict) -> List[tuple]:
         facts.append(("Темп речи", value, f"паузы — {sp.get('pause_share', 0):.0%} времени, "
                                           f"заполнители — {fillers} на 100 слов",
                       tempo_state(wpm) if wpm else None))
-    if rep.get("interview"):
-        facts.append(("Впечатление «собеседование»", f"{rep['interview']['score']:.2f}", "шкала 0…1, модель AMLAI 1.0",
-                      scale_state(rep["interview"]["score"])))
+    iv = scored(rep.get("interview"))          # an entry without a numeric score is not shown
+    if iv:
+        facts.append(("Впечатление «собеседование»", f"{float(iv['score']):.2f}", "шкала 0…1, модель AMLAI 1.0",
+                      scale_state(iv["score"])))
     dur = rep.get("duration_sec")
     if dur:
         n = int(rep.get("segments") or 1)

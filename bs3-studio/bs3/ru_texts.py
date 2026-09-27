@@ -23,13 +23,13 @@ Russian fields, which are read-only compatibility: they are shown as stored and 
 """
 from __future__ import annotations
 
-import json
 import logging
-import os
 import re
 import time
 from pathlib import Path
 from typing import List, Tuple
+
+from . import jobfiles
 
 log = logging.getLogger("bs3.ru_texts")
 
@@ -56,14 +56,12 @@ def _retry(by) -> bool:
 
 
 def write_json(path: str | Path, data: dict) -> None:
-    """Atomic rewrite of a job file (a render and a PDF export may read it at the same time)."""
-    path = Path(path)
-    tmp = path.with_name(path.name + ".tmp")
+    """Stores a job file the page added Russian texts to (jobfiles.write_json, atomic: a render and a PDF export may
+    read it at the same time). Never raises: a read-only job folder must not break the page, the failure is logged."""
     try:
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.replace(tmp, path)
-    except Exception as e:  # noqa: BLE001  (a read-only job folder must not break the page)
-        log.warning("could not store %s: %s", path.name, str(e)[:120])
+        jobfiles.write_json(path, data)
+    except Exception as e:  # noqa: BLE001
+        log.warning("could not store %s: %s", Path(path).name, str(e)[:120])
 
 
 # ---------------------------------------------------------------- fill the missing Russian texts
@@ -139,10 +137,10 @@ def ensure_russian_job(job: str | Path, rep: dict, expl: dict | None = None) -> 
     """ensure_russian for a finished job; whatever was added is stored back into result.json / explanation.json."""
     job = Path(job)
     rep_changed, expl_changed = ensure_russian(rep, expl)
-    if rep_changed and (job / "result.json").exists():
-        write_json(job / "result.json", rep)
-    if expl_changed and (job / "explain").is_dir():
-        write_json(job / "explain" / "explanation.json", expl)
+    if rep_changed and (job / jobfiles.RESULT).exists():
+        write_json(job / jobfiles.RESULT, rep)
+    if expl_changed and (job / jobfiles.EXPLAIN_DIR).is_dir():
+        write_json(jobfiles.explanation_path(job), expl)
 
 
 # ---------------------------------------------------------------- what the page and the PDF show

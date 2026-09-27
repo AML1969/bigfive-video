@@ -66,7 +66,7 @@ EMO_STATE = {"neutral": NEUTRAL, "sadness": BELOW, "fear": BELOW, "disgust": BEL
 
 __all__ = ["clean_view", "segment_ok", "level", "level_phrase", "score_text", "shown", "LEVELS_RU", "plural_ru",
            "main_system", "recorded_model", "data_json", "scale_state", "tempo_state", "emotion_state",
-           "FACT_STATES", "TEMPO_BAND", "NEUTRAL", "BELOW", "ABOVE", "READ_FALLBACK"]
+           "FACT_STATES", "TEMPO_BAND", "NEUTRAL", "BELOW", "ABOVE", "READ_FALLBACK", "scored"]
 
 
 def plural_ru(n, one: str, few: str, many: str) -> str:
@@ -87,6 +87,12 @@ def _num(x) -> float | None:
 
 def _has_scores(d) -> bool:
     return isinstance(d, dict) and any(_num(d.get(k)) is not None for k in TRAIT_KEYS)
+
+
+def scored(entry) -> dict | None:
+    """`entry` (the label «собеседование» of a report, `interview`) when it carries a numeric score, else None: an
+    entry without one counts as absent wherever it would be shown (the bars, the key facts, the PDF)."""
+    return entry if isinstance(entry, dict) and _num(entry.get("score")) is not None else None
 
 
 def recorded_model(rep: dict) -> str | None:

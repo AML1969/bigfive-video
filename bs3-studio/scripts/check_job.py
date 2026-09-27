@@ -23,7 +23,6 @@ Exit code 0 when every check of every job passed. Nothing in the job is changed 
 """
 from __future__ import annotations
 
-import json
 import re
 import sys
 from pathlib import Path
@@ -32,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rerender_samples import OLD_NAMES, PDF_MUST, PDF_MUST_NOT, SECOND_OPINION, Checks, pdf_text  # noqa: E402
 
-from bs3 import MODALITIES, MODEL_TITLES  # noqa: E402
+from bs3 import MODALITIES, MODEL_TITLES, jobfiles  # noqa: E402
 from bs3.narrative import NO_EXPLAIN_RU  # noqa: E402
 from bs3.norms import TRAIT_KEYS  # noqa: E402
 from bs3.webapp import N_PAGE, NO_FRAMES_OCEANAI, export_pdf, page_outputs  # noqa: E402
@@ -105,10 +104,10 @@ def check_page(c: Checks, rep: dict, sel: str | None) -> str | None:
     if shown == "mm":
         c.ok(NO_EXPLAIN_RU not in texts.get(I_CONTRIB, ""), "no OCEAN-AI note in the tab «Объяснения» of AMLAI 1.0")
         job = Path(rep["job_dir"])
-        if (job / "explain" / "explanation.json").exists():
+        if jobfiles.explanation_path(job).exists():
             c.ok("Вклад" in texts.get(I_CONTRIB, "") or "модальност" in texts.get(I_CONTRIB, ""), "modality table shown")
             c.ok(bool(texts.get(I_WORDS)), "words block filled")
-        if rep.get("key_frames"):
+        if jobfiles.key_frame_paths(job, rep):
             c.ok("<img" in outs[I_FRAMES], "key frames shown")
     elif shown == "oceanai":
         c.ok(texts.get(I_CONTRIB, "") == NO_EXPLAIN_RU, "tab «Объяснения»: the one note and nothing else")
@@ -140,7 +139,7 @@ def check_pdf(c: Checks, job: Path, shown: str | None) -> None:
         c.ok("собеседовани" not in body.lower(), "PDF of OCEAN-AI: no label «собеседование» (and no C2 about it)")
     elif shown == "mm":
         c.ok(not note, "PDF of AMLAI 1.0: no OCEAN-AI note")
-        if (job / "explain" / "explanation.json").exists():
+        if jobfiles.explanation_path(job).exists():
             c.ok(sec5, "PDF of AMLAI 1.0: section «Что повлияло …»")
     print(f"  PDF {pdf.name}")
 
@@ -154,12 +153,11 @@ def main(argv: list[str]) -> int:
         job = Path(arg).expanduser().resolve()
         c = Checks(job.name)
         print(f"== {job.name}")
-        if not (job / "result.json").exists():
+        if not (job / jobfiles.RESULT).exists():
             print("  FAIL no result.json")
             bad += 1
             continue
-        rep = json.loads((job / "result.json").read_text(encoding="utf-8"))
-        rep["job_dir"] = str(job)
+        rep, _ = jobfiles.load_job(job)
         sel = check_result(c, rep)
         shown = check_page(c, rep, sel)
         check_pdf(c, job, shown)

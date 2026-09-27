@@ -14,14 +14,11 @@ not touched.
 from __future__ import annotations
 
 import argparse
-import json
-import os
 import sys
-import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # bs3-studio/: the lazy `import bs3` is this tree
-from bs3 import settings  # noqa: E402  (standard library only: the rest of bs3 stays lazy)
+from bs3 import jobfiles, settings  # noqa: E402  (standard library only: the rest of bs3 stays lazy)
 
 JOBS_ROOT = settings.JOBS_DIR
 
@@ -43,10 +40,12 @@ def add_mbti(job, *, root: Path = JOBS_ROOT, force: bool = False) -> str:
     job = Path(job).expanduser()
     if not _inside(job, Path(root).expanduser()):
         raise AddRefused(f"refused: {job} is not a job under {root}")
-    res_path = job.resolve() / "result.json"
+    res_path = job.resolve() / jobfiles.RESULT
     if not res_path.is_file():
         raise AddRefused(f"not a finished job (no result.json): {job}")
-    rep = json.loads(res_path.read_text(encoding="utf-8"))
+    rep = jobfiles.read_json(res_path)
+    if rep is None:
+        raise ValueError(f"result.json is not readable as a JSON object: {job}")
     saved = rep.get("mbti")
     if isinstance(saved, dict) and saved.get("schema_version") == SCHEMA_VERSION and not force:
         return "kept"
@@ -54,15 +53,7 @@ def add_mbti(job, *, root: Path = JOBS_ROOT, force: bool = False) -> str:
     if sec is None:
         return "no Big Five"
     rep["mbti"] = sec
-    fd, tmp = tempfile.mkstemp(prefix=".result_", suffix=".json", dir=res_path.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(rep, f, ensure_ascii=False, indent=2)
-        os.chmod(tmp, 0o644)
-        os.replace(tmp, res_path)
-    finally:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
+    jobfiles.write_json(res_path, rep)                  # atomic; raises OSError when it cannot be stored
     return "written"
 
 

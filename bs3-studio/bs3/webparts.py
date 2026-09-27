@@ -16,6 +16,7 @@ from pathlib import Path
 from . import MODEL_TITLES
 from .norms import TRAIT_KEYS
 from .palette import HTML as PAL
+from .scores import scored
 
 log = logging.getLogger("bs3.web")
 
@@ -157,6 +158,7 @@ SCALE_NOTE = "Длина полоски — оценка системы от 0 �
 
 
 def _bar_html(traits: dict, interview: dict | None) -> str:
+    interview = scored(interview)              # an entry without a numeric score is not shown
     items = [(k, traits[k]) for k in TRAIT_KEYS] + ([("interview", interview)] if interview else [])
     groups: dict[str, list[str]] = {}          # FIV2 reference (display text) -> item keys, for the footnote
     any_tick = False
