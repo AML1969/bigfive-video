@@ -15,7 +15,7 @@ Blocks of a job:
   journal.result        the journal entry of a finished analysis (journal.result written into a temporary journal)
   characterization      characterization.build(view, mbti).plain()
   mbti                  mbti.get_mbti(rep, view): the saved section, or the one computed on display
-  key_facts             the type card (mbti.fact_card) and narrative2.key_facts(view): (label, value, note, state)
+  key_facts             the type card (mbti.fact_card) and facts.key_facts(view): (label, value, note, state)
   frame_captions.page   frame_captions.build as the page calls it while page_outputs runs (recorded, in order)
   frame_captions.pdf    the same while export_pdf runs
   pdf.text              the PDF of webapp.export_pdf as `pdftotext -layout` (pypdf when poppler is missing)
@@ -271,7 +271,7 @@ def _pdf_text(pdf: Path) -> tuple[str, int | None, str]:
 def render_job(env: Env, job: Path, want) -> dict:
     """{block: value} of one job, masked; only the blocks `want(block)` accepts (the page is rendered anyway when
     the journal is wanted: the app writes the journal entry after the page, from the same result)."""
-    from bs3 import characterization, frame_captions, journal, mbti, narrative2
+    from bs3 import characterization, facts, frame_captions, journal, mbti
     from bs3 import webapp
     from bs3.scores import clean_view
 
@@ -329,7 +329,7 @@ def render_job(env: Env, job: Path, want) -> dict:
                 shown["computed_at"] = "<computed on display>"
             out["mbti"] = shown
             out["characterization"] = characterization.build(view, mb).plain()
-            out["key_facts"] = {"type_card": mbti.fact_card(mb), "facts": narrative2.key_facts(view)}
+            out["key_facts"] = {"type_card": mbti.fact_card(mb), "facts": facts.key_facts(view)}
         except Exception as e:  # noqa: BLE001
             for block in ("mbti", "characterization", "key_facts"):
                 out.setdefault(block, _error(e))

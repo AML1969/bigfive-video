@@ -35,6 +35,7 @@ from .textfmt import plural_ru
 AXES = ("EI", "SN", "TF", "JP")
 AXIS_LABEL = {"EI": "E–I", "SN": "S–N", "TF": "T–F", "JP": "J–P"}
 WORD_CLEAR, WORD_MODERATE, WORD_BORDER, WORD_MISSING = "отчётливо", "умеренно", "на границе", "нет данных"
+CLEAR_CONFIDENCE = 0.7         # from this confidence on an axis is «отчётливо», below it «умеренно» (word_for)
 RELIABILITY_BASIS = ("соответствие шкал MBTI и NEO-PI в самоотчётах (McCrae, Costa, 1989); "
                      "не точность оценки по видео")
 NEURO_NOTE = "шкала не имеет соответствия в MBTI, приводится отдельно"
@@ -56,12 +57,13 @@ def load_config() -> dict:
 
 
 def word_for(axis: dict) -> str:
-    """Confidence of an axis in words: «отчётливо» (>= 0.7), «умеренно», «на границе» (X), «нет данных»."""
+    """Confidence of an axis in words: «отчётливо» (>= CLEAR_CONFIDENCE), «умеренно», «на границе» (X), «нет
+    данных»."""
     if axis.get("missing"):
         return WORD_MISSING
     if axis.get("borderline"):
         return WORD_BORDER
-    return WORD_CLEAR if round(axis.get("confidence") or 0.0, 9) >= 0.7 else WORD_MODERATE
+    return WORD_CLEAR if round(axis.get("confidence") or 0.0, 9) >= CLEAR_CONFIDENCE else WORD_MODERATE
 
 
 # --------------------------------------------------------------------------------------------------------- core ---
@@ -365,3 +367,62 @@ def journal_lines(mb: dict | None) -> list[str]:
     if mb.get("neuroticism"):
         line += f"; нейротизм — {mb['neuroticism']['level']}"
     return [line]
+
+
+# ------------------------------------------------------------------ texts of the tab «Тип MBTI» and of the PDF ---
+# both the page (mbti_html) and section 2 of the PDF (pdf_mbti) print them, so they live here and not in either
+
+# 5.5: axis, Big Five scale, direction, correspondence of the scales (r from config/mbti.json)
+TABLE_ROWS = (("EI", "Экстраверсия", "выше → E"), ("SN", "Открытость опыту", "выше → N"),
+              ("TF", "Доброжелательность", "выше → F"), ("JP", "Добросовестность", "выше → J"))
+# the config keeps the labels of `reliability` (design 4.6, 7.1: «высокая (r≈0.74)», agreeing with «надёжность»); the
+# reader's table 5.5 has the column «Соответствие шкал», so there the words agree with «соответствие»
+CORR_WORD = {"высокая": "высокое", "средняя": "среднее", "низкая": "низкое"}
+TABLE_NOTE = ("Корреляции шкал MBTI и NEO-PI в самоотчётах (McCrae, Costa, 1989; воспроизведено Furnham, 1996, и "
+              "Furnham и соавт., 2003). Это соответствие шкал, а не точность оценки по видео.")
+
+
+def corr_cell(c: dict) -> str:
+    """«высокое, r ≈ 0.74»: one cell of the column «Соответствие шкал» (design 5.5)."""
+    label = str(c.get("label", ""))
+    return f"{CORR_WORD.get(label, label)}, r ≈ {c.get('r')}"
+
+
+def _seg_word(n: int) -> str:
+    """Genitive after «из N»: «из 21 отрезка», «из 26 отрезков»."""
+    return plural_ru(n, "отрезка", "отрезков", "отрезков")
+
+
+def summary_line(item: dict, who: str | None = None) -> str:
+    """«OCEAN-AI: ESFJ в 16 из 26 отрезков с оценкой, ENFJ — в 10; ось S–N совпадает с итогом в 16 из 26 отрезков,
+    остальные оси — во всех.» `who` defaults to the title of the model the section describes. The types and the
+    agreement with the whole video are those of the strict letters; when an axis was on the border in some segments
+    the line says «строгий тип» / «строгие буквы» and adds in how many («ось E–I на границе во всех 17 отрезках,
+    S–N — в 8»)."""
+    who = who or source_title(item)
+    modal = item.get("modal_types") or []
+    entries = item.get("timeline") or []
+    n = sum(1 for e in entries if e.get("type_strict"))
+    if not modal or not n:
+        return ""
+    t1, c1 = modal[0]
+    border = border_text(entries)
+    strict = "строгий тип " if border else ""
+    if c1 == n:
+        head = f"{who}: {strict}{t1} во всех {n} {plural_ru(n, 'отрезке', 'отрезках', 'отрезках')} с оценкой"
+    else:
+        head = f"{who}: {strict}{t1} в {c1} из {n} {_seg_word(n)} с оценкой"
+        head += "".join(f", {t} — в {c}" for t, c in modal[1:])
+    tail_border = f"; {border}" if border else ""
+    st = item.get("stability")
+    if not st:
+        return head + tail_border + "."
+    shaky = [ax for ax in AXES if (st.get(ax) or {}).get("same") != (st.get(ax) or {}).get("of")]
+    if not shaky:
+        what = "строгие буквы всех четырёх осей совпадают" if border else "все четыре оси совпадают"
+        return head + f"; {what} с итогом во всех отрезках" + tail_border + "."
+    parts = [f"ось {AXIS_LABEL[ax]} совпадает с итогом в {st[ax]['same']} из {st[ax]['of']} {_seg_word(st[ax]['of'])}"
+             for ax in shaky]
+    rest = len(AXES) - len(shaky)
+    tail = "" if rest == 0 else (", остальные оси — во всех" if rest > 1 else ", остальная ось — во всех")
+    return head + "; " + ", ".join(parts) + tail + tail_border + "."

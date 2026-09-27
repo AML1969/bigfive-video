@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import re
 
-from bs3 import narrative2, palette, scores, webapp
-from bs3.narrative2 import card_item, key_facts
+from bs3 import facts, palette, scores, webapp
+from bs3.facts import card_item, key_facts
 from bs3.scores import ABOVE, BELOW, NEUTRAL, emotion_state, scale_state, tempo_state
 
 
@@ -127,14 +127,14 @@ def test_page_card_reads_value_label_explanation():
 def test_the_state_is_said_in_a_word_as_well_as_in_colour():
     """The colour alone does not survive a black-and-white print or a colour-blind reader, so every coloured card
     repeats its state in the label line, in the words of the legend."""
-    assert narrative2.FACT_STATE_RU == {NEUTRAL: "около нейтрального", BELOW: "ниже", ABOVE: "выше"}
-    for state, word in narrative2.FACT_STATE_RU.items():
-        assert narrative2.fact_label("Голос: возбуждение, шкала 0…1", state) == f"Голос: возбуждение, шкала 0…1 · {word}"
-        assert word in narrative2.FACTS_LEGEND, word
-    assert narrative2.fact_label("Тип MBTI · AMLAI 1.0", None) == "Тип MBTI · AMLAI 1.0"
+    assert facts.FACT_STATE_RU == {NEUTRAL: "около нейтрального", BELOW: "ниже", ABOVE: "выше"}
+    for state, word in facts.FACT_STATE_RU.items():
+        assert facts.fact_label("Голос: возбуждение, шкала 0…1", state) == f"Голос: возбуждение, шкала 0…1 · {word}"
+        assert word in facts.FACTS_LEGEND, word
+    assert facts.fact_label("Тип MBTI · AMLAI 1.0", None) == "Тип MBTI · AMLAI 1.0"
     # the page prints the word of every state it shows, and the PDF prints the same label
     html = webapp._facts_html(_rep(emotion="joy", arousal=0.20, wpm=130.0))
-    for word in narrative2.FACT_STATE_RU.values():
+    for word in facts.FACT_STATE_RU.values():
         assert f" · {word}</div>" in html, word
     drawn = [t for t, _ in _draw_cards([("Голос: возбуждение, шкала 0…1", "возбуждение 0.20", "", BELOW)], cols=1,
                                        value_first=True)]
@@ -147,9 +147,9 @@ def test_facts_block_carries_the_colours_and_the_line_under_the_grid():
         assert f".bs3-fact-{state}{{color:{palette.FACT_VALUE['light'][state]}}}" in html
         assert f".dark .bs3-fact-{state}{{color:{palette.FACT_VALUE['dark'][state]}}}" in html
     assert "class='bs3-fact-above'" in html and "class='bs3-fact-below'" in html
-    assert narrative2.FACTS_LEGEND in html and "зелёный — около нейтрального" in html
+    assert facts.FACTS_LEGEND in html and "зелёный — около нейтрального" in html
     # the line belongs under the grid, not above it
-    assert html.index(narrative2.FACTS_LEGEND) > html.rindex("<div style='padding:10px")
+    assert html.index(facts.FACTS_LEGEND) > html.rindex("<div style='padding:10px")
     assert webapp._facts_html({}) == ""
 
 
@@ -206,7 +206,7 @@ def test_pdf_card_height_counts_the_state_word_and_not_the_order():
     items = [("Темп речи", "200 слов в минуту", "паузы — 21% времени", ABOVE),
              ("Длительность ролика", "11:00", "разбит на 33 отрезка", None)]
     # the page-break reservation measures the label the card really prints, state word and all
-    expanded = [(narrative2.fact_label(lab, st), val, note) for lab, val, note, st in items]
+    expanded = [(facts.fact_label(lab, st), val, note) for lab, val, note, st in items]
     assert abs(pdf.cards_height(items, 2, value_first=True) - pdf.cards_height(expanded, 2)) < 1e-9
     # with the same labels either way, the two gaps of the card are the same in both orders
     plain = [(a, b, c) for a, b, c, _ in items]

@@ -13,7 +13,7 @@ import os
 from fpdf import FPDF
 
 from .. import PRODUCT
-from ..narrative2 import card_item, fact_label
+from ..facts import card_item, fact_label
 from ..norms import RU_TITLES, TRAIT_KEYS
 from ..palette import CARD_PDF, FACT_VALUE_PDF, SCORE_BAR_PDF, TRAIT_BAR_PDF
 from ..textfmt import fiv2_ref_ru, pct_phrase
@@ -220,7 +220,7 @@ class Report(FPDF):
         """(label, value, note[, state]) -> a grid of outlined cards, as on the web page: label and note small and
         grey, the value large and bold. `value_first`: the card reads value, then label, then note; a value with a
         state is printed in the colour of that state (palette.FACT_VALUE_PDF) and its label ends with the word of
-        that state (narrative2.fact_label), so the card also reads on a black-and-white printer — «Ключевые факты»
+        that state (facts.fact_label), so the card also reads on a black-and-white printer — «Ключевые факты»
         of 3.1. The grid is never split between pages."""
         if not items:
             return

@@ -32,8 +32,8 @@ LAYERS = {
     LEAF: ("bs3", "settings", "palette", "norms", "media", "ollama", "textfmt", "labels", "bands", "frame_phrase",
            "errors", "jobfiles"),
     DATA: ("scores", "mbti", "report", "segments"),
-    TEXT: ("caveats", "characterization", "narrative", "narrative2", "facts", "analyses_text", "ru_texts", "translate",
-           "words", "frame_captions"),
+    TEXT: ("caveats", "characterization", "narrative", "facts", "analyses_text", "ru_texts", "translate", "words",
+           "frame_captions"),
     RENDER: ("charts", "webparts", "mbti_html", "webapp", "pdf_report", "pdf_charts", "pdf_mbti", "journal", "jobview",
              "web", "web.*", "pdf", "pdf.*"),
     ANALYSIS: ("pipeline", "longvideo", "backend_*", "analyses", "analyses.*", "mm", "mm.*"),
@@ -45,11 +45,10 @@ PDF_MODULES = ("pdf_report", "pdf_charts", "pdf_mbti", "pdf", "pdf.*")
 WEB_MODULES = ("webapp", "charts", "webparts", "mbti_html", "web", "web.*")
 HEAVY = ("torch", "cv2", "transformers", "pandas", "librosa")
 # modules whose docstring promises no bs3 import at all (palette is loaded standalone by scripts/check_palette.py)
-NO_BS3_IMPORTS = ("palette", "settings", "jobfiles", "textfmt", "frame_phrase")
+NO_BS3_IMPORTS = ("palette", "settings", "jobfiles", "textfmt", "frame_phrase", "bands")
 
 # (importer, imported, the stage of the refactoring plan that removes the edge)
 ALLOW = {
-    ("pdf_mbti", "mbti_html", 14),                 # READ_CAVEATS -> caveats.MBTI_READ; the shared table and lines
     ("webapp", "longvideo", 20),                   # AnalysisCancelled -> errors
 }
 

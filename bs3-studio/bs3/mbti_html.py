@@ -7,11 +7,12 @@
   (bold — clear, normal — moderate, dashed frame — on the border, «—» on hatching — no score), the summary line and
   C8 (C19);
 - `read_html(mb)` — «Как читать тип MBTI»: the correspondence table 5.5 and the caveats C3, C4, C5, C6, C7, C9, C16
-  (READ_CAVEATS; C7 says the type is that of the one chosen model);
+  (caveats.MBTI_READ; C7 says the type is that of the one chosen model);
 - `emo_intro_html(view)` — «Эмоции и голос: коротко»: the text-emotion and voice sentences in one paragraph.
 
-No new colours (design 13.4): outlines are palette.HTML track_outline, the marker main_fill. Text colours come from
-the theme.
+The table 5.5 (mbti.TABLE_ROWS, corr_cell, TABLE_NOTE) and the summary line of the strip (mbti.summary_line) are
+printed by section 2 of the PDF too, so they live in mbti. No new colours (design 13.4): outlines are palette.HTML
+track_outline, the marker main_fill. Text colours come from the theme.
 """
 from __future__ import annotations
 
@@ -19,7 +20,7 @@ import html as _html
 
 from . import caveats
 from .labels import mbti_model_title
-from .mbti import AXES, AXIS_LABEL, border_text, load_config, source_title
+from .mbti import AXES, AXIS_LABEL, TABLE_NOTE, TABLE_ROWS, corr_cell, load_config, source_title, summary_line
 from .norms import RU_NAMES
 from .palette import HTML as PAL
 from .scores import LEVELS_RU, level_phrase, score_text
@@ -27,24 +28,8 @@ from .textfmt import clock, plural_ru
 from .webparts import NOTE, table_html, th_text
 
 OUTLINE = PAL["track_outline"]
-# the caveats of «Как читать тип MBTI» (design 11), in this order, on the page and in section 2 of the PDF
-READ_CAVEATS = ("C3", "C4", "C5", "C6", "C7", "C9", "C16")
 HATCH = "repeating-linear-gradient(45deg,rgba(128,128,128,.25) 0 3px,transparent 3px 6px)"
 TEXT14 = "font-size:14px;line-height:1.5"
-# 5.5: axis, Big Five scale, direction, correspondence of the scales (r from config/mbti.json)
-TABLE_ROWS = (("EI", "Экстраверсия", "выше → E"), ("SN", "Открытость опыту", "выше → N"),
-              ("TF", "Доброжелательность", "выше → F"), ("JP", "Добросовестность", "выше → J"))
-# the config keeps the labels of `reliability` (design 4.6, 7.1: «высокая (r≈0.74)», agreeing with «надёжность»); the
-# reader's table 5.5 has the column «Соответствие шкал», so there the words agree with «соответствие»
-CORR_WORD = {"высокая": "высокое", "средняя": "среднее", "низкая": "низкое"}
-TABLE_NOTE = ("Корреляции шкал MBTI и NEO-PI в самоотчётах (McCrae, Costa, 1989; воспроизведено Furnham, 1996, и "
-              "Furnham и соавт., 2003). Это соответствие шкал, а не точность оценки по видео.")
-
-
-def corr_cell(c: dict) -> str:
-    """«высокое, r ≈ 0.74»: one cell of the column «Соответствие шкал» (design 5.5)."""
-    label = str(c.get("label", ""))
-    return f"{CORR_WORD.get(label, label)}, r ≈ {c.get('r')}"
 
 
 def _e(s) -> str:
@@ -216,46 +201,6 @@ def _lane(entries: list[dict], title: str, who: str) -> str:
             + "".join(cells) + "</div></div>")
 
 
-def _seg_word(n: int) -> str:
-    """Genitive after «из N»: «из 21 отрезка», «из 26 отрезков»."""
-    return plural_ru(n, "отрезка", "отрезков", "отрезков")
-
-
-def summary_line(item: dict, who: str | None = None) -> str:
-    """«OCEAN-AI: ESFJ в 16 из 26 отрезков с оценкой, ENFJ — в 10; ось S–N совпадает с итогом в 16 из 26 отрезков,
-    остальные оси — во всех.» `who` defaults to the title of the model the section describes. The types and the
-    agreement with the whole video are those of the strict letters; when an axis was on the border in some segments
-    the line says «строгий тип» / «строгие буквы» and adds in how many («ось E–I на границе во всех 17 отрезках,
-    S–N — в 8»)."""
-    who = who or source_title(item)
-    modal = item.get("modal_types") or []
-    entries = item.get("timeline") or []
-    n = sum(1 for e in entries if e.get("type_strict"))
-    if not modal or not n:
-        return ""
-    t1, c1 = modal[0]
-    border = border_text(entries)
-    strict = "строгий тип " if border else ""
-    if c1 == n:
-        head = f"{who}: {strict}{t1} во всех {n} {plural_ru(n, 'отрезке', 'отрезках', 'отрезках')} с оценкой"
-    else:
-        head = f"{who}: {strict}{t1} в {c1} из {n} {_seg_word(n)} с оценкой"
-        head += "".join(f", {t} — в {c}" for t, c in modal[1:])
-    tail_border = f"; {border}" if border else ""
-    st = item.get("stability")
-    if not st:
-        return head + tail_border + "."
-    shaky = [ax for ax in AXES if (st.get(ax) or {}).get("same") != (st.get(ax) or {}).get("of")]
-    if not shaky:
-        what = "строгие буквы всех четырёх осей совпадают" if border else "все четыре оси совпадают"
-        return head + f"; {what} с итогом во всех отрезках" + tail_border + "."
-    parts = [f"ось {AXIS_LABEL[ax]} совпадает с итогом в {st[ax]['same']} из {st[ax]['of']} {_seg_word(st[ax]['of'])}"
-             for ax in shaky]
-    rest = len(AXES) - len(shaky)
-    tail = "" if rest == 0 else (", остальные оси — во всех" if rest > 1 else ", остальная ось — во всех")
-    return head + "; " + ", ".join(parts) + tail + tail_border + "."
-
-
 LEGEND = ("Жирная буква — ось выражена отчётливо, обычная — умеренно, в пунктирной рамке — на границе (показана буква "
           "строгого деления), «—» — нет оценки. Подсказка при наведении на клетку — время отрезка и буква.")
 
@@ -279,7 +224,7 @@ def strip_html(mb: dict | None) -> str:
 # ------------------------------------------------------------------------------------------- how to read ---
 
 def read_html(mb: dict | None = None) -> str:
-    """«Как читать тип MBTI»: the correspondence table (5.5) and the caveats READ_CAVEATS; the same for any job
+    """«Как читать тип MBTI»: the correspondence table (5.5) and the caveats caveats.MBTI_READ; the same for any job
     (`mb` is accepted and not read: the page passes the section to every MBTI block)."""
     cfg = load_config()
     corr = cfg.get("correspondence") or {}
@@ -289,7 +234,7 @@ def read_html(mb: dict | None = None) -> str:
         rows.append([AXIS_LABEL[ax], scale, direction, corr_cell(c)])
     rows.append(["—", "Нейротизм (= 1 − эмоциональная стабильность)", "—", "в MBTI не выражается"])
     head = [th_text("Ось MBTI"), th_text("Шкала Big Five"), th_text("Направление"), th_text("Соответствие шкал")]
-    texts = [caveats.text(c) for c in READ_CAVEATS]
+    texts = [caveats.text(c) for c in caveats.MBTI_READ]
     return (table_html(head, rows, wrap_first=True)
             + f"<p style='{NOTE};margin:8px 0 12px'>{_e(TABLE_NOTE)}</p>"
             + "".join(f"<p style='{TEXT14};margin:0 0 8px'>{_e(t)}</p>" for t in texts))
@@ -299,7 +244,7 @@ def read_html(mb: dict | None = None) -> str:
 
 def emo_intro_html(view: dict) -> str:
     """«Эмоции и голос: коротко»: the text-emotion and voice sentences (the same as the PDF intros) in one paragraph."""
-    from .narrative2 import analyses_parts
+    from .analyses_text import analyses_parts
     parts = analyses_parts(view)
     text = " ".join(p for p in (parts.get("text_emotion"), parts.get("voice")) if p)
     return f"<p style='{TEXT14};margin:0'>{_e(text)}</p>" if text else ""

@@ -20,8 +20,7 @@ import math
 
 from . import caveats
 from .labels import mbti_model_title
-from .mbti import AXES, AXIS_LABEL, load_config, source_title
-from .mbti_html import READ_CAVEATS, TABLE_NOTE, TABLE_ROWS, corr_cell, summary_line
+from .mbti import AXES, AXIS_LABEL, TABLE_NOTE, TABLE_ROWS, corr_cell, load_config, source_title, summary_line
 from .pdf.document import NOTE_GREY, TEXT_W_MM, Report
 from .textfmt import clock
 
@@ -296,7 +295,7 @@ def _strip_lanes(mb: dict) -> tuple[list, list[str]]:
 
 def mbti_section(pdf: Report, view: dict, mb: dict | None) -> None:
     """Section «Тип MBTI (перевод шкал Big Five)» right after the Big Five section (design 10.7, item 2): one model,
-    one type line, the axis table without an agreement column, one strip, the caveats READ_CAVEATS (3.1)."""
+    one type line, the axis table without an agreement column, one strip, the caveats caveats.MBTI_READ (3.1)."""
     if "mbti" not in pdf.plan or not mb:
         return
     cfg = load_config()
@@ -323,7 +322,7 @@ def mbti_section(pdf: Report, view: dict, mb: dict | None) -> None:
             pdf.para(" ".join(lines), 9)
         pdf.caption(caveats.text("C8"), 7.5)
     # how to read the type
-    texts = [caveats.text(c) for c in READ_CAVEATS]
+    texts = [caveats.text(c) for c in caveats.MBTI_READ]
     pdf.h3("Как читать тип MBTI", keep_mm=min(40, sum(pdf.para_height(t, 7.5) for t in texts[:2])))
     for t in texts:
         pdf.caption(t, 7.5)

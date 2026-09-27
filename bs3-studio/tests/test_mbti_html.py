@@ -134,8 +134,8 @@ def test_strip_a_short_and_new_jobs():
 
 def test_read():
     h = mbti_html.read_html(_mb(rep("B")))
-    assert mbti_html.READ_CAVEATS == ("C3", "C4", "C5", "C6", "C7", "C9", "C16")
-    for code in mbti_html.READ_CAVEATS:
+    assert caveats.MBTI_READ == ("C3", "C4", "C5", "C6", "C7", "C9", "C16") and not hasattr(mbti_html, "READ_CAVEATS")
+    for code in caveats.MBTI_READ:
         assert caveats.text(code) in h, code
     for s in ("высокое, r ≈ 0.74", "высокое, r ≈ 0.72", "среднее, r ≈ 0.44", "среднее, r ≈ 0.49", "в MBTI не выражается",
               "McCrae, Costa, 1989"):

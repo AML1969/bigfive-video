@@ -22,10 +22,9 @@ from . import (DEFAULT_MODEL, MODEL_TITLES, PRODUCT, PRODUCT_SLUG, caveats, char
                journal, mbti_html, settings)
 from .charts import (fig_emotion_bars, fig_emotions_timeline, fig_face_expr, fig_radar, fig_speech_timeline,
                      fig_traits_timeline, fig_voice_timeline, plot_html as _plot_html)
+from .facts import FACTS_LEGEND, FER_NOTE, card_item, fact_cards, fact_label, head_motion_word, speech_cards
 from .labels import EMO_RU
-from .mbti import fact_card
 from .narrative import NO_EXPLAIN_RU, method_notes
-from .narrative2 import FACTS_LEGEND, card_item, fact_label, key_facts
 from .palette import (ACCENT, BUTTON_PRIMARY, BUTTON_PRIMARY_HOVER, BUTTON_STOP, BUTTON_STOP_HOVER, CARD_TINT,
                       FACT_VALUE, HTML as PAL, PAGE_NOTE_OPACITY, SUBDUED_TEXT_LIGHT)
 from .pipeline import Studio, run_analysis
@@ -62,7 +61,7 @@ FACTS_CSS = "<style>" + "".join(f".bs3-fact-{s}{{color:{FACT_VALUE['light'][s]}}
 def _cards(items, min_px: int = 180, value_first: bool = False) -> str:
     """(label, value, note[, state]) -> a grid of cards; note may be empty. `value_first`: the card reads value,
     then label, then note; a value with a state is painted by it (FACTS_CSS) and its label line ends with the word
-    of that state (narrative2.fact_label), so the card also reads without colour — «Ключевые факты» of 3.1."""
+    of that state (facts.fact_label), so the card also reads without colour — «Ключевые факты» of 3.1."""
     html = ""
     for item in items:
         lab, val, note, state = card_item(item)
@@ -80,14 +79,12 @@ def _facts_html(view: dict, mb: dict | None = None) -> str:
     """«Ключевые факты» in the left column (design 10.2): the MBTI type card first, then the cards of 2.0 from the clean
     view; 150 px minimum, two cards in a row in the 320 px column. 3.1: every card reads value, label, explanation; the
     value of a measured card is coloured by where it sits and its label says the same in a word; one line under the
-    grid says what the colour and the word mean."""
-    card = fact_card(mb)
-    items = ([card] if card else []) + key_facts(view)
+    grid says what the colour and the word mean (facts.fact_cards, the same cards as the PDF)."""
+    items, show_legend = fact_cards(view, mb)
     grid = _cards(items, min_px=150, value_first=True)
     if not grid:
         return ""
-    legend = (f"<p style='{NOTE};margin:8px 0 0'>{FACTS_LEGEND}</p>"
-              if any(card_item(i)[3] for i in items) else "")
+    legend = f"<p style='{NOTE};margin:8px 0 0'>{FACTS_LEGEND}</p>" if show_legend else ""
     return FACTS_CSS + grid + legend
 
 
@@ -134,22 +131,7 @@ def _speech_html(rep: dict) -> str:
     sp = (rep.get("analyses") or {}).get("speech") or {}
     if not sp:
         return ""
-
-    def whole(v):
-        return "—" if v is None else f"{float(v):.0f}"
-
-    fillers = sp.get("fillers")
-    items = [("Слов всего", whole(sp.get("words")), ""),
-             ("Разных слов", whole(sp.get("unique_words")), "без повторов"),
-             ("Темп речи, слов в минуту", whole(sp.get("words_per_min_speech")), "только время, когда человек говорит"),
-             ("Темп с учётом пауз, слов в минуту", whole(sp.get("words_per_min_wall")), "по всей длине ролика"),
-             ("Доля пауз", f"{sp.get('pause_share', 0):.0%}", "паузы от 0.5 с, доля времени ролика"),
-             ("Длинных пауз", whole(sp.get("long_pauses")), "дольше 2 секунд"),
-             ("Слов-заполнителей", whole(fillers),
-              f"{float(sp.get('fillers_per_100') or 0):.0f} на 100 слов" if fillers is not None else ""),
-             ("Слов во фразе", whole(sp.get("mean_sentence")), "в среднем"),
-             ("Разнообразие словаря", f"{float(sp['ttr']):.0%}" if sp.get("ttr") is not None else "—",
-              "доля разных слов среди всех; зависит от длины текста")]
+    items = speech_cards(sp, small_rate_words=False)             # the cards of the PDF; the page says «0 на 100 слов»
     vocab = ", ".join(f"{w} ({n})" for w, n in vocabulary_shown(rep)[:15])       # in Russian for any speech language
     return (_cards(items) + "<p style='font-size:15px;line-height:1.5;margin:12px 0 6px'>"
             f"{fix_counts(sp.get('description', ''))}</p>"
@@ -171,7 +153,7 @@ def _face_html(rep: dict) -> str:
         cards.append(("Выражение лица чаще всего", EMO_RU.get(k, k), f"{v:.0%} кадров"))
     hm = fa.get("head_motion")
     if hm is not None:
-        cards.append(("Движение головы", "слабое" if hm < 0.05 else ("умеренное" if hm < 0.15 else "активное"),
+        cards.append(("Движение головы", head_motion_word(hm, "motion"),
                       f"смещение между кадрами — {hm:.0%} ширины лица"))
     if fa.get("face_share") is not None:
         cards.append(("Лицо найдено", f"{fa['face_share']:.0%}", "доля разобранных кадров"))
@@ -179,9 +161,7 @@ def _face_html(rep: dict) -> str:
         n = len(per)
         # «взяты из 31 отрезка», not «372 / из 31 отрезка», which reads like a fraction
         cards.append(("Кадров разобрано", f"{frames}", f"взяты из {n} {plural_ru(n, 'отрезка', 'отрезков', 'отрезков')}"))
-    return (_cards(cards) + f"<p style='{NOTE};margin-top:10px'>Модель выражений обучена на фотографиях FER-2013 и "
-            "склонна видеть «грусть» и «страх» в спокойном лице: смотрите на изменения по ходу ролика (вкладка «Таймлайн»), "
-            "а не на абсолютные доли.</p>")
+    return (_cards(cards) + f"<p style='{NOTE};margin-top:10px'>{FER_NOTE.format(where=' (вкладка «Таймлайн»)')}</p>")
 
 
 # key frames: the figure toggles .bs3-kf-big; enlarged, the image fills the window and the caption (moment of the
@@ -266,13 +246,11 @@ def _frames_html(rep: dict, expl: dict | None = None, max_side: int = 640) -> st
             f"<figcaption><b>{escape(e['label'])}</b>"
             + (f" · {escape(e['tail'])}" if e["tail"] else "")
             + f"<span class='bs3-kf-more'>{more} · щелчок закрывает</span></figcaption></figure>")
-    timed = frame_captions.any_moment(entries)
     where = f" (отрезок {seg_label(seg['start'], seg['end'])})" if seg else ""
     # a job made before the captions has neither a phrase nor the expressions: the note promises only what the
     # page really shows, otherwise it sends the reader hunting for a description that is not there
-    described, has_expr, has_eff = frame_captions.note_flags(entries)
-    what = (("момент ролика (минуты:секунды" + (", после запятой — десятые доли секунды" if tenths else "") + ")")
-            if timed else "его номер") + (" и коротко то, что на нём видно" if described else "")
+    _, has_expr, has_eff = frame_captions.note_flags(entries)
+    what = frame_captions.note_what(entries, tenths, "page")
     hover = [x for x, ok in (("выражение лица", has_expr), ("то, как кадр сдвинул оценку", has_eff)) if ok]
     return (FRAMES_CSS + "<div class='bs3-kf' style='display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));"
             f"gap:12px'>{''.join(figs)}</div>"
@@ -425,10 +403,6 @@ def analysis_error_ru(e: BaseException) -> str:
 
 
 STATUS_LABELS = {"running": "Идёт обработка", "done": "Готово", "stopped": "Остановлено", "error": "Ошибка"}
-# «Как читать результаты» at the foot of the page (design 11). The footer is built once, before any analysis, so it
-# carries only what holds for both models; C2 (the label «собеседование» of AMLAI 1.0) stands under the score bars
-# of a job that shows that label (webparts._bar_html) and in the PDF of such a job only
-FOOTER_CAVEATS = ("C1", "C10", "C3")
 
 
 def _live_desc(state: dict) -> str:
@@ -745,10 +719,11 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
                 raw = gr.Code(label="result.json", language="json", lines=24, elem_classes=["bs3-json"])
                 path = gr.Textbox(label="Сохранено в", interactive=False)
         # the caveats are the most important small print on the page: 13 px (gr.Markdown <small> gave 11 px);
-        # design 11: C1, C10, C3, word for word from caveats.py (C2 follows the label it explains, see FOOTER_CAVEATS)
+        # design 11: C1, C10, C3, word for word from caveats.py (C2 follows the label it explains, see
+        # caveats.PAGE_FOOTER)
         gr.HTML(f"<div style='font-size:13px;line-height:1.5;margin-top:6px;padding-top:10px;"
                 f"border-top:1px solid {PAL['card_border']}'><b>Как читать результаты.</b> "
-                + "<br>".join(caveats.text(c) for c in FOOTER_CAVEATS) + "</div>")
+                + "<br>".join(caveats.text(c) for c in caveats.PAGE_FOOTER) + "</div>")
         outputs = [status, radar, bars, facts, character, traits_plot, emo_plot, voice_plot, speech_plot, emo_bars,
                    seg_table, speech_html, transcript, face_html, face_plot, gallery, contrib, words_detail, desc, members,
                    raw, path, job_state, method, emo_intro, mbti_types, mbti_strip, mbti_read, pdf_btn]

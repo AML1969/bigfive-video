@@ -9,10 +9,10 @@ version, C7 says that the type is the type of the one model that ran; C18 (the s
 
 Where each caveat goes (design 11):
 - characterization: C11 (paragraph 4), C14, C15, C12, when needed C13, C19, C20;
-- tab «Тип MBTI» and section 2 of the PDF: C3, C4, C5, C6, C7, C9, C16; next to the letter strip C8, C19;
-  the language-model note C17;
-- «Как получены оценки»: C13; page footer: C1, C10, C3; tab «Данные»: C22; PDF «Как читать результаты»: C1, C10,
-  C11, C14, C15; no Big Five at all: C21 instead of the MBTI block;
+- tab «Тип MBTI» and section 2 of the PDF: C3, C4, C5, C6, C7, C9, C16 (MBTI_READ); next to the letter strip C8,
+  C19; the language-model note C17;
+- «Как получены оценки»: C13; page footer: C1, C10, C3 (PAGE_FOOTER); tab «Данные»: C22; PDF «Как читать
+  результаты»: C1, C10, C11, C14, C15 (PDF_HOW_TO_READ); no Big Five at all: C21 instead of the MBTI block;
 - C2 (the label «собеседование» of AMLAI 1.0) goes only where that label is shown: under the score bars of the page
   and in the PDF «Как читать результаты» of a job that carries the label (3.1: a job of AMLAI 1.0).
 """
@@ -76,6 +76,15 @@ TEXTS = {
     "C17": C17, "C19": C19, "C20": C20, "C21": C21, "C22": C22,
 }
 CODES = tuple(f"C{i}" for i in range(1, 23) if i != 18)      # C18 (the second strip of 3.0) is gone with 3.1
+
+# The lists of caveats printed as one block, in their order (design 11). «Как читать результаты» at the foot of the
+# page: the footer is built once, before any analysis, so it carries only what holds for both models; C2 (the label
+# «собеседование» of AMLAI 1.0) stands under the score bars of a job that shows that label (webparts._bar_html)
+PAGE_FOOTER = ("C1", "C10", "C3")
+# «Как читать результаты» of the PDF; C2 is printed only when the report carries the label «собеседование»
+PDF_HOW_TO_READ = ("C1", "C2", "C10", "C11", "C14", "C15")
+# «Как читать тип MBTI» on the tab «Тип MBTI» and in section 2 of the PDF
+MBTI_READ = ("C3", "C4", "C5", "C6", "C7", "C9", "C16")
 
 
 def text(code: str, **values) -> str:

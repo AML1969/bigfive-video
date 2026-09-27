@@ -123,7 +123,7 @@ def test_page_builds_with_the_model_radio_and_no_checkbox():
     inside = {id(x) for row in pairs for col in row.children for x in getattr(col, "children", [])}
     assert id(facts) not in inside and id(char[0]) in inside
     # the footer caveats: what holds for both models (C2 stands under the bars of a job that shows the label)
-    assert webapp.FOOTER_CAVEATS == ("C1", "C10", "C3")
+    assert bs3.caveats.PAGE_FOOTER == ("C1", "C10", "C3") and not hasattr(webapp, "FOOTER_CAVEATS")
 
 
 def test_page_outputs_oceanai_job():

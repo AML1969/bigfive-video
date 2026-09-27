@@ -8,8 +8,8 @@ that table; OLD keeps the old bodies, and every run compares them with `clock` a
 """
 from __future__ import annotations
 
-from bs3 import (caveats, characterization, charts, journal, mbti, mbti_html, narrative, narrative2, pdf_charts,
-                 pdf_mbti, pdf_report, report, scores, segments, textfmt, webapp, webparts)
+from bs3 import (analyses_text, caveats, characterization, charts, facts, journal, mbti, mbti_html, narrative,
+                 pdf_charts, pdf_mbti, pdf_report, report, scores, segments, textfmt, webapp, webparts)
 from bs3.pdf import document as pdf_document
 from bs3.textfmt import (clean_word, clock, fiv2_ref_ru, fix_counts, fmt_secs, mmss_labels, pct_phrase, plural_ru,
                          seg_label)
@@ -128,8 +128,8 @@ def test_the_copies_are_gone():
     shared = {"plural_ru": plural_ru, "fix_counts": fix_counts, "fmt_secs": fmt_secs, "seg_label": seg_label,
               "mmss_labels": mmss_labels, "clean_word": clean_word, "clock": clock, "fiv2_ref_ru": fiv2_ref_ru,
               "pct_phrase": pct_phrase}
-    for mod in (caveats, characterization, charts, journal, mbti, mbti_html, narrative, narrative2, pdf_charts,
-                pdf_document, pdf_mbti, pdf_report, scores, segments, webapp, webparts):
+    for mod in (analyses_text, caveats, characterization, charts, facts, journal, mbti, mbti_html, narrative,
+                pdf_charts, pdf_document, pdf_mbti, pdf_report, scores, segments, webapp, webparts):
         for name, fn in shared.items():
             assert getattr(mod, name, fn) is fn, f"{mod.__name__}.{name} is a copy"
     old = {caveats: "_plural", characterization: "_plural", mbti_html: "_mmss", pdf_mbti: "_mmss", journal: "_mmss",

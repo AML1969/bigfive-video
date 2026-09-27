@@ -175,7 +175,8 @@ def check_pdf(c: Checks, src: Path, dest: Path, mb: dict | None, exp: dict | Non
 
 
 def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path | None = None) -> Checks:
-    from bs3 import caveats, labels, mbti, mbti_html, narrative2
+    from bs3 import caveats, labels, mbti
+    from bs3.facts import FACT_STATE_RU, FACTS_LEGEND
     from bs3.charts import fig_traits_timeline
     from bs3.narrative import NO_EXPLAIN_RU
     from bs3.scores import clean_view
@@ -220,10 +221,10 @@ def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path |
     # a measured value is coloured by where it sits, its label says the same in a word, and one line explains both
     c.ok(facts.count("class='bs3-fact-") >= 2 and ".dark .bs3-fact-above" in facts,
          "key facts: coloured values with a rule for each theme")
-    n_words = sum(facts.count(f" · {w}</div>") for w in narrative2.FACT_STATE_RU.values())
+    n_words = sum(facts.count(f" · {w}</div>") for w in FACT_STATE_RU.values())
     c.ok(n_words == facts.count("class='bs3-fact-"),
          f"key facts: every coloured value says its state in a word too ({n_words})")
-    c.ok(narrative2.FACTS_LEGEND in facts, "key facts: the line about the colour and the word")
+    c.ok(FACTS_LEGEND in facts, "key facts: the line about the colour and the word")
     # one model (3.1): the view, the section, the tab «Тип MBTI» (one panel, one strip, no agreement line, no roles)
     c.ok(set(view.get("variant_scores") or {}) == {meta["main_system"]},
          f"the view holds one model: {meta['main_system']}")
@@ -241,7 +242,7 @@ def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path |
          f"the panel and the strip are titled «{title}»")
     c.ok(f"{mbti.source_title(mb)}: " in strip if mb else bool(strip), "the strip summary starts with the model")
     c.ok(caveats.text("C8") in strip, "C8 under the strip")
-    for code in mbti_html.READ_CAVEATS:
+    for code in caveats.MBTI_READ:
         c.ok(caveats.text(code) in read, f"{code} in «Как читать тип MBTI»")
     # one model on the overview and in the tab «Объяснения» (an OCEAN-AI job: the one note, nothing else)
     c.ok(bars.count("<b>Экстраверсия</b>") == 1 and "border-radius:8px'><div style='font-weight:600" not in bars,

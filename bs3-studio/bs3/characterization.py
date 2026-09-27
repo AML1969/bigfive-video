@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from importlib import resources
 
 from . import caveats
+from .bands import PAUSE_WORDS, TEMPO_WORDS
 from .mbti import AXES, AXIS_LABEL
 from .norms import TRAIT_KEYS
 from .palette import HTML
@@ -312,12 +313,14 @@ def _p_behavior(view, T, ps) -> str:
     out = []
     sp = an.get("speech") or {}
     wpm = num(sp.get("words_per_min_speech"))
+    slow, fast = TEMPO_WORDS
     if wpm:
-        tempo = "fast" if wpm > 160 else ("calm" if wpm >= 110 else "slow")
+        tempo = "fast" if wpm > fast else ("calm" if wpm >= slow else "slow")
         n = int(round(wpm))
         pause = num(sp.get("pause_share"))
-        pauses = "" if pause is None else Bh["pauses"]["few" if pause * 100 < 10 else ("some" if pause * 100 < 25
-                                                                                         else "many")]
+        few, many = (100 * x for x in PAUSE_WORDS)          # in percent, as the share below: 10 and 25
+        pauses = "" if pause is None else Bh["pauses"]["few" if pause * 100 < few else ("some" if pause * 100 < many
+                                                                                          else "many")]
         out.append(Bh["tempo"].format(tempo=Bh["tempo_words"][tempo], wpm=n,
                                       words=plural_ru(n, "слово", "слова", "слов"), pauses=pauses))
     vo = (an.get("voice") or {}).get("mean") or {}
@@ -342,9 +345,9 @@ def _p_behavior(view, T, ps) -> str:
             out.append(Bh["tone_top"].format(emotion=Bh["tone_names"].get(k, k), share=int(round(100 * v))))
     lv = level(ps.get("extraversion"))
     if lv and arousal is not None and wpm:
-        if lv in ("high", "above") and arousal < 0.4 and wpm < 110:
+        if lv in ("high", "above") and arousal < 0.4 and wpm < slow:
             out.append(Bh["check_high"])
-        elif lv in ("low", "below") and arousal > 0.6 and wpm > 160:
+        elif lv in ("low", "below") and arousal > 0.6 and wpm > fast:
             out.append(Bh["check_low"])
     if not out:
         return ""

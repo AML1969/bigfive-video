@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Tuple
 
+from ..bands import FILLER_WORDS, PAUSE_WORDS, TEMPO_WORDS
 # the words of a transcript are split the same way for the numbers here and for the frequent words the page
 # shows; vocabulary is read from here by the pipeline, which stores it with the other speech numbers
 from ..words import spoken_words, vocabulary  # noqa: F401
@@ -78,14 +79,19 @@ def describe(st: Dict) -> str:
     parts = []
     wpm = st.get("words_per_min_speech")
     if wpm:
-        tempo = "быстрый" if wpm > 160 else ("спокойный" if wpm >= 110 else "медленный")
+        slow, fast = TEMPO_WORDS
+        tempo = "быстрый" if wpm > fast else ("спокойный" if wpm >= slow else "медленный")
         parts.append(f"темп речи {tempo} ({wpm:.0f} слов в минуту)")
     if st.get("pause_share") is not None:
         p = st["pause_share"] * 100
-        parts.append("пауз мало" if p < 10 else (f"паузы умеренные ({p:.0f}% времени)" if p < 25 else f"много пауз ({p:.0f}% времени)"))
+        few, many = (100 * x for x in PAUSE_WORDS)          # in percent, as p: 10 and 25
+        parts.append("пауз мало" if p < few else (f"паузы умеренные ({p:.0f}% времени)" if p < many
+                                                  else f"много пауз ({p:.0f}% времени)"))
     f = st.get("fillers_per_100", 0)
-    parts.append("слов-заполнителей почти нет" if f < 2 else (f"слова-заполнители встречаются ({f:.0f} на 100 слов)" if f < 6
-                                                              else f"много слов-заполнителей ({f:.0f} на 100 слов)"))
+    few, many = FILLER_WORDS
+    parts.append("слов-заполнителей почти нет" if f < few else (f"слова-заполнители встречаются ({f:.0f} на 100 слов)"
+                                                                if f < many
+                                                                else f"много слов-заполнителей ({f:.0f} на 100 слов)"))
     if st.get("mean_sentence"):
         parts.append(f"средняя фраза {st['mean_sentence']:.0f} слов")
     return "; ".join(parts).capitalize() + "."

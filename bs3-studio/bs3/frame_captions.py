@@ -224,6 +224,26 @@ def note_flags(entries: Iterable[dict]) -> Tuple[bool, bool, bool]:
     return (any(e.get("tail") for e in es), any(e.get("expr") for e in es), any(e.get("effect") for e in es))
 
 
+NOTE_MEDIA = ("page", "pdf")
+
+
+def note_what(entries: Iterable[dict], tenths: bool, medium: str) -> str:
+    """What the note under the key frames says stands under a frame («под кадром — …»): the moment of the video
+    (with the tenths of a second when `tenths`) or, when no frame has a moment, its number; «и коротко то, что на нём
+    видно» when some frame is described (note_flags). `medium` "page" spells the unit out, «(минуты:секунды…)»,
+    "pdf" abbreviates it, «(мин:с…)»."""
+    if medium not in NOTE_MEDIA:
+        raise ValueError(f"medium must be one of {NOTE_MEDIA}, not {medium!r}")
+    es = list(entries)
+    if not any_moment(es):
+        what = "его номер"
+    elif medium == "page":
+        what = "момент ролика (минуты:секунды" + (", после запятой — десятые доли секунды" if tenths else "") + ")"
+    else:
+        what = "момент ролика (мин:с, после запятой — десятые доли секунды)" if tenths else "момент ролика (мин:с)"
+    return what + (" и коротко то, что на нём видно" if note_flags(es)[0] else "")
+
+
 def pdf_second_line(entry: dict) -> List[str]:
     """Candidates for the second PDF line, widest first; the caller keeps the first one that fits the cell.
 

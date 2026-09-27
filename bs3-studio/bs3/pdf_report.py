@@ -20,9 +20,10 @@ import re
 from pathlib import Path
 
 from . import MODALITIES, MODEL_TITLES, PRODUCT, caveats, frame_captions, jobview, segments, settings
+from .analyses_text import analyses_parts
+from .facts import FACTS_LEGEND, FER_NOTE, fact_cards, head_motion_word, speech_cards
 from .labels import EMO_RU, EMOTION_ORDER, VOICE_RU, model_title
 from .narrative import NO_EXPLAIN_RU
-from .narrative2 import FACTS_LEGEND, analyses_parts, card_item, key_facts
 from .norms import RU_SHORT, RU_TITLES, TRAIT_KEYS
 from .pdf.document import RADAR_W_MM, ROW_GAP_MM, Report
 from .pdf_charts import save_modalities_chart
@@ -190,42 +191,6 @@ def _passport(pdf: Report, report: dict, media: dict | None, fname: str) -> None
     pdf.ln(2)
 
 
-def _speech_cards(sp: dict) -> list:
-    """The 9 cards of «Речь в цифрах», with the labels, values and notes of the web tab «Речь»."""
-    def whole(v):
-        return "—" if v is None else f"{float(v):.0f}"
-
-    def per_100(v) -> str:
-        """«0 на 100 слов» under a value of 3 contradicts itself: a rate that rounds to zero is said in words."""
-        x = float(v or 0)
-        return "меньше 1 на 100 слов" if 0 < x < 0.95 else f"{x:.0f} на 100 слов"
-    fillers = sp.get("fillers")
-    return [("Слов всего", whole(sp.get("words")), ""),
-            ("Разных слов", whole(sp.get("unique_words")), "без повторов"),
-            ("Темп речи, слов в минуту", whole(sp.get("words_per_min_speech")), "только время, когда человек говорит"),
-            ("Темп с учётом пауз, слов в минуту", whole(sp.get("words_per_min_wall")), "по всей длине ролика"),
-            ("Доля пауз", f"{sp.get('pause_share', 0):.0%}", "паузы от 0.5 с, доля времени ролика"),
-            ("Длинных пауз", whole(sp.get("long_pauses")), "дольше 2 секунд"),
-            ("Слов-заполнителей", whole(fillers),
-             per_100(sp.get("fillers_per_100")) if fillers is not None else ""),
-            ("Слов во фразе", whole(sp.get("mean_sentence")), "в среднем"),
-            ("Разнообразие словаря", f"{float(sp['ttr']):.0%}" if sp.get("ttr") is not None else "—",
-             "доля разных слов среди всех; зависит от длины текста")]
-
-
-def _pdf_facts(view: dict, speech_cards: bool, mb: dict | None = None) -> list:
-    """The key facts of the web overview, the MBTI type card first (mbti.fact_card, design 10.2). Not everything of
-    the page belongs in the report twice: when «Речь в цифрах» follows later, the note of «Темп речи» no longer
-    repeats the pauses and the fillers printed there in full, it says what the tempo itself is counted on."""
-    from .mbti import fact_card
-    card = fact_card(mb)
-    facts = key_facts(view)
-    if speech_cards:
-        facts = [(lab, val, ("только время, когда человек говорит" if "минуту" in str(val) else "")
-                            if lab == "Темп речи" else note, state) for lab, val, note, state in facts]
-    return ([card] if card else []) + facts
-
-
 def _profile_section(pdf: Report, report: dict, explanation, charts: dict) -> None:
     """1. Radar beside «Как получены оценки» (narrative.method_notes on the clean view, design 9; its overflow
     continues under the row), then the score bars of the one model that ran (3.1)."""
@@ -331,8 +296,8 @@ def _emotions_section(pdf: Report, report: dict, charts: dict) -> None:
         frames = sum(int((r.get("face") or {}).get("frames") or 0) for r in per)
         cap = []
         if hm is not None:
-            cap.append(f"Движение головы {'слабое' if hm < 0.05 else ('умеренное' if hm < 0.15 else 'активное')}: смещение "
-                       f"между кадрами — {hm:.0%} ширины лица.")
+            cap.append(f"Движение головы {head_motion_word(hm, 'motion')}: смещение между кадрами — {hm:.0%} ширины "
+                       "лица.")
         found = f"Лицо найдено в {fa['face_share']:.0%} кадров" if fa.get("face_share") is not None else ""
         if frames:
             n = len(per)
@@ -340,8 +305,7 @@ def _emotions_section(pdf: Report, report: dict, charts: dict) -> None:
                                                                    f"из {n} {plural_ru(n, 'отрезка', 'отрезков', 'отрезков')}")
         if found:
             cap.append(found + ".")
-        cap.append("Модель выражений обучена на фотографиях FER-2013 и склонна видеть «грусть» и «страх» в спокойном лице: "
-                   "смотрите на изменения по ходу ролика, а не на абсолютные доли.")
+        cap.append(FER_NOTE.format(where=""))
         blocks.append(("face_expr", " ".join(cap), "График выражения лица не построен: лицо в кадре не найдено."))
     if len(per) >= 2:                    # one segment = the whole video: the averages above already say everything
         # hatched gaps. A segment with an empty transcript is not always silent: its own recognition may return nothing
@@ -399,7 +363,7 @@ def _voice_speech_section(pdf: Report, report: dict, charts: dict) -> None:
     elif charts.get("voice"):
         pdf.para("График речи не построен: данных о темпе и паузах нет.", 8)
     if sp:
-        items = _speech_cards(sp)
+        items = speech_cards(sp, small_rate_words=True)     # the cards of the page, «меньше 1 на 100 слов» in words
         pdf.ln(1)
         pdf.h3("Речь в цифрах", keep_mm=pdf.cards_height(items))
         pdf.cards(items)
@@ -515,14 +479,10 @@ def _explain_section(pdf: Report, report: dict, explanation, frames: list, chart
         # words and the second falls back to shorter forms — the last of them, «повысил эм. стаб.», still carries
         # the direction — and is dropped only when even that does not fit.
         entries = {e["path"]: e for e in frame_captions.build(report, frames, explanation, media)}
-        timed = frame_captions.any_moment(entries.values())
         tenths = frame_captions.has_tenths(report, frames, media, explanation)
         # a job made before the captions has neither a phrase nor the expressions: the note promises only the
         # parts that are actually printed, and it names the second line, which the PDF cannot show on hover
-        described, _, _ = frame_captions.note_flags(entries.values())
-        what = ((("момент ролика (мин:с, после запятой — десятые доли секунды)" if tenths
-                  else "момент ролика (мин:с)") if timed else "его номер")
-                + (" и коротко то, что на нём видно" if described else ""))
+        what = frame_captions.note_what(entries.values(), tenths, "pdf")
         # what the second line ended up carrying in this layout, not what the captions could have offered
         chosen = [(e, _frame_second(pdf, e, cell_w)) for e in entries.values()]
         has_expr = any(s and e["expr_line"] and s.startswith(e["expr_line"]) for e, s in chosen)
@@ -571,13 +531,10 @@ def _explain_section(pdf: Report, report: dict, explanation, frames: list, chart
     # lists without Russian words (translation failed) are not printed: the raw English tokens stay in the JSON
 
 
-HOW_TO_READ = ("C1", "C2", "C10", "C11", "C14", "C15")       # «Как читать результаты» (design 11)
-
-
 def _how_to_read(pdf: Report, report: dict) -> None:
-    """«Как читать результаты»: the caveats HOW_TO_READ, word for word from caveats.py. C2 explains the label
-    «собеседование» and is printed only when the report carries that label (a job of AMLAI 1.0)."""
-    texts = [caveats.text(c) for c in HOW_TO_READ if c != "C2" or scored(report.get("interview"))]
+    """«Как читать результаты»: the caveats caveats.PDF_HOW_TO_READ, word for word from caveats.py. C2 explains the
+    label «собеседование» and is printed only when the report carries that label (a job of AMLAI 1.0)."""
+    texts = [caveats.text(c) for c in caveats.PDF_HOW_TO_READ if c != "C2" or scored(report.get("interview"))]
     # 7.5 pt like the caveats of the MBTI section: six caveats instead of the three of 2.0
     pdf.section("Как читать результаты", "how_to_read", keep_mm=sum(pdf.para_height(t, 7.5) for t in texts))
     for t in texts:
@@ -930,10 +887,11 @@ def _render(report: dict, explanation, media, frames: list, charts: dict, fname:
     _passport(pdf, report, media, fname)
     if ch is not None:
         characterization_block(pdf, ch)
-    facts = _pdf_facts(report, "voice_speech" in pdf.plan and bool((report.get("analyses") or {}).get("speech")), mb)
+    # the key facts of the page (facts.fact_cards); «Речь в цифрах» of section 4 prints the pauses and the fillers
+    speech_follows = "voice_speech" in pdf.plan and bool((report.get("analyses") or {}).get("speech"))
+    facts, legend = fact_cards(report, mb, speech_cards_follow=speech_follows)
     if facts:
         cols = FACT_COLS.get(len(facts), 3)
-        legend = any(card_item(f)[3] for f in facts)
         # the legend runs to two lines at this width, so the heading keeps the grid and both of them together
         pdf.h3("Ключевые факты", keep_mm=pdf.cards_height(facts, cols, value_first=True) + (8 if legend else 0))
         pdf.cards(facts, cols, value_first=True)
