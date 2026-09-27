@@ -1,8 +1,8 @@
-"""Inference backend for the own MM-PSYCHE-style model (stage 2).
+"""Inference backend for the own MM-PSYCHE-style model AMLAI 1.0.
 
 video -> 30 face crops -> CLIP ; wav 48 kHz -> CLAP ; Whisper transcript -> EmoRoBERTa ;
 (optional) behaviour description from a local Ollama vision model on sampled frames -> EmoRoBERTa ;
--> PersonalityFusionModel checkpoint (~/bs/mm_runs/<run>/best.pt) -> 5 scores.
+-> PersonalityFusionModel checkpoints (~/bs/mm_runs_seeds/seed*/best.pt, 5 seeds, averaged) -> 5 scores.
 """
 from __future__ import annotations
 

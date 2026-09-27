@@ -36,9 +36,7 @@ TITLES = {
 # «Значения по отрезкам» has 14 columns: the short trait names are broken over two lines where one line is wider than
 # its column of numbers; the legend under the table joins the halves back («Добро-жел.» -> «Доброжел.»)
 SEG_HEAD = {**RU_SHORT, "agreeableness": "Добро-\nжел.", "emotional_stability": "Эм.\nстаб.", "interview": "Собе-\nсед."}
-SYSTEM_TITLES = {**MODEL_TITLES, "scene": "SSL-MEPR (сцена)", "sslmepr": "SSL-MEPR"}
-MODALITY_TITLES = {**SYSTEM_TITLES, "audio": "голос", "video": "видео", "text": "речь", "face": "лицо",
-                   "behavior": "описание поведения"}
+MODALITY_TITLES = {"audio": "голос", "video": "видео", "text": "речь", "face": "лицо", "behavior": "описание поведения"}
 # container tags from media.probe_media (ffprobe names) -> row titles of the «Файл» table
 MEDIA_TAGS = {"creation_time": "Записан (метка в файле)", "encoder": "Программа записи",
               "com.apple.quicktime.make": "Производитель камеры", "com.apple.quicktime.model": "Модель камеры",

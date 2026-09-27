@@ -27,7 +27,7 @@ TRAIT_TITLES = {
     "emotional_stability": "Эмоциональная стабильность",
     "interview": "Впечатление «пригласить на собеседование»",
 }
-MEMBER_TITLES = {**MODEL_TITLES, "scene": "SSL-MEPR сцена",
+MEMBER_TITLES = {**MODEL_TITLES,
                  "face": "лицо", "audio": "голос (CLAP)", "audio_whisper": "голос (Whisper)", "audio_xlsr": "голос (XLS-R)",
                  "audio_w2v_emo": "голос (wav2vec2)", "text": "речь", "behavior": "описание поведения"}
 # short row names for tables (the interview title is too long for a first column)
@@ -35,7 +35,7 @@ ROW_TITLES = {**TRAIT_TITLES, "interview": "«Собеседование»"}
 # modality columns of the contribution table: (column title, second line)
 MODALITY_HEADS = {"face": ("Лицо", "кадры"), "audio": ("Голос", "CLAP"), "audio_whisper": ("Голос", "Whisper"),
                   "audio_xlsr": ("Голос", "XLS-R"), "audio_w2v_emo": ("Голос", "wav2vec2"), "text": ("Речь", "текст"),
-                  "behavior": ("Поведение", "описание"), "scene": ("Сцена", "SSL-MEPR")}
+                  "behavior": ("Поведение", "описание")}
 NOTE = "font-size:13px;opacity:.75;line-height:1.45"           # footnotes and card notes (13 px minimum)
 SUB = "display:block;font-size:13px;font-weight:400;opacity:.75"  # second line of a table header (units, model)
 

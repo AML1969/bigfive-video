@@ -25,7 +25,6 @@ _lock = threading.Lock()
 
 TRAITS = (("openness", "открытость"), ("conscientiousness", "добросовестность"), ("extraversion", "экстраверсия"),
           ("agreeableness", "доброжелательность"), ("emotional_stability", "эмоциональная стабильность"))
-MEMBERS = {**MODEL_TITLES, "scene": "SSL-MEPR (сцена)"}
 _DEVICES = (("iPhone", "iPhone"), ("iPad", "iPad"), ("Android", "Android"), ("Windows", "Windows"),
             ("Macintosh", "Mac"), ("Linux", "Linux"))
 _BROWSERS = (("YaBrowser", "Яндекс Браузер"), ("Edg", "Edge"), ("OPR/", "Opera"), ("Firefox", "Firefox"),
@@ -93,7 +92,7 @@ def result_lines(rep: dict) -> list[str]:
     model = view.get("model") or {}
     main_sys = meta.get("main_system") or model.get("selected") or model.get("primary")
     main = {k: (v.get("score") if isinstance(v, dict) else v) for k, v in (view.get("traits") or {}).items()}
-    src = MEMBERS.get(main_sys, main_sys) + (", веса MuPTA" if main_sys == "oceanai" else "")
+    src = MODEL_TITLES.get(main_sys, main_sys) + (", веса MuPTA" if main_sys == "oceanai" else "")
     line = f"Итог ({src}): {_scores(main)}"
     iv = view.get("interview")
     iv = iv.get("score") if isinstance(iv, dict) else iv
@@ -117,7 +116,7 @@ def visit(request) -> None:
 def start(request, video, member: str) -> None:
     """`member`: the model chosen for the analysis ("oceanai" | "mm"), written by its title. Explanations follow the
     model (AMLAI 1.0 only, 3.1), so the entry does not mention them."""
-    _write("СТАРТ", request, f"{_file(video)}, модель {MEMBERS.get(member, member)}")
+    _write("СТАРТ", request, f"{_file(video)}, модель {MODEL_TITLES.get(member, member)}")
 
 
 def result(request, rep: dict, wall_sec: float) -> None:

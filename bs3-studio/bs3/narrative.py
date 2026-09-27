@@ -11,7 +11,6 @@ from . import MODEL_TITLES
 from .norms import RU_TITLES, TRAIT_KEYS
 from .report import seg_label
 
-SYSTEM_RU = {**MODEL_TITLES, "scene": "SSL-MEPR (сцена)"}
 # where the scores come from, by the model that ran (one model per analysis since 3.1)
 SOURCE_RU = {
     "oceanai": "Оценки дала система OCEAN-AI на весах MuPTA, обученных на русскоязычных участниках.",
@@ -85,7 +84,7 @@ def method_notes(view: dict) -> str:
     if meta.get("primary_missing"):
         parts.append(caveats.text("C20"))
     else:
-        parts.append(SOURCE_RU.get(main) or f"Оценки дала система {SYSTEM_RU.get(main, main)}.")
+        parts.append(SOURCE_RU.get(main) or f"Оценки дала система {MODEL_TITLES.get(main, main)}.")
     parts.append(SCALE_RU)
 
     # stability over the segments the model scored

@@ -201,13 +201,112 @@ def test_studio_hands_whisper_over_between_analyzers():
         assert st.analyzer("oceanai") is an_oa
 
 
-def test_ensemble_config_single_member_is_primary():
+def test_studio_passes_models_dir_to_oceanai():
+    """`bs3 web --models-dir` reaches the OCEAN-AI config; without it BackendConfig keeps its own default."""
+    with _Patched(_fake_modules()):
+        oa = pipeline.Studio(models_dir="/tmp/oceanai-models").backend("oceanai")
+        assert oa.cfg.oceanai_cfg.models_dir == "/tmp/oceanai-models"
+        oa = pipeline.Studio().backend("oceanai")
+        assert not hasattr(oa.cfg.oceanai_cfg, "models_dir")
+
+
+def test_ensemble_config_one_member_only():
+    """The wrapper holds exactly one model; its primary is that model (no "auto" rule, no mean of several)."""
+    import dataclasses
     from bs3.backend_ensemble import EnsembleConfig
     for m in MEMBERS:
-        assert EnsembleConfig(members=(m,), lang="ru").primary == m
-        assert EnsembleConfig(members=(m,), lang="en").primary == m
-    assert EnsembleConfig(members=("oceanai", "mm"), lang="ru").primary == "oceanai"      # the 3.0 rule is kept
-    assert EnsembleConfig(members=("oceanai", "mm"), lang="en").primary is None
+        assert EnsembleConfig(members=(m,)).primary == m
+        assert EnsembleConfig(members=(m,), lang="ru", primary=m).primary == m
+        assert EnsembleConfig(members=[m]).members == (m,)
+    for kw in ({"members": ("mm", "oceanai")}, {"members": ("oceanai", "mm")}, {"members": ()},
+               {"members": ("mm",), "primary": "oceanai"}, {"members": ("oceanai",), "primary": "mean"}):
+        try:
+            EnsembleConfig(**kw)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(kw)
+    assert {f.name for f in dataclasses.fields(EnsembleConfig)} == {"members", "oceanai_cfg", "mm_cfg", "lang", "primary"}
+
+
+def _member_modules(calls: list, fail: str | None = None):
+    """bs3.backend_mm / bs3.backend_oceanai with a member that returns canned numbers (numpy floats, as the models
+    give them) or raises `fail`."""
+    import numpy as np
+
+    class _Member:
+        def __init__(self, cfg=None):
+            self.cfg, self.loaded = cfg, 0
+
+        def load(self):
+            self.loaded += 1
+            return self
+
+        def _result(self, video, **kw):
+            calls.append((type(self).__name__, str(video), kw))
+            if fail:
+                raise RuntimeError(fail)
+            scores = {k: np.float32(0.1 + 0.123456789 * i) for i, k in enumerate(TRAIT_KEYS)}
+            return {"scores": scores, "transcript": "", "seconds": 0.5}
+
+    class MMBackend(_Member):
+        def predict_video(self, video, asr=True, transcript=None, behavior=None):
+            r = self._result(video, asr=asr, transcript=transcript, behavior=behavior)
+            r["scores"]["interview"] = np.float32(0.4321)
+            r.update(transcript="речь", behavior_description="smiles", timings={"behavior": 1.5})
+            return r
+
+    class OceanAIBackend(_Member):
+        def predict_video(self, video, asr=True, transcript=None):
+            return self._result(video, asr=asr, transcript=transcript)
+
+    mm = types.ModuleType("bs3.backend_mm")
+    mm.MMBackend, mm.MMConfig = MMBackend, object
+    oa = types.ModuleType("bs3.backend_oceanai")
+    oa.OceanAIBackend, oa.BackendConfig = OceanAIBackend, object
+    return {"bs3.backend_mm": mm, "bs3.backend_oceanai": oa}
+
+
+def test_ensemble_passes_the_one_member_through():
+    """The member's scores reach the output unchanged (the same floats, no mean recomputed), with exactly the keys
+    the segment analyzer and result.json read; a failure keeps the message the page maps."""
+    from bs3.backend_ensemble import EnsembleBackend, EnsembleConfig
+    base = {"scores", "seconds", "variants", "members_used", "members_failed", "primary", "primary_used", "transcript"}
+    calls: list = []
+    with _Patched(_member_modules(calls)):
+        for m in MEMBERS:
+            be = EnsembleBackend(EnsembleConfig(members=(m,), mm_cfg=object(), oceanai_cfg=object())).load()
+            assert list(be.backends) == [m] and be.backends[m].loaded == 1
+            out = be.predict_video("clip.mp4", asr=False, transcript="готовый текст", behavior="desc")
+            member = out["variants"][m]
+            assert set(out) == (base | {"behavior_description", "timings"} if m == "mm" else base), sorted(out)
+            for k in TRAIT_KEYS:
+                assert type(out["scores"][k]) is float and out["scores"][k] == float(member[k]), k
+            assert out["variants"] == {m: member} and out["members_used"] == [m] and out["members_failed"] == {}
+            assert out["primary"] == out["primary_used"] == m
+            if m == "mm":
+                assert out["scores"]["interview"] == member["interview"]
+                assert out["transcript"] == "речь" and out["behavior_description"] == "smiles"
+                assert out["timings"] == {"mm_behavior": 1.5}
+                assert calls[-1][2] == {"asr": False, "transcript": "готовый текст", "behavior": "desc"}
+            else:
+                assert "interview" not in out["scores"] and "interview" not in member
+                assert out["transcript"] == "готовый текст"         # the member heard nothing: the given text
+                assert calls[-1][2] == {"asr": False, "transcript": "готовый текст"}
+    log = logging.getLogger("bs.ensemble")
+    level = log.level
+    log.setLevel(logging.ERROR)                           # the expected warning stays out of the test output
+    try:
+        with _Patched(_member_modules(calls, fail="no face found\nsecond line")):
+            be = EnsembleBackend(EnsembleConfig(members=("oceanai",), oceanai_cfg=object()))
+            try:
+                be.predict_video("clip.mp4")
+            except RuntimeError as e:
+                assert str(e) == "all ensemble members failed: oceanai: no face found", str(e)
+            else:
+                raise AssertionError("a failed member did not raise")
+    finally:
+        log.setLevel(level)
 
 
 def _run(member: str, explain: bool, tmp: Path):

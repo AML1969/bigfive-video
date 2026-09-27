@@ -1,14 +1,13 @@
 """bs3 - Big Five (OCEAN) apparent personality scores from video (BS Profiler 3.1).
 
   bs3 web [--port 7880]                       the web page: one model per analysis (OCEAN-AI or AMLAI 1.0), Russian speech
-  bs3 setup-weights [--lang ru|en|all]        download/cache OCEAN-AI weights
   bs3 infer VIDEO [VIDEO ...] --out out.json  score videos (ASR on by default)
-  bs3 infer-dir DIR --out results.csv         score every media file in a folder
+  bs3 explain VIDEO --out DIR                 AMLAI 1.0 only: scores, modality/frame/word attributions, key frames
   bs3 eval-fiv2 --dir DIR --out eval.json     mACC/CCC on FIV2 clips (DIR has <stem>.mp4, <stem>.txt, labels.csv)
 
-Backends: --backend mm (default, own model AMLAI 1.0; `bs3 explain` is the command that writes its explanations,
-`bs3 infer` does not) | oceanai (all weights public) | sslmepr (benchmark) | ensemble.
-The speech language defaults to Russian (--lang ru); the page has no language control at all.
+Models: --backend mm (default, own model AMLAI 1.0; `bs3 explain` is the command that writes its explanations,
+`bs3 infer` does not) | oceanai (OCEAN-AI, all weights public; MuPTA weights for Russian speech).
+The speech is Russian (bs3.LANG); neither the page nor `web`, `infer` and `explain` have a language option.
 """
 from __future__ import annotations
 import argparse
@@ -20,74 +19,44 @@ import tempfile
 import time
 from pathlib import Path
 
-from . import DEFAULT_MODEL, LANG, PRODUCT, __version__
+from . import DEFAULT_MODEL, LANG, MODEL_TITLES, PRODUCT, __version__
 from .norms import TRAIT_KEYS
 from .report import build_report
 
 
-def _add_common(p, lang_choices=("ru", "en")):
-    # the default follows bs3.DEFAULT_MODEL, the model the page offers first: a run without --backend uses AMLAI 1.0
-    p.add_argument("--backend", default=DEFAULT_MODEL, choices=["oceanai", "sslmepr", "ensemble", "mm"],
-                   help="mm = own model AMLAI 1.0 (MM-PSYCHE recipe), the default; oceanai = all public weights; "
-                        "sslmepr = benchmark on scene+audio+text; ensemble = several members with one of them giving "
-                        "the main score")
-    p.add_argument("--mm-ckpt", default=None, help="mm: checkpoint (default ~/bs/mm_runs_full/all4_interview/best.pt)")
-    p.add_argument("--ensemble-members", default="oceanai,mm",
-                   help="ensemble: comma-separated subset of oceanai,mm,scene")
-    p.add_argument("--primary", default="auto",
-                   help="ensemble: member giving the main score (auto = the only member when one is given, else oceanai "
-                        "for --lang ru, mean otherwise; mean | oceanai | mm | scene). With a primary member the report "
-                        "gives the scores without percentiles (FIV2 norms apply only to the FIV2 scale)")
+def _add_models(p, backend: bool = True, models_dir: bool = True):
+    """The model options of a subcommand: which model (`backend`), AMLAI 1.0 checkpoints and its Ollama model, the
+    OCEAN-AI weights cache (`models_dir`), Whisper, and -v."""
+    if backend:
+        # the default follows bs3.DEFAULT_MODEL, the model the page offers first: a run without --backend uses AMLAI 1.0
+        p.add_argument("--backend", default=DEFAULT_MODEL, choices=list(MODEL_TITLES),
+                       help="mm = own model AMLAI 1.0 (MM-PSYCHE recipe), the default; oceanai = OCEAN-AI, all public "
+                            "weights")
+    p.add_argument("--mm-ckpt", default=None,
+                   help="mm: checkpoint path, comma-separated list or glob; several checkpoints are averaged "
+                        "(default ~/bs/mm_runs_seeds/seed*/best.pt, 5 seeds)")
     p.add_argument("--ollama-model", default="qwen2.5vl:7b",
                    help="mm: Ollama vision model for behaviour descriptions (qwen3-vl:30b gives the same accuracy, 3x heavier)")
-    p.add_argument("--lang", default=LANG, choices=list(lang_choices),
-                   help="language of speech, Russian by default (oceanai: ru -> MuPTA weights, en -> FIV2 weights)")
-    p.add_argument("--corpus", default=None, choices=["fi", "mupta"], help="oceanai: override the weight set")
-    p.add_argument("--models-dir", default=None, help="oceanai: weights cache (default ~/bs/models)")
+    if models_dir:
+        p.add_argument("--models-dir", default=None, help="oceanai: weights cache (default ~/bs/models)")
     p.add_argument("--asr-model", default="openai/whisper-large-v3-turbo", help="HF Whisper id for transcription")
-    p.add_argument("--sslmepr-ckpt", default=None, help="sslmepr: checkpoint root (default ~/bs/ssl_mepr_ckpt)")
-    p.add_argument("--sslmepr-modalities", default="scene,audio,text",
-                   help="sslmepr: which branches to run, comma-separated subset of scene,audio,text")
     p.add_argument("-v", "--verbose", action="store_true")
 
 
-def _backend(a):
+def _backend(a, lang: str = LANG, corpus: str | None = None):
+    """The one model the command runs, loaded: AMLAI 1.0 (`--backend mm`) or OCEAN-AI (`--backend oceanai`). `lang`
+    and `corpus` differ from the Russian defaults only for `eval-fiv2`."""
+    if a.backend == "mm":
+        from .backend_mm import MMBackend, MMConfig
+        mm_kw = dict(lang=lang, asr_model=a.asr_model, ollama_model=a.ollama_model)
+        if a.mm_ckpt:
+            mm_kw["checkpoint"] = a.mm_ckpt
+        return MMBackend(MMConfig(**mm_kw)).load()
     from .backend_oceanai import BackendConfig, OceanAIBackend
-    from .backend_sslmepr import SSLMEPRBackend, SSLMEPRConfig
-
-    sm_kw = dict(lang=a.lang, asr_model=a.asr_model)
-    if a.sslmepr_ckpt:
-        sm_kw["ckpt_root"] = Path(a.sslmepr_ckpt)
-    mods = tuple(m.strip() for m in a.sslmepr_modalities.split(",") if m.strip())
-    if "scene" not in mods:
-        raise SystemExit("--sslmepr-modalities must include scene")
-    oa_kw = dict(lang=a.lang, corpus=a.corpus, asr_model=a.asr_model)
+    oa_kw = dict(lang=lang, corpus=corpus, asr_model=a.asr_model)
     if a.models_dir:
         oa_kw["models_dir"] = a.models_dir
-
-    if a.backend == "sslmepr":
-        return SSLMEPRBackend(SSLMEPRConfig(modalities=mods, **sm_kw)).load()
-    from .backend_mm import MMBackend, MMConfig
-    mm_kw = dict(lang=a.lang, asr_model=a.asr_model, ollama_model=a.ollama_model)
-    if a.mm_ckpt:
-        mm_kw["checkpoint"] = a.mm_ckpt
-    if a.backend == "mm":
-        return MMBackend(MMConfig(**mm_kw)).load()
-    if a.backend == "ensemble":
-        from .backend_ensemble import EnsembleBackend, EnsembleConfig
-        members = tuple(m.strip() for m in a.ensemble_members.split(",") if m.strip())
-        return EnsembleBackend(EnsembleConfig(members=members, lang=a.lang, primary=getattr(a, "primary", "auto"),
-                                              oceanai_cfg=BackendConfig(**oa_kw), mm_cfg=MMConfig(**mm_kw),
-                                              sslmepr_cfg=SSLMEPRConfig(modalities=("scene",), **sm_kw))).load()
     return OceanAIBackend(BackendConfig(**oa_kw)).load()
-
-
-def cmd_setup(a):
-    langs = ["ru", "en"] if a.lang == "all" else [a.lang]
-    for lang in langs:
-        a.lang = lang
-        be = _backend(a)
-        print(f"[ok] weights for lang={lang} corpus={be.cfg.corpus} ready ({be.load_seconds:.1f}s)")
 
 
 def cmd_infer(a):
@@ -100,18 +69,17 @@ def cmd_infer(a):
             # long videos: 20-s segments analysed in full, duration-weighted mean + timeline
             from .longvideo import LongVideoAnalyzer, video_duration
             if analyzer is None:
-                analyzer = LongVideoAnalyzer(be, lang=a.lang, seg_len=a.segment, asr_model=a.asr_model)
+                analyzer = LongVideoAnalyzer(be, lang=LANG, seg_len=a.segment, asr_model=a.asr_model)
             work = Path(a.out).with_suffix("") if a.out else Path(tempfile.mkdtemp(prefix="bs_seg_"))
             res = analyzer.analyze(v, work / "segments") if video_duration(v) > analyzer.single_max else be.predict_video(v, asr=True)
         else:
             res = be.predict_video(v, asr=not a.no_asr, transcript=transcript)
-        mods = {"oceanai": ("audio", "video", "text"), "sslmepr": ("scene", "audio", "text"),
-                "ensemble": tuple(getattr(be.cfg, "members", ())),
+        mods = {"oceanai": ("audio", "video", "text"),
                 "mm": tuple(getattr(be, "modalities", ("face", "audio", "text", "behavior")))}[a.backend]
         primary = res.get("primary")
         if primary:
             from .pool import add as pool_add
-            pool_add(v, res["scores"], a.lang, primary)
+            pool_add(v, res["scores"], LANG, primary)
         rep = build_report(v, res, backend=a.backend, corpus=be.cfg.corpus, lang=be.cfg.lang,
                            asr_model=None if (a.no_asr or transcript is not None) else a.asr_model,
                            modalities=mods, primary=primary)
@@ -121,8 +89,6 @@ def cmd_infer(a):
         for key in ("duration_sec", "segments", "timeline", "scores_std", "representative_segment", "transcript_en"):
             if res.get(key) is not None:
                 rep[key] = res[key]
-        if "variants" in res:
-            rep["variant_scores"] = res["variants"]     # sslmepr: MCDM fusion + per-modality predictions
         reports.append(rep)
         line = "  ".join(f"{k[:5]}={rep['traits'][k]['score']:.3f}" for k in TRAIT_KEYS)
         if "interview" in rep:
@@ -155,19 +121,10 @@ def cmd_explain(a):
 
 
 def cmd_web(a):
-    # the page chooses the model per analysis (OCEAN-AI or AMLAI 1.0); --ensemble-members and --lang do not apply
+    # the page chooses the model per analysis (OCEAN-AI or AMLAI 1.0), so `web` has no --backend
     from .webapp import main as web_main
     web_main(port=a.port, work_dir=a.work_dir, share=a.share, asr_model=a.asr_model, ollama_model=a.ollama_model,
-             mm_ckpt=a.mm_ckpt, host=a.host)
-
-
-def cmd_infer_dir(a):
-    be = _backend(a)
-    t0 = time.time()
-    df = be.predict_dir(a.dir, asr=not a.no_asr)
-    df.to_csv(a.out, index=False)
-    print(f"[ok] {len(df)} files scored in {time.time() - t0:.1f}s -> {a.out}")
-    print(df.head(10).to_string(index=False))
+             mm_ckpt=a.mm_ckpt, host=a.host, models_dir=a.models_dir)
 
 
 def cmd_eval(a):
@@ -176,7 +133,7 @@ def cmd_eval(a):
 
     d = Path(a.dir)
     labels = pd.read_csv(a.labels or (d / "labels.csv"))
-    be = _backend(a)
+    be = _backend(a, lang=a.lang, corpus=a.corpus)
     t0 = time.time()
     if a.limit:
         # score a subset through a temporary folder of links
@@ -192,17 +149,6 @@ def cmd_eval(a):
     secs = time.time() - t0
     res = evaluate(pred, labels)
     res["failed_files"] = list(pred.attrs.get("failed", []))
-    # variant score sets (e.g. sslmepr: fusion / scene / audio / text) stored as "<variant>:<Trait>" columns
-    from .norms import OCEANAI_COLUMNS
-    prefixes = sorted({c.split(":", 1)[0] for c in pred.columns if ":" in c})
-    if prefixes:
-        res["variants"] = {}
-        for v in prefixes:
-            sub = pred[["Path"] + [f"{v}:{c}" for c in OCEANAI_COLUMNS]].rename(columns={f"{v}:{c}": c for c in OCEANAI_COLUMNS})
-            r = evaluate(sub, labels)
-            res["variants"][v] = {"mACC": r["mACC"], "mCCC": r["mCCC"],
-                                  "acc": {k: t["acc"] for k, t in r["per_trait"].items()},
-                                  "ccc": {k: t["ccc"] for k, t in r["per_trait"].items()}}
     res.update({
         "seconds_total": round(secs, 1), "seconds_per_clip": round(secs / max(1, len(pred)), 2),
         "backend": a.backend, "corpus": be.cfg.corpus, "lang": be.cfg.lang, "asr": a.asr,
@@ -211,24 +157,18 @@ def cmd_eval(a):
     out = Path(a.out)
     pred.to_csv(out.with_suffix(".pred.csv"), index=False)
     out.write_text(json.dumps(res, indent=2), encoding="utf-8")
-    print(json.dumps({k: v for k, v in res.items() if k not in ("per_trait", "variants")}, indent=2))
+    print(json.dumps({k: v for k, v in res.items() if k != "per_trait"}, indent=2))
     print(pd.DataFrame(res["per_trait"]).T.to_string())
-    if "variants" in res:
-        print("variants:", json.dumps({v: {"mACC": d["mACC"], "mCCC": d["mCCC"]} for v, d in res["variants"].items()}, indent=1))
     print(f"[ok] wrote {out} and {out.with_suffix('.pred.csv')}")
 
 
-def main(argv=None):
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="bs3", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--version", action="version", version=f"{PRODUCT} ({__version__})")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    p = sub.add_parser("setup-weights", help="download and cache weights")
-    _add_common(p, ("en", "ru", "all"))
-    p.set_defaults(fn=cmd_setup)
-
     p = sub.add_parser("infer", help="score one or more videos")
-    _add_common(p)
+    _add_models(p)
     p.add_argument("video", nargs="+")
     p.add_argument("--out", default=None, help="write the JSON report here")
     p.add_argument("--no-asr", action="store_true", help="skip speech recognition (text branch then needs <stem>.txt or --transcript)")
@@ -238,7 +178,7 @@ def main(argv=None):
     p.set_defaults(fn=cmd_infer)
 
     p = sub.add_parser("explain", help="own model only: scores + modality/frame/word attributions, key frames")
-    _add_common(p)
+    _add_models(p, backend=False, models_dir=False)       # always AMLAI 1.0: no model choice, no OCEAN-AI weights
     p.add_argument("video")
     p.add_argument("--out", required=True, help="output folder (explanation.json + key frame JPEGs)")
     p.add_argument("--no-asr", action="store_true")
@@ -248,30 +188,33 @@ def main(argv=None):
     p.set_defaults(fn=cmd_explain)
 
     p = sub.add_parser("web", help="Gradio web UI: upload a video, choose the model, get the characterization")
-    _add_common(p)
     p.add_argument("--port", type=int, default=7880)
     p.add_argument("--host", default="0.0.0.0", help="bind address (0.0.0.0 = reachable from Windows via localhost)")
     p.add_argument("--work-dir", default=None, help="where uploads and results are stored (default ~/bs3_data/web_jobs)")
     p.add_argument("--share", action="store_true", help="also create a public gradio.live link")
+    _add_models(p, backend=False)                         # the page chooses the model per analysis
     p.set_defaults(fn=cmd_web)
 
-    p = sub.add_parser("infer-dir", help="score every media file in a folder")
-    _add_common(p)
-    p.add_argument("dir")
-    p.add_argument("--out", required=True)
-    p.add_argument("--no-asr", action="store_true")
-    p.set_defaults(fn=cmd_infer_dir)
-
     p = sub.add_parser("eval-fiv2", help="accuracy on FIV2 clips")
-    _add_common(p)
+    _add_models(p)
+    p.add_argument("--lang", default=LANG, choices=["ru", "en"],
+                   help="language of speech (oceanai: ru -> MuPTA weights, en -> FIV2 weights)")
+    p.add_argument("--corpus", default=None, choices=["fi", "mupta"], help="oceanai: override the weight set")
     p.add_argument("--dir", required=True)
     p.add_argument("--labels", default=None)
     p.add_argument("--out", required=True)
     p.add_argument("--limit", type=int, default=0)
     p.add_argument("--asr", action="store_true", help="use Whisper instead of the .txt transcripts")
     p.set_defaults(fn=cmd_eval)
+    return ap
 
-    a = ap.parse_args(argv)
+
+def parse_args(argv=None) -> argparse.Namespace:
+    return build_parser().parse_args(argv)
+
+
+def main(argv=None):
+    a = parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     if a.verbose:
         logging.getLogger("bs").setLevel(logging.DEBUG)   # keep numba/urllib3 quiet

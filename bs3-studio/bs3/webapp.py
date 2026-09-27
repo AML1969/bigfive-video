@@ -740,14 +740,15 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
 
 def main(port: int = 7880, work_dir: str | None = None, share: bool = False,
          asr_model: str = "openai/whisper-large-v3-turbo", ollama_model: str = "qwen2.5vl:7b", mm_ckpt: str | None = None,
-         host: str = "0.0.0.0"):
-    """The page picks the model per analysis (OCEAN-AI or AMLAI 1.0); the Studio loads each one on first use."""
+         host: str = "0.0.0.0", models_dir: str | None = None):
+    """The page picks the model per analysis (OCEAN-AI or AMLAI 1.0); the Studio loads each one on first use.
+    `models_dir`: the OCEAN-AI weights cache (None = ~/bs/models)."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     os.environ.setdefault("no_proxy", "localhost,127.0.0.1,0.0.0.0")
     os.environ.setdefault("NO_PROXY", "localhost,127.0.0.1,0.0.0.0")
     wd = Path(work_dir or os.path.expanduser("~/bs3_data/web_jobs"))
     wd.mkdir(parents=True, exist_ok=True)
-    studio = Studio(asr_model=asr_model, ollama_model=ollama_model, mm_ckpt=mm_ckpt)
+    studio = Studio(asr_model=asr_model, ollama_model=ollama_model, mm_ckpt=mm_ckpt, models_dir=models_dir)
     demo = build_app(studio, wd)
     # allowed_paths: key-frame JPEGs live in the job folder, Gradio 5 refuses to serve files outside it
     demo.queue(default_concurrency_limit=1).launch(server_name=host, server_port=port, share=share, show_api=False,

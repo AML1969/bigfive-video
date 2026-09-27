@@ -552,8 +552,8 @@ def _speech_chart(plt, rep: dict, per: List[dict], out_dir: Path) -> str:
 # ---------------------------------------------------------------- modality contributions of the own model
 MOD_LEGEND = {"face": "лицо (кадры)", "audio": "голос (CLAP)", "audio_whisper": "голос (Whisper)",
               "audio_xlsr": "голос (XLS-R)", "audio_w2v_emo": "голос (wav2vec2)", "text": "речь (текст)",
-              "behavior": "описание поведения", "scene": "сцена (SSL-MEPR)"}
-MOD_SHORT = {"face": "лицо", "text": "речь", "behavior": "поведение", "scene": "сцена"}
+              "behavior": "описание поведения"}
+MOD_SHORT = {"face": "лицо", "text": "речь", "behavior": "поведение"}
 MOD_ROWS = {**RU_TITLES, "interview": "«Собеседование»"}
 
 

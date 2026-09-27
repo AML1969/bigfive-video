@@ -37,10 +37,12 @@ class Studio:
     server; the other model is never run for a second opinion. The Whisper pipeline of the segment analyzer
     (LongVideoAnalyzer, one per member) is handed over to the analyzer of the next member instead of being loaded
     again. The speech language is fixed to Russian (bs3.LANG). The emotion, voice and face models are shared by both
-    members."""
+    members. `models_dir`: the OCEAN-AI weights cache (None = the default of BackendConfig, ~/bs/models)."""
 
-    def __init__(self, asr_model="openai/whisper-large-v3-turbo", ollama_model="qwen2.5vl:7b", mm_ckpt=None):
+    def __init__(self, asr_model="openai/whisper-large-v3-turbo", ollama_model="qwen2.5vl:7b", mm_ckpt=None,
+                 models_dir=None):
         self.asr_model, self.ollama_model, self.mm_ckpt = asr_model, ollama_model, mm_ckpt
+        self.models_dir = models_dir
         self.lang = LANG
         self._lock = threading.Lock()
         self._be: Dict[str, object] = {}          # member -> loaded backend of that member alone (at most one)
@@ -80,9 +82,11 @@ class Studio:
                 kw = dict(lang=self.lang, asr_model=self.asr_model, ollama_model=self.ollama_model)
                 if self.mm_ckpt:
                     kw["checkpoint"] = self.mm_ckpt
+                oa_kw = dict(lang=self.lang, asr_model=self.asr_model)
+                if self.models_dir:
+                    oa_kw["models_dir"] = self.models_dir
                 cfg = EnsembleConfig(members=(member,), lang=self.lang, primary=member,
-                                     oceanai_cfg=BackendConfig(lang=self.lang, asr_model=self.asr_model)
-                                     if member == "oceanai" else None,
+                                     oceanai_cfg=BackendConfig(**oa_kw) if member == "oceanai" else None,
                                      mm_cfg=MMConfig(**kw) if member == "mm" else None)
                 self._be[member] = EnsembleBackend(cfg).load()
             return self._be[member]
