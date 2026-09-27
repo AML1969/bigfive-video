@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import List
 
-from .charts import EMO_RU
+from .labels import EMO_RU
 from .textfmt import fix_counts, fmt_secs, plural_ru
 
 

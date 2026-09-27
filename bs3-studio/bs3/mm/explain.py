@@ -208,8 +208,8 @@ def key_frame_info(paths: Sequence[str], crops: Optional[Sequence] = None, raw_j
     built from) and a short phrase about what is visible (`phrase_fn` — the local vision model, one request per
     frame, one retry, then the frame keeps no phrase and the caption falls back to the expression).
     Both helpers are optional; a failure of either never breaks the explanation."""
-    from ..analyses.face_expr import EXPR_RU
     from ..frame_captions import PHRASE_BUDGET, PHRASE_TRIES, clean_phrase
+    from ..labels import EXPR_RU
 
     info = [{"file": Path(p).name, "frame": _key_index(p)} for p in paths]
     if expression_fn is not None and crops is not None:

@@ -32,10 +32,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rerender_samples import OLD_NAMES, PDF_MUST, PDF_MUST_NOT, SECOND_OPINION, Checks, pdf_text  # noqa: E402
 
 from bs3 import MODALITIES, MODEL_TITLES, jobfiles  # noqa: E402
+from bs3.labels import model_title  # noqa: E402
 from bs3.narrative import NO_EXPLAIN_RU  # noqa: E402
 from bs3.norms import TRAIT_KEYS  # noqa: E402
 from bs3.webapp import N_PAGE, NO_FRAMES_OCEANAI, export_pdf, page_outputs  # noqa: E402
-from bs3.webparts import model_title  # noqa: E402
 
 MMP = re.compile(r"(?<!по рецепту )MM-PSYCHE")
 # indices of page_outputs (webapp.page_outputs): the blocks that hold the person's own words or the file itself

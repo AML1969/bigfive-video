@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 from . import MODEL_TITLES, settings
+from .labels import model_title
 from .textfmt import clock
 
 log = logging.getLogger("bs3.journal")
@@ -88,8 +89,7 @@ def result_lines(rep: dict) -> list[str]:
     model = view.get("model") or {}
     main_sys = meta.get("main_system") or model.get("selected") or model.get("primary")
     main = {k: (v.get("score") if isinstance(v, dict) else v) for k, v in (view.get("traits") or {}).items()}
-    src = MODEL_TITLES.get(main_sys, main_sys) + (", веса MuPTA" if main_sys == "oceanai" else "")
-    line = f"Итог ({src}): {_scores(main)}"
+    line = f"Итог ({model_title(main_sys)}): {_scores(main)}"
     iv = view.get("interview")
     iv = iv.get("score") if isinstance(iv, dict) else iv
     if iv is not None:

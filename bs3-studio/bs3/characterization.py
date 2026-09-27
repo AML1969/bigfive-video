@@ -25,15 +25,15 @@ from dataclasses import dataclass, field
 from importlib import resources
 
 from . import caveats
+from .mbti import AXES, AXIS_LABEL
 from .norms import TRAIT_KEYS
-from .scores import level, level_phrase, score_text, shown
+from .palette import HTML
+from .scores import level, level_phrase, num, score_text, shown
 from .textfmt import plural_ru
 
-AXES = ("EI", "SN", "TF", "JP")
-AXIS_LABEL = {"EI": "E–I", "SN": "S–N", "TF": "T–F", "JP": "J–P"}
 AXIS_OF = {"extraversion": "EI", "openness": "SN", "agreeableness": "TF", "conscientiousness": "JP"}
 MBTI_TRAITS = tuple(k for k in TRAIT_KEYS if k in AXIS_OF)          # O, C, E, A in the order of TRAIT_KEYS
-OUTLINE = "#808080"                                                  # palette.HTML track_outline, 3:1 on both themes
+OUTLINE = HTML["track_outline"]                                      # #808080, 3:1 on both themes
 
 _lex: dict | None = None
 
@@ -45,11 +45,6 @@ def load_lexicon() -> dict:
         with resources.files("bs3").joinpath("config/lexicon_ru.json").open("r", encoding="utf-8") as f:
             _lex = json.load(f)
     return copy.deepcopy(_lex)
-
-
-def _num(x) -> float | None:
-    from .scores import _num as n
-    return n(x)
 
 
 def _q(name: str | None) -> str:
@@ -148,7 +143,7 @@ def _by_distance(keys, ps: dict, view: dict) -> list:
     """The traits in the order of |v − 0.5| of the printed score; equal printed distances keep the order of the
     unrounded scores."""
     tr = view.get("traits") or {}
-    raw = {k: _num((tr.get(k) or {}).get("score")) for k in keys}
+    raw = {k: num((tr.get(k) or {}).get("score")) for k in keys}
     raw = {k: ps[k] if v is None else v for k, v in raw.items()}
     return sorted(keys, key=lambda k: (-round(abs(ps[k] - 0.5), 9), -abs(raw[k] - 0.5)))
 
@@ -316,29 +311,29 @@ def _p_behavior(view, T, ps) -> str:
     an = view.get("analyses") or {}
     out = []
     sp = an.get("speech") or {}
-    wpm = _num(sp.get("words_per_min_speech"))
+    wpm = num(sp.get("words_per_min_speech"))
     if wpm:
         tempo = "fast" if wpm > 160 else ("calm" if wpm >= 110 else "slow")
         n = int(round(wpm))
-        pause = _num(sp.get("pause_share"))
+        pause = num(sp.get("pause_share"))
         pauses = "" if pause is None else Bh["pauses"]["few" if pause * 100 < 10 else ("some" if pause * 100 < 25
                                                                                          else "many")]
         out.append(Bh["tempo"].format(tempo=Bh["tempo_words"][tempo], wpm=n,
                                       words=plural_ru(n, "слово", "слова", "слов"), pauses=pauses))
     vo = (an.get("voice") or {}).get("mean") or {}
-    arousal = _num(vo.get("arousal"))
+    arousal = num(vo.get("arousal"))
     if arousal is not None:
         v = "low" if arousal < 0.4 else ("high" if arousal > 0.6 else "mid")
         out.append(Bh["voice"].format(voice=Bh["voice_words"][v]))
     fa = (an.get("face") or {}).get("mean") or {}
-    fa = {k: _num(v) for k, v in fa.items() if _num(v) is not None}
+    fa = {k: num(v) for k, v in fa.items() if num(v) is not None}
     if fa:
         k, v = max(fa.items(), key=lambda kv: kv[1])
         caution = Bh["face_caution"] if k in ("sad", "fear", "sadness") else ""
         out.append(Bh["face"].format(expression=Bh["face_names"].get(k, k), share=int(round(100 * v)),
                                      caution=caution))
     te = (an.get("emotions_text") or {}).get("mean") or {}
-    te = {k: _num(v) for k, v in te.items() if _num(v) is not None}
+    te = {k: num(v) for k, v in te.items() if num(v) is not None}
     if te:
         if te.get("neutral", 0.0) >= 0.6:
             out.append(Bh["tone_neutral"])

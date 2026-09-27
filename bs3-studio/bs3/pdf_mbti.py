@@ -19,8 +19,9 @@ from __future__ import annotations
 import math
 
 from . import caveats
+from .labels import mbti_model_title
 from .mbti import AXES, AXIS_LABEL, load_config, source_title
-from .mbti_html import READ_CAVEATS, TABLE_NOTE, TABLE_ROWS, corr_cell, panel_title, summary_line
+from .mbti_html import READ_CAVEATS, TABLE_NOTE, TABLE_ROWS, corr_cell, summary_line
 from .pdf_report import NOTE_GREY, TEXT_W_MM, Report
 from .textfmt import clock
 
@@ -289,7 +290,7 @@ def letter_strip(pdf: Report, lanes: list[tuple[str, list[dict]]]) -> None:
 
 def _strip_lanes(mb: dict) -> tuple[list, list[str]]:
     """(lanes, summary lines) of the strip: the one model that ran (3.1), titled as its panel on the page."""
-    lanes = [(panel_title(mb), mb.get("timeline") or [])]
+    lanes = [(mbti_model_title(mb), mb.get("timeline") or [])]
     return lanes, [x for x in [summary_line(mb)] if x]
 
 
@@ -300,7 +301,7 @@ def mbti_section(pdf: Report, view: dict, mb: dict | None) -> None:
         return
     cfg = load_config()
     pdf.section("Тип MBTI (перевод шкал Big Five)", "mbti", keep_mm=52)
-    _type_line(pdf, panel_title(mb), mb, with_alternatives=True)
+    _type_line(pdf, mbti_model_title(mb), mb, with_alternatives=True)
     if mb.get("source") == "own_model" and mb.get("primary_missing"):
         pdf.caption(caveats.text("C20"), 7.5)
     pdf.ln(1.5)

@@ -15,7 +15,7 @@ from pathlib import Path
 
 from samples import english, rep
 
-from bs3 import mbti, scores
+from bs3 import labels, mbti, scores
 from bs3.norms import TRAIT_KEYS
 
 DOC = {"extraversion": 0.72, "openness": 0.61, "agreeableness": 0.48, "conscientiousness": 0.55,
@@ -118,7 +118,7 @@ def test_absolute_scale_config():
     for key in ("references", "ru_prov_file", "thresholds", "version", "llm_interpretation", "stable_share"):
         assert key not in cfg, key
     assert cfg["borderline"] == 0.15 and mbti.SCHEMA_VERSION == 3 and mbti.METHOD == "raw"
-    assert mbti.SOURCE_RU == {"ocean_ai": "OCEAN-AI", "own_model": "AMLAI 1.0"}
+    assert labels.SOURCE_RU == {"ocean_ai": "OCEAN-AI", "own_model": "AMLAI 1.0"}
     assert not hasattr(mbti, "agreement") and not hasattr(mbti, "agreement_line")
     assert "lang" not in inspect.signature(mbti.mbti_for).parameters
     b = rep("B")["variant_scores"]

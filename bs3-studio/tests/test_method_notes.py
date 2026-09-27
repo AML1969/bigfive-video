@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from samples import english, rep
 
-from bs3 import narrative, scores, webparts
+from bs3 import labels, narrative, scores, textfmt, webparts
 
 RELATIVE = ("опорн", "положени", "русских роликов", "обработанных", "большинства", "предварительн", "типичн",
             "на русской речи её", "на русских роликах", "порядок черт")
@@ -103,13 +103,13 @@ def test_no_second_opinion_block():
     r["variant_scores"] = {"mm": r["variant_scores"]["mm"]}
     own = webparts.model_line(scores.clean_view(r))
     assert own.startswith("Модель AMLAI 1.0: открытость опыту 0.") and "MuPTA" not in own and "экстраверсия 0.25" in own
-    assert webparts.model_title("oceanai") == "OCEAN-AI, веса MuPTA" and webparts.model_title("mm") == "AMLAI 1.0"
+    assert labels.model_title("oceanai") == "OCEAN-AI, веса MuPTA" and labels.model_title("mm") == "AMLAI 1.0"
     assert webparts.MEMBER_TITLES["mm"] == "AMLAI 1.0"
 
 
 def test_pct_phrases_fiv2_only():
     for ref in ("ref:ru_prov_2026-09-25", "пула обработанных русских роликов (N=5)", ""):
-        assert webparts._pct_phrase(92.9, ref) == ("", False)
-    assert webparts._pct_phrase(None, "train FIV2") == ("", False)
-    assert webparts._pct_phrase(30, "train FIV2") == ("ниже, чем у 70% людей в FIV2", True)
-    assert webparts._pct_phrase(72, "train FIV2") == ("выше, чем у 72% людей в FIV2", True)
+        assert textfmt.pct_phrase(92.9, ref) == ("", False)
+    assert textfmt.pct_phrase(None, "train FIV2") == ("", False)
+    assert textfmt.pct_phrase(30, "train FIV2") == ("ниже, чем у 70% людей в FIV2", True)
+    assert textfmt.pct_phrase(72, "train FIV2") == ("выше, чем у 72% людей в FIV2", True)

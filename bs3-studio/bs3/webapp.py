@@ -20,8 +20,9 @@ from pathlib import Path, PurePosixPath
 
 from . import (DEFAULT_MODEL, MODEL_TITLES, PRODUCT, PRODUCT_SLUG, caveats, characterization, jobfiles, journal,
                mbti_html, settings)
-from .charts import (EMO_RU, fig_emotion_bars, fig_emotions_timeline, fig_face_expr, fig_radar, fig_speech_timeline,
+from .charts import (fig_emotion_bars, fig_emotions_timeline, fig_face_expr, fig_radar, fig_speech_timeline,
                      fig_traits_timeline, fig_voice_timeline, plot_html as _plot_html)
+from .labels import EMO_RU
 from .mbti import fact_card, get_mbti
 from .narrative import NO_EXPLAIN_RU, method_notes
 from .narrative2 import FACTS_LEGEND, card_item, fact_label, key_facts

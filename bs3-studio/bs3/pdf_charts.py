@@ -18,7 +18,8 @@ import math
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from .charts import _EMO_BAR_ORDER, _RADAR_LABEL, EMO_RU, VOICE_RU, _segments
+from .charts import _segments
+from .labels import EMO_RU, EMOTION_ORDER, RADAR_LABEL, ROW_TITLES, VOICE_RU, model_title
 from .norms import RU_TITLES, TRAIT_KEYS
 from .palette import (BARS_PDF, EMO_ALIAS, EMO_HEAT_L, EMO_HEAT_PDF, MODALITY_PDF, RADAR_PDF, SPEECH_PDF, THEME,
                       TRAIT_MARKER_PDF, TRAIT_PDF, VOICE_MARKER_PDF, VOICE_PDF, emo_heat_pdf, emo_heat_step,
@@ -181,7 +182,6 @@ def _radar_chart(plt, rep: dict, out_dir: Path) -> Optional[str]:
     """Print version of charts.fig_radar: the score of the one model that ran, filled blue (3.1: no second opinion);
     the spokes run counterclockwise from 0° (Открытость on the right) every 72°, the scale sits at 180°."""
     import matplotlib.patheffects as pe
-    from .webparts import model_title
     traits = rep.get("traits") or {}
     if not all(k in traits for k in TRAIT_KEYS):
         return None
@@ -197,7 +197,7 @@ def _radar_chart(plt, rep: dict, out_dir: Path) -> Optional[str]:
     ax.set_rlabel_position(180)
     for t in ax.get_yticklabels():            # the scale labels cross the data lines: a white halo keeps them legible
         t.set_path_effects([pe.withStroke(linewidth=2.2, foreground="white")])
-    ax.set_xticks(ang, [_RADAR_LABEL[k].replace("<br>", "\n") for k in TRAIT_KEYS], fontsize=8, color=INK)
+    ax.set_xticks(ang, [RADAR_LABEL[k].replace("<br>", "\n") for k in TRAIT_KEYS], fontsize=8, color=INK)
     ax.tick_params(axis="x", pad=5)
     ax.grid(color=GRID, lw=0.5)
     ax.spines["polar"].set_color(AXIS); ax.spines["polar"].set_linewidth(0.8)
@@ -276,7 +276,7 @@ def _emotion_profile_chart(plt, rep: dict, out_dir: Path) -> Optional[str]:
     w = 0.38 if len(series) == 2 else 0.6
     for i, (m, lab, col, hatch) in enumerate(series):
         off = (i - (len(series) - 1) / 2) * w
-        ys = [max(0.0, _num(m.get(k)) if not math.isnan(_num(m.get(k))) else 0.0) for k in _EMO_BAR_ORDER]
+        ys = [max(0.0, _num(m.get(k)) if not math.isnan(_num(m.get(k))) else 0.0) for k in EMOTION_ORDER]
         # white hatching on the face bars: the hatch takes the edge colour, the edge itself is not drawn (lw=0)
         bars = ax.bar([j + off for j in range(len(ys))], ys, width=w, color=col, label=lab, zorder=2,
                       **(dict(hatch=hatch, edgecolor="white", linewidth=0) if hatch else dict(linewidth=0)))
@@ -286,9 +286,9 @@ def _emotion_profile_chart(plt, rep: dict, out_dir: Path) -> Optional[str]:
     ax.set_ylim(0, 1.1)                        # room for the label of a bar at 100%
     ax.set_yticks([0, .2, .4, .6, .8, 1]); ax.yaxis.set_major_formatter(PercentFormatter(1.0, decimals=0))
     ax.set_ylabel("средняя доля за ролик")
-    ax.set_xticks(range(len(_EMO_BAR_ORDER)), [EMO_RU[k] for k in _EMO_BAR_ORDER], fontsize=8.5, color=INK)
+    ax.set_xticks(range(len(EMOTION_ORDER)), [EMO_RU[k] for k in EMOTION_ORDER], fontsize=8.5, color=INK)
     ax.tick_params(axis="x", length=0, pad=4)
-    ax.set_xlim(-0.6, len(_EMO_BAR_ORDER) - 0.4)
+    ax.set_xlim(-0.6, len(EMOTION_ORDER) - 0.4)
     ax.set_axisbelow(True); ax.grid(axis="y", color=GRID, lw=0.5)
     _hide_spines(ax, "top", "right")
     ax.set_title("Средний профиль эмоций за ролик")
@@ -554,7 +554,6 @@ MOD_LEGEND = {"face": "лицо (кадры)", "audio": "голос (CLAP)", "au
               "audio_xlsr": "голос (XLS-R)", "audio_w2v_emo": "голос (wav2vec2)", "text": "речь (текст)",
               "behavior": "описание поведения"}
 MOD_SHORT = {"face": "лицо", "text": "речь", "behavior": "поведение"}
-MOD_ROWS = {**RU_TITLES, "interview": "«Собеседование»"}
 
 
 def _mod_colour(m: str) -> str:
@@ -590,7 +589,7 @@ def _modalities_chart(plt, expl: dict | None, out_dir: Path) -> Optional[str]:
             left += s
         if small:
             ax.text(1.012, i, " · ".join(small), transform=tr, ha="left", va="center", fontsize=8, color=MUTED)
-    ax.set_yticks(range(len(keys)), [MOD_ROWS.get(k, k) for k in keys], fontsize=8.5, color=INK)
+    ax.set_yticks(range(len(keys)), [ROW_TITLES.get(k, k) for k in keys], fontsize=8.5, color=INK)
     ax.tick_params(axis="y", length=0)
     ax.set_ylim(len(keys) - 0.5, -0.5)
     ax.set_xlim(0, 1); ax.set_xticks([0, .2, .4, .6, .8, 1]); ax.xaxis.set_major_formatter(PercentFormatter(1.0, decimals=0))

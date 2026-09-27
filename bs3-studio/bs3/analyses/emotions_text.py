@@ -7,7 +7,7 @@ from typing import Dict, List
 
 import torch
 
-EMOTION_ORDER = ["joy", "surprise", "neutral", "sadness", "fear", "anger", "disgust"]
+from ..labels import EMOTION_ORDER  # noqa: F401  (the order of the charts; pipeline takes it from here)
 
 
 class TextEmotion:

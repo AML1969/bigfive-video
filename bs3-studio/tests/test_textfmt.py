@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from bs3 import (caveats, characterization, charts, journal, mbti, mbti_html, narrative, narrative2, pdf_charts,
                  pdf_mbti, pdf_report, report, scores, textfmt, webapp, webparts)
-from bs3.textfmt import clean_word, clock, fiv2_ref_ru, fix_counts, fmt_secs, mmss_labels, plural_ru, seg_label
+from bs3.textfmt import (clean_word, clock, fiv2_ref_ru, fix_counts, fmt_secs, mmss_labels, pct_phrase, plural_ru,
+                         seg_label)
 
 
 def _old_auto(sec) -> str:            # mbti_html._mmss = pdf_mbti._mmss = journal._mmss (charts._clock without None)
@@ -104,10 +105,28 @@ def test_moved_formatters_keep_their_output():
         "11 слов и 12 отрезков и 22 отрезка", ""]
 
 
+def test_pct_phrase_words_only_a_fiv2_percentile():
+    """The wording of the score bars of the page (webparts._pct_phrase) and of the PDF (pdf_report.pct_phrase, which
+    took the first element) before stage 10; both now call textfmt.pct_phrase."""
+    fiv2 = "train FIV2"
+    assert [pct_phrase(p, fiv2) for p in (0, 30, 44.9, 45, 50, 55, 55.1, 72, 100, 120, -3, "61.5")] == [
+        ("ниже, чем у 100% людей в FIV2", True), ("ниже, чем у 70% людей в FIV2", True),
+        ("ниже, чем у 55% людей в FIV2", True), ("примерно посередине среди людей в FIV2", True),
+        ("примерно посередине среди людей в FIV2", True), ("примерно посередине среди людей в FIV2", True),
+        ("выше, чем у 55% людей в FIV2", True), ("выше, чем у 72% людей в FIV2", True),
+        ("выше, чем у 100% людей в FIV2", True), ("выше, чем у 100% людей в FIV2", True),
+        ("ниже, чем у 100% людей в FIV2", True), ("выше, чем у 62% людей в FIV2", True)]
+    assert pct_phrase(72, "train First Impressions V2 (6000 клипов)") == ("выше, чем у 72% людей в FIV2", True)
+    for ref in ("ref:ru_prov_2026-09-25", "пула обработанных русских роликов (N=5)", "", None):
+        assert pct_phrase(72, ref) == ("", False)
+    assert pct_phrase(None, fiv2) == ("", False)
+
+
 def test_the_copies_are_gone():
     """Each module either takes the formatter from textfmt or does not have the name at all."""
     shared = {"plural_ru": plural_ru, "fix_counts": fix_counts, "fmt_secs": fmt_secs, "seg_label": seg_label,
-              "mmss_labels": mmss_labels, "clean_word": clean_word, "clock": clock, "fiv2_ref_ru": fiv2_ref_ru}
+              "mmss_labels": mmss_labels, "clean_word": clean_word, "clock": clock, "fiv2_ref_ru": fiv2_ref_ru,
+              "pct_phrase": pct_phrase}
     for mod in (caveats, characterization, charts, journal, mbti, mbti_html, narrative, narrative2, pdf_charts,
                 pdf_mbti, pdf_report, scores, webapp, webparts):
         for name, fn in shared.items():
@@ -116,6 +135,8 @@ def test_the_copies_are_gone():
            charts: "_clock", webapp: "_clock", webparts: "_ref_ru", pdf_report: "_ref_ru"}
     for mod, name in old.items():
         assert not hasattr(mod, name), f"{mod.__name__}.{name}"
+    assert not hasattr(webparts, "_pct_phrase") and not hasattr(webparts, "_is_fiv2")
+    assert pdf_report.pct_phrase is pct_phrase
     for name in ("fmt_secs", "seg_label", "mmss_labels", "clean_word", "_SEC_LABEL"):
         assert not hasattr(report, name), f"report.{name}"
     assert hasattr(report, "build_report") and hasattr(report, "DISCLAIMER_RU")

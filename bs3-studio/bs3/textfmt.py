@@ -1,5 +1,5 @@
 """Shared formatters of BS Profiler 3.1: Russian noun forms for a count, clock times, segment labels, durations,
-attributed words and the FIV2 reference. The page, the PDF, the journal and the texts take them from here and keep no
+attributed words, the FIV2 reference and the FIV2 percentile in words. The page, the PDF, the journal and the texts take them from here and keep no
 copies of their own, so the same number is never written two ways.
 
 Standard library only, no bs3 import: every layer of the package may use it (tests/test_layers.py).
@@ -92,3 +92,23 @@ def fiv2_ref_ru(ref: str) -> str:
     r = re.sub(r",\s*(?:своя модель|AMLAI 1\.0)\s*$", "", ref or "")
     return r.replace("train First Impressions V2", "обучающей выборки First Impressions V2").replace(
         "train FIV2", "обучающей выборки FIV2")
+
+
+def _is_fiv2(ref: str | None) -> bool:
+    """A percentile against the First Impressions V2 norms (6000 clips of that dataset). Percentiles against the pool
+    of processed videos ("пула …") or a group of them ("ref:…") are never shown (change of 2026-09-26)."""
+    r = ref or ""
+    return "First Impressions V2" in r or "FIV2" in r
+
+
+def pct_phrase(pct, ref: str | None) -> tuple[str, bool]:
+    """(the FIV2 percentile in words, whether a percentile tick may be drawn): «выше, чем у 72% людей в FIV2»;
+    ("", False) for anything that is not a FIV2 percentile (Russian speech shows the score only). The score bars of
+    the page and of the PDF word the same number the same way."""
+    if pct is None or not _is_fiv2(ref):
+        return "", False
+    p = max(0.0, min(100.0, float(pct)))
+    group = "людей в FIV2"
+    if 45 <= p <= 55:
+        return f"примерно посередине среди {group}", True
+    return (f"выше, чем у {p:.0f}% {group}" if p > 50 else f"ниже, чем у {100 - p:.0f}% {group}"), True

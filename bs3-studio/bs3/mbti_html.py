@@ -18,6 +18,7 @@ from __future__ import annotations
 import html as _html
 
 from . import caveats
+from .labels import mbti_model_title
 from .mbti import AXES, AXIS_LABEL, border_text, load_config, source_title
 from .norms import RU_NAMES
 from .palette import HTML as PAL
@@ -48,12 +49,6 @@ def corr_cell(c: dict) -> str:
 
 def _e(s) -> str:
     return _html.escape(str(s), quote=True)
-
-
-def panel_title(mb: dict) -> str:
-    """«OCEAN-AI, веса MuPTA» / «AMLAI 1.0»: the model whose type the panel and the strip show (one model, 3.1)."""
-    title = source_title(mb)
-    return title + (", веса MuPTA" if mb.get("source") == "ocean_ai" else "")
 
 
 def _letters(item: dict, size: int) -> str:
@@ -157,7 +152,7 @@ def _panel(item: dict, cfg: dict) -> str:
     rows = "".join(_axis_row(ax, (item.get("axes") or {}).get(ax) or {"missing": True}, cfg, marker) for ax in AXES)
     return (f"<div style='border:1px solid {OUTLINE};border-radius:8px;padding:12px;min-width:0'>"
             f"<div style='font-size:15px;font-weight:600;line-height:1.4;margin-bottom:8px'>"
-            f"{_e(panel_title(item))}</div>"
+            f"{_e(mbti_model_title(item))}</div>"
             f"<div style='display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline'>{_letters(item, 40)}"
             + (f"<span style='font-size:18px;font-weight:600'>«{_e(name)}»</span>" if name else "") + "</div>"
             f"<div style='{TEXT14};margin-top:6px'>{_e(_loose_line(item, names))}</div>"
@@ -274,7 +269,7 @@ def strip_html(mb: dict | None) -> str:
     total = int(mb.get("segments_total") or len(entries) or 1)
     if total <= 1 or not entries:
         return f"<p style='{TEXT14};margin:0'>{_e(caveats.text('C19'))}</p>"
-    body = _lane(entries, panel_title(mb), source_title(mb))
+    body = _lane(entries, mbti_model_title(mb), source_title(mb))
     summary = summary_line(mb)
     return (body + f"<div style='{NOTE};margin-top:6px'>{_e(LEGEND)}</div>"
             + (f"<p style='{TEXT14};margin:10px 0 0'>{_e(summary)}</p>" if summary else "")

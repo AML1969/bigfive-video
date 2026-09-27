@@ -21,19 +21,15 @@ from pathlib import Path
 from fpdf import FPDF
 
 from . import MODALITIES, MODEL_TITLES, PRODUCT, caveats, frame_captions, settings
+from .labels import EMO_RU, EMOTION_ORDER, VOICE_RU, model_title
 from .narrative import NO_EXPLAIN_RU
 from .narrative2 import FACTS_LEGEND, analyses_parts, card_item, fact_label, key_facts
-from .norms import RU_SHORT, TRAIT_KEYS
+from .norms import RU_SHORT, RU_TITLES, TRAIT_KEYS
 from .palette import CARD_PDF, FACT_VALUE_PDF, SCORE_BAR_PDF, TRAIT_BAR_PDF
 from .ru_texts import transcript_shown, vocabulary_shown
 from .scores import scored
-from .textfmt import SEC_LABEL, clock, fiv2_ref_ru, fix_counts, fmt_secs, plural_ru, seg_label
+from .textfmt import SEC_LABEL, clock, fiv2_ref_ru, fix_counts, fmt_secs, pct_phrase, plural_ru, seg_label
 
-TITLES = {
-    "openness": "Открытость опыту", "conscientiousness": "Добросовестность", "extraversion": "Экстраверсия",
-    "agreeableness": "Доброжелательность", "emotional_stability": "Эмоциональная стабильность",
-    "interview": "Впечатление «собеседование»",
-}
 # «Значения по отрезкам» has 14 columns: the short trait names are broken over two lines where one line is wider than
 # its column of numbers; the legend under the table joins the halves back («Добро-жел.» -> «Доброжел.»)
 SEG_HEAD = {**RU_SHORT, "agreeableness": "Добро-\nжел.", "emotional_stability": "Эм.\nстаб.", "interview": "Собе-\nсед."}
@@ -44,8 +40,6 @@ MEDIA_TAGS = {"creation_time": "Записан (метка в файле)", "enc
               "title": "Название"}
 # training data of each model, for appendix А
 TRAINED_ON = {"oceanai": "MuPTA (русская речь)", "mm": "First Impressions V2"}
-EMO_NAMES = {"joy": "радость", "surprise": "удивление", "neutral": "нейтрально", "sadness": "грусть", "fear": "страх",
-             "anger": "злость", "disgust": "отвращение"}
 NOTE_GREY = 85                      # #555555, 7.46:1 on white: notes, card labels, the footer
 BEHAVIOR_MAX = 6                    # appendix «Описание поведения»: at most this many notable segments
 
@@ -85,20 +79,6 @@ def _main_model(report: dict) -> str | None:
     return (report.get("view_meta") or {}).get("main_system") or recorded_model(report)
 
 
-def model_title(report: dict) -> str:
-    """«OCEAN-AI, веса MuPTA» / «AMLAI 1.0»: the one model of the report, as on the page (webparts.model_title)."""
-    from .webparts import model_title as _title
-    return _title(_main_model(report))
-
-
-def pct_phrase(pct, ref: str = "") -> str:
-    """'ниже, чем у 95% людей в FIV2' / 'примерно посередине среди людей в FIV2'; '' for anything but a FIV2
-    percentile. The wording is the one of the score bars of the web page: webparts writes them, so the same number is
-    never worded two ways."""
-    from .webparts import _pct_phrase
-    return _pct_phrase(pct, ref)[0]
-
-
 def _asr_ru(name) -> str:
     """'openai/whisper-large-v3-turbo' -> 'Whisper large-v3-turbo': the model name without the hub prefix."""
     m = re.match(r"^(?:[\w.-]+/)?whisper-(.+)$", str(name or ""), re.I)
@@ -117,7 +97,7 @@ def _group_name(keys: list[str]) -> str:
     """Which score rows a FIV2 percentile applies to, for the note under the score bars."""
     if set(keys) == set(TRAIT_KEYS):
         return "пять черт"
-    return ", ".join("«собеседование»" if k == "interview" else TITLES[k].lower() for k in keys)
+    return ", ".join("«собеседование»" if k == "interview" else RU_TITLES[k].lower() for k in keys)
 
 
 def _rgb(hexc: str) -> tuple:
@@ -427,7 +407,7 @@ class Report(FPDF):
         for k, t in self._bar_rows(traits, interview):
             pct = t.get("percentile", t.get("percentile_vs_fiv2"))
             ref = t.get("percentile_ref", "train First Impressions V2 (6000 клипов)" if pct is not None else "")
-            if pct is not None and pct_phrase(pct, ref):
+            if pct is not None and pct_phrase(pct, ref)[0]:
                 groups.setdefault(f"относительно {fiv2_ref_ru(ref)}", []).append(k)
         parts = ["Длина полоски — оценка модели от 0 до 1; уровни черт и буквы MBTI считаются по этой же шкале, "
                  "середина — 0.5."]
@@ -461,7 +441,7 @@ class Report(FPDF):
         c = SCORE_BAR_PDF
         # the label column is as wide as the longest title; the phrase after the bar must end at the right margin
         self.set_font("ui", "", 8.5)
-        label_w = max(self.get_string_width(TITLES[k]) for k, _ in items) + 3
+        label_w = max(self.get_string_width(RU_TITLES[k]) for k, _ in items) + 3
         x = self.l_margin + label_w
         row_h = 6.0
         for k, t in items:
@@ -475,7 +455,7 @@ class Report(FPDF):
                 self.set_y(yl + 1.0)
             self.set_x(self.l_margin)
             self.set_font("ui", "", 8.5)
-            self.cell(label_w, row_h, TITLES[k])
+            self.cell(label_w, row_h, RU_TITLES[k])
             x, y = self.get_x(), self.get_y() + (row_h - bar_h) / 2
             # track: light fill with a grey outline, so the full 0…1 length is visible (outline 3.84:1 on white)
             self.set_fill_color(c["track"]); self.set_draw_color(c["outline"]); self.set_line_width(0.2)
@@ -494,7 +474,7 @@ class Report(FPDF):
             self.line(xm, y, xm, y + bar_h)
             self.set_draw_color(0)
             self.set_x(x + bar_w + 2)
-            text = f"{score:.2f}   {pct_phrase(pct, ref)}".rstrip()
+            text = f"{score:.2f}   {pct_phrase(pct, ref)[0]}".rstrip()
             # cell() insets the text by c_margin on both sides: the room for it is that much smaller
             room = self.l_margin + self.epw - self.get_x() - 2 * self.c_margin
             for pt in (8, 7.5, 7.2, 7.0):
@@ -710,7 +690,8 @@ def _passport(pdf: Report, report: dict, media: dict | None, fname: str) -> None
     if t.get("total_wall", t.get("total")) is not None:
         analysis.append(f"время обработки {fmt_secs(t.get('total_wall', t.get('total')))}")
     # one model per analysis (3.1): the model of the view, «OCEAN-AI, веса MuPTA» or «AMLAI 1.0»
-    rows = [("Файл", " · ".join(parts)), ("Анализ", " · ".join(p for p in analysis if p)), ("Модель", model_title(report)),
+    rows = [("Файл", " · ".join(parts)), ("Анализ", " · ".join(p for p in analysis if p)),
+            ("Модель", model_title(_main_model(report))),
             ("Отчёт", f"создан {_dt.datetime.now().strftime('%Y-%m-%d %H:%M')}; технические сведения о файле и анализе — "
                       f"в приложении {pdf.appx.get('file', 'А')}")]
     pdf.set_font("ui", "B", 8.5)
@@ -904,7 +885,6 @@ def _voice_speech_section(pdf: Report, report: dict, charts: dict) -> None:
     """4. Voice and speech together, like the web row: intro, the two time charts, «Речь в цифрах», frequent words."""
     if "voice_speech" not in pdf.plan:
         return
-    from .charts import VOICE_RU
     an = report.get("analyses") or {}
     parts = analyses_parts(report)
     intro = " ".join(p for p in (parts["voice"], parts["speech"]) if p)
@@ -1088,7 +1068,7 @@ def _explain_section(pdf: Report, report: dict, explanation, frames: list, chart
     if rw_all:
         try:
             from .narrative import words_summary
-            paras = words_summary(rw_all, explanation, TITLES)
+            paras = words_summary(rw_all, explanation, RU_TITLES)
         except Exception as e:  # noqa: BLE001  (never let the words block break the whole PDF)
             paras = [f"Список слов недоступен: {str(e)[:120]}"]
         if paras:
@@ -1147,7 +1127,7 @@ def _analysis_rows(report: dict) -> list:
     m = report.get("model") or {}
     main = _main_model(report)
     mods = [x for x in report.get("modalities_used") or [] if x not in MODEL_TITLES] or list(MODALITIES.get(main, ()))
-    rows = [("Модель", model_title(report)),
+    rows = [("Модель", model_title(main)),
             ("Распознавание речи", _asr_ru(m.get("asr_model")) if m.get("asr_model") else "готовый транскрипт"),
             ("Обучающие данные", TRAINED_ON.get(main) or str(m.get("trained_on") or "—")),
             ("Модальности", ", ".join(MODALITY_TITLES.get(x, x) for x in mods) or "—"),
@@ -1180,7 +1160,8 @@ def _dominant_text(r: dict | None, source: str) -> str:
     if source == "text" and _empty_text(r):
         return "нет речи" if _seg_words(r) == 0 else "нет текста"
     d = dominant_emotion(r, source)
-    return f"{EMO_NAMES.get(d[0], d[0])} {d[1]:.0%}" if d else "—"
+    # only the seven text emotions are named (the face labels come aliased to them); any other label stays as it is
+    return f"{EMO_RU[d[0]] if d[0] in EMOTION_ORDER else d[0]} {d[1]:.0%}" if d else "—"
 
 
 def _segments_table(pdf: Report, report: dict, mb: dict | None = None) -> None:
@@ -1250,7 +1231,7 @@ def _segments_table(pdf: Report, report: dict, mb: dict | None = None) -> None:
     pdf.table(header, rows, widths, size=size, groups=groups, row_h=4.8,
               cont_title=f"Приложение {pdf.appx.get('segments', 'Б')}. Значения по отрезкам (продолжение)")
     pdf.c_margin = c_margin
-    legend = ", ".join(f"{_one_line(SEG_HEAD[k])} — {TITLES[k].lower() if k != 'interview' else 'впечатление «собеседование»'}"
+    legend = ", ".join(f"{_one_line(SEG_HEAD[k])} — {RU_TITLES[k].lower() if k != 'interview' else 'впечатление «собеседование»'}"
                        for k in keys) + ". "
     if mbti_col:
         legend += ("MBTI — тип отрезка, X — ось на границе (подробнее — в разделе "
@@ -1276,7 +1257,6 @@ def _notable(report: dict, has_expl: bool) -> dict:
     """{start of a segment: [reasons]} of the notable segments, at most BEHAVIOR_MAX, chosen in this order: the segment
     for the explanations, segments with unusual scores (largest deviation first), segments whose dominant speech
     emotion or facial expression differs from the one of the whole video (largest share first)."""
-    from .charts import EMO_RU
     from .narrative import odd_segments
     from .pdf_charts import dominant_emotion
     from .palette import EMO_ALIAS

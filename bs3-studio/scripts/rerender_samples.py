@@ -149,10 +149,9 @@ def check_pdf(c: Checks, src: Path, dest: Path, mb: dict | None, exp: dict | Non
         seg_types = {e["type"] for e in mb.get("timeline") or [] if e.get("type")}
         c.ok(" MBTI " in appx and all(t in appx for t in seg_types),
              f"MBTI column in the appendix with {len(seg_types)} segment type(s)")
-        from bs3 import mbti_html
-        from bs3.webparts import model_title
+        from bs3.labels import mbti_model_title, model_title
         main = (mb.get("model") or "oceanai")
-        c.ok(f"Модель {model_title(main)}" in text and f"{mbti_html.panel_title(mb)}: " in text,
+        c.ok(f"Модель {model_title(main)}" in text and f"{mbti_model_title(mb)}: " in text,
              f"PDF names one model: {model_title(main)}")
         if main == "oceanai":
             from bs3.narrative import NO_EXPLAIN_RU
@@ -176,7 +175,7 @@ def check_pdf(c: Checks, src: Path, dest: Path, mb: dict | None, exp: dict | Non
 
 
 def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path | None = None) -> Checks:
-    from bs3 import caveats, mbti, mbti_html, narrative2, webparts
+    from bs3 import caveats, labels, mbti, mbti_html, narrative2
     from bs3.charts import fig_traits_timeline
     from bs3.narrative import NO_EXPLAIN_RU
     from bs3.scores import clean_view
@@ -237,7 +236,7 @@ def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path |
         plain = re.sub(r"<[^>]+>", " ", h)
         c.ok(not SECOND_OPINION.search(plain), f"no «второе мнение» in {name}")
         c.ok(not OLD_NAMES.search(plain), f"no 3.0 names (своя модель, MM-PSYCHE, roles) in {name}")
-    title = mbti_html.panel_title(mb) if mb else ""
+    title = labels.mbti_model_title(mb) if mb else ""
     c.ok(bool(title) and f">{title}</div>" in types and f">{title}</div>" in strip,
          f"the panel and the strip are titled «{title}»")
     c.ok(f"{mbti.source_title(mb)}: " in strip if mb else bool(strip), "the strip summary starts with the model")
@@ -258,7 +257,7 @@ def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path |
         c.ok(bars.count("Впечатление") == 0 and not any("собеседовани" in re.sub(r"<[^>]+>", " ", h).lower()
                                                        for h in (bars, facts, traits_plot, char, method)),
              "no label «собеседование» on the OCEAN-AI page (bars, facts, chart, characterization, method)")
-    c.ok(members.startswith(f"Модель {webparts.model_title(meta['main_system'])}: ")
+    c.ok(members.startswith(f"Модель {labels.model_title(meta['main_system'])}: ")
          and "\nОбработка заняла " in members, "«Модель и время обработки»: the model line and the time")
     # segments without the main system: gaps on the chart, C13 in «Как получены оценки»
     dropped = meta["segments_without_primary"]

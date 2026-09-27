@@ -12,23 +12,14 @@ import html as _html
 import json
 from typing import List
 
+from .labels import EMO_RU, EMOTION_ORDER, EXPR_ORDER, RADAR_LABEL, VOICE_RU, model_title
 from .norms import RU_TITLES, TRAIT_KEYS
 from .palette import (BARS_WEB, EMO_ALIAS, FONT_FAMILY, RADAR_WEB, SPEECH_WEB, THEME, TRAIT_SYMBOL, TRAIT_WEB,
                       VOICE_SYMBOL, VOICE_WEB, emo)
 from .textfmt import clock, seg_label
 
-EMO_RU = {"joy": "радость", "surprise": "удивление", "neutral": "нейтрально", "sadness": "грусть", "fear": "страх",
-          "anger": "злость", "disgust": "отвращение",
-          "happy": "радость", "sad": "грусть", "angry": "злость"}
-VOICE_RU = {"arousal": "возбуждение", "dominance": "уверенность", "valence": "позитивность"}
-
 # legend names that differ from the shared RU_TITLES (the dotted line style of the interview series is named explicitly)
 _TRAIT_NAME = {**RU_TITLES, "interview": "Пригласить на собеседование (пунктир)"}
-# radar axis labels: long names are split so they are not cut off by a narrow column
-_RADAR_LABEL = {"openness": "Открытость<br>опыту", "conscientiousness": "Добросовест-<br>ность",
-                "extraversion": "Экстра-<br>версия", "agreeableness": "Доброжела-<br>тельность",
-                "emotional_stability": "Эмоциональная<br>стабильность"}
-_EMO_BAR_ORDER = ["joy", "surprise", "neutral", "sadness", "fear", "anger", "disgust"]
 # the page font for the chart iframes (the same Google Fonts file as the Gradio theme, so it comes from the cache)
 FONT_CSS = "https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600&display=swap"
 
@@ -178,11 +169,10 @@ def fig_radar(rep: dict, theme: str = "dark"):
     import plotly.graph_objects as go
     theme = _theme(theme)
     T, R = THEME[theme], RADAR_WEB[theme]
-    theta = [_RADAR_LABEL[k] for k in TRAIT_KEYS]
+    theta = [RADAR_LABEL[k] for k in TRAIT_KEYS]
     full = [RU_TITLES[k] for k in TRAIT_KEYS]
     main = [rep["traits"][k]["score"] for k in TRAIT_KEYS]
     # one model per analysis (3.1): the trace is named after it («OCEAN-AI, веса MuPTA» / «AMLAI 1.0»)
-    from .webparts import model_title
     name = model_title((rep.get("view_meta") or {}).get("main_system") or (rep.get("model") or {}).get("selected"))
     fig = go.Figure()
     fig.add_trace(go.Scatterpolar(
@@ -223,8 +213,6 @@ def _stacked(fig, theme: str, x, labels, per_rows: List[dict], order: List[str],
 def fig_emotions_timeline(rep: dict, theme: str = "dark"):
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
-    from .analyses.emotions_text import EMOTION_ORDER
-    from .analyses.face_expr import EXPR_ORDER
     theme = _theme(theme)
     T = THEME[theme]
     title, subtitle = "Эмоции по ходу ролика", "доли эмоций в каждом отрезке, сумма = 100%"
@@ -342,16 +330,16 @@ def fig_emotion_bars(rep: dict, theme: str = "dark"):
     if not text_mean and not face_mean:
         return _empty(fig, theme, title, subtitle, "Нет данных об эмоциях")
     face_map = {v: k for k, v in EMO_ALIAS.items()}           # joy -> happy, sadness -> sad, anger -> angry
-    names = [EMO_RU[k] for k in _EMO_BAR_ORDER]
+    names = [EMO_RU[k] for k in EMOTION_ORDER]
     value_labels = dict(texttemplate="%{y:.0%}", textposition="outside", cliponaxis=False,
                         textfont=dict(family=FONT_FAMILY, size=12, color=T["text"]))
     if text_mean:
-        fig.add_trace(go.Bar(x=names, y=[text_mean.get(k, 0) for k in _EMO_BAR_ORDER], name="по речи (текст)",
+        fig.add_trace(go.Bar(x=names, y=[text_mean.get(k, 0) for k in EMOTION_ORDER], name="по речи (текст)",
                              marker=dict(color=B["speech"], line=dict(width=0)), **value_labels,
                              hovertemplate="по речи (текст): %{y:.0%}<extra></extra>"))
     if face_mean:
         # hatching is a second cue besides colour; in 'replace' mode the pattern background must be set explicitly
-        fig.add_trace(go.Bar(x=names, y=[face_mean.get(face_map.get(k, k), 0) for k in _EMO_BAR_ORDER],
+        fig.add_trace(go.Bar(x=names, y=[face_mean.get(face_map.get(k, k), 0) for k in EMOTION_ORDER],
                              name="по лицу (кадры)", **value_labels,
                              marker=dict(color=B["face"], line=dict(width=0),
                                          pattern=dict(shape="/", fillmode="replace", bgcolor=B["face"],

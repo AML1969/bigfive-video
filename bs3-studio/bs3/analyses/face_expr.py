@@ -11,11 +11,8 @@ from typing import Dict, List
 import numpy as np
 import torch
 
+from ..labels import EXPR_ORDER  # noqa: F401  (the order of the charts; pipeline takes it from here)
 from ..mm.faces import get_face_crops
-
-EXPR_RU = {"angry": "злость", "disgust": "отвращение", "fear": "страх", "happy": "радость", "neutral": "нейтрально",
-           "sad": "грусть", "surprise": "удивление"}
-EXPR_ORDER = ["happy", "surprise", "neutral", "sad", "fear", "angry", "disgust"]
 
 
 class FaceExpression:

@@ -49,15 +49,9 @@ NO_BS3_IMPORTS = ("palette", "settings", "jobfiles", "textfmt")
 
 # (importer, imported, the stage of the refactoring plan that removes the edge)
 ALLOW = {
-    ("narrative2", "charts", 10),                  # EMO_RU -> labels
-    ("charts", "analyses.emotions_text", 10),      # EMOTION_ORDER -> labels (the import pulls in torch)
-    ("charts", "analyses.face_expr", 10),          # EXPR_ORDER -> labels
-    ("pdf_report", "charts", 10),                  # EMO_RU, VOICE_RU -> labels
-    ("pdf_report", "webparts", 10),                # model_title -> labels, _pct_phrase -> textfmt.pct_phrase
-    ("pdf_charts", "webparts", 10),                # model_title -> labels
     ("ru_texts", "analyses.speech_stats", 11),     # vocabulary(): the text layer counts words without analyses/
     ("translate", "torch", 11),                    # torch imported inside the function
-    ("pdf_charts", "charts", 12),                  # EMO_RU, VOICE_RU, RADAR_LABEL, _EMO_BAR_ORDER (10); _segments (12)
+    ("pdf_charts", "charts", 12),                  # _segments -> segments
     ("pdf_charts", "pdf_report", 12),              # TEXT_W_MM -> pdf.layout, _empty_text, _seg_words -> segments
     ("pdf_mbti", "pdf_report", 12),                # Report, NOTE_GREY, TEXT_W_MM -> pdf.document
     ("pdf_mbti", "mbti_html", 14),                 # READ_CAVEATS -> caveats.MBTI_READ; the shared table and lines

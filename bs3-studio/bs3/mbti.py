@@ -23,19 +23,17 @@ import copy
 import datetime as _dt
 import itertools
 import json
-import math
 from collections import Counter
 from importlib import resources
 
 from . import MODEL_TITLES, PRODUCT, __version__
+from .labels import SOURCE_OF, source_title
 from .norms import TRAIT_KEYS
-from .scores import level_phrase, shown
+from .scores import level_phrase, num, shown
 from .textfmt import plural_ru
 
 AXES = ("EI", "SN", "TF", "JP")
 AXIS_LABEL = {"EI": "E–I", "SN": "S–N", "TF": "T–F", "JP": "J–P"}
-SOURCE_OF = {"oceanai": "ocean_ai", "mm": "own_model"}
-SOURCE_RU = {SOURCE_OF[k]: v for k, v in MODEL_TITLES.items()}       # "ocean_ai": OCEAN-AI, "own_model": AMLAI 1.0
 WORD_CLEAR, WORD_MODERATE, WORD_BORDER, WORD_MISSING = "отчётливо", "умеренно", "на границе", "нет данных"
 RELIABILITY_BASIS = ("соответствие шкал MBTI и NEO-PI в самоотчётах (McCrae, Costa, 1989); "
                      "не точность оценки по видео")
@@ -55,16 +53,6 @@ def load_config() -> dict:
         with resources.files("bs3").joinpath("config/mbti.json").open("r", encoding="utf-8") as f:
             _cfg = json.load(f)
     return copy.deepcopy(_cfg)
-
-
-def _num(x) -> float | None:
-    if x is None or isinstance(x, bool):
-        return None
-    try:
-        v = float(x)
-    except (TypeError, ValueError):
-        return None
-    return v if math.isfinite(v) else None
 
 
 def word_for(axis: dict) -> str:
@@ -110,7 +98,7 @@ def bigfive_to_mbti(scores: dict, thresholds: dict | None = None, *, borderline:
     for ax in AXES:
         trait, high, low = cfg["axes"][ax]
         thr = float(thresholds.get(ax, 0.5))
-        v = _num(scores.get(trait))
+        v = num(scores.get(trait))
         if v is None:
             axes[ax] = {"trait": trait, "value": None, "threshold": thr, "letter": None, "missing": True,
                         "confidence": 0.0, "borderline": True}
@@ -131,7 +119,7 @@ def bigfive_to_mbti(scores: dict, thresholds: dict | None = None, *, borderline:
         loose.append("X" if a["borderline"] else letter)
         strict.append(letter)
     type_loose, type_strict = "".join(loose), "".join(strict)
-    es = _num(scores.get("emotional_stability"))
+    es = num(scores.get("emotional_stability"))
     neuro = None if es is None else {"value": round(1.0 - min(max(es, 0.0), 1.0), 9)}
     return {"type": type_loose, "type_strict": type_strict,
             "type_name": None if "X" in type_strict else cfg["type_names_ru"].get(type_strict),
@@ -266,7 +254,7 @@ def _scores_of(view: dict, system: str) -> dict | None:
         sc = {k: (tr.get(k) or {}).get("score") for k in TRAIT_KEYS}
     else:
         sc = (view.get("variant_scores") or {}).get(system)
-    if not isinstance(sc, dict) or all(_num(sc.get(k)) is None for k in TRAIT_KEYS):
+    if not isinstance(sc, dict) or all(num(sc.get(k)) is None for k in TRAIT_KEYS):
         return None
     return {k: sc.get(k) for k in TRAIT_KEYS}
 
@@ -328,12 +316,6 @@ def _name(t: str | None, cfg: dict | None = None) -> str | None:
     if not t:
         return None
     return (cfg or load_config())["type_names_ru"].get(t)
-
-
-def source_title(mb: dict | None) -> str:
-    """The title of the model a section describes: «OCEAN-AI» / «AMLAI 1.0»."""
-    src = (mb or {}).get("source")
-    return SOURCE_RU.get(src, MODEL_TITLES.get((mb or {}).get("model"), str(src)))
 
 
 def type_title(mb: dict) -> str:

@@ -35,6 +35,7 @@ import math
 import statistics
 
 from . import MODEL_TITLES
+from .labels import SOURCE_OF
 from .norms import RU_NAMES, TRAIT_KEYS
 
 # the band edges, in one place: distance of the score from the middle of the scale 0.5
@@ -45,7 +46,6 @@ LEVELS = ("high", "above", "mid", "below", "low")
 LEVELS_RU = {"high": "высокий уровень", "above": "выше среднего", "mid": "средний уровень",
              "below": "ниже среднего", "low": "низкий уровень"}
 RELATIVE_KEYS = ("percentile", "percentile_ref", "percentile_vs_fiv2", "position")
-SOURCE_OF = {"oceanai": "ocean_ai", "mm": "own_model"}
 FALLBACK_ORDER = ("oceanai", "mm")
 # how a report that names no model at all is read (an old CLI report, a report of a backend the page does not offer).
 # It is deliberately NOT bs3.DEFAULT_MODEL: the default model is what a new analysis starts with, while this is how an
@@ -66,10 +66,11 @@ EMO_STATE = {"neutral": NEUTRAL, "sadness": BELOW, "fear": BELOW, "disgust": BEL
 
 __all__ = ["clean_view", "segment_ok", "level", "level_phrase", "score_text", "shown", "LEVELS_RU",
            "main_system", "recorded_model", "data_json", "scale_state", "tempo_state", "emotion_state",
-           "FACT_STATES", "TEMPO_BAND", "NEUTRAL", "BELOW", "ABOVE", "READ_FALLBACK", "scored"]
+           "FACT_STATES", "TEMPO_BAND", "NEUTRAL", "BELOW", "ABOVE", "READ_FALLBACK", "scored", "num"]
 
 
-def _num(x) -> float | None:
+def num(x) -> float | None:
+    """A finite number from a stored value, else None (None, a bool, text that is no number, NaN, infinity)."""
     if x is None or isinstance(x, bool):
         return None
     try:
@@ -80,13 +81,13 @@ def _num(x) -> float | None:
 
 
 def _has_scores(d) -> bool:
-    return isinstance(d, dict) and any(_num(d.get(k)) is not None for k in TRAIT_KEYS)
+    return isinstance(d, dict) and any(num(d.get(k)) is not None for k in TRAIT_KEYS)
 
 
 def scored(entry) -> dict | None:
     """`entry` (the label «собеседование» of a report, `interview`) when it carries a numeric score, else None: an
     entry without one counts as absent wherever it would be shown (the bars, the key facts, the PDF)."""
-    return entry if isinstance(entry, dict) and _num(entry.get("score")) is not None else None
+    return entry if isinstance(entry, dict) and num(entry.get("score")) is not None else None
 
 
 def recorded_model(rep: dict) -> str | None:
@@ -130,7 +131,7 @@ def segment_ok(rep: dict, t: dict) -> bool:
 
 def shown(v) -> float | None:
     """The score as the report prints it and decides on it: rounded once to two decimals (None for a missing one)."""
-    x = _num(v)
+    x = num(v)
     return None if x is None else round(x, 2)
 
 
@@ -171,7 +172,7 @@ def scale_state(v) -> str | None:
 def tempo_state(wpm) -> str | None:
     """Speech tempo, decided on the whole words per minute the card prints: TEMPO_BAND is neutral, slower is below,
     faster is above; None when there is no tempo."""
-    x = _num(wpm)
+    x = num(wpm)
     if x is None:
         return None
     n = int(round(x))
@@ -206,7 +207,7 @@ def clean_view(rep: dict) -> dict:
     # 1-2. the scores = the shown model's own means
     if _has_scores(var.get(main)):
         for k in TRAIT_KEYS:
-            v = _num(var[main].get(k))
+            v = num(var[main].get(k))
             if v is None:
                 continue
             t = traits.setdefault(k, {"name_ru": RU_NAMES[k]})
@@ -250,7 +251,7 @@ def clean_view(rep: dict) -> dict:
         keys = list(std) if isinstance(std, dict) and std else list(TRAIT_KEYS)
         new = {}
         for k in keys:
-            vals = [x for x in (_num(t["scores"].get(k)) for t in kept) if x is not None]
+            vals = [x for x in (num(t["scores"].get(k)) for t in kept) if x is not None]
             new[k] = statistics.pstdev(vals) if vals else 0.0
         view["scores_std_across_segments"] = new
 

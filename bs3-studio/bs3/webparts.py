@@ -13,10 +13,11 @@ import logging
 from pathlib import Path
 
 from . import MODEL_TITLES
+from .labels import ROW_TITLES, model_title
 from .norms import TRAIT_KEYS
 from .palette import HTML as PAL
 from .scores import scored
-from .textfmt import fiv2_ref_ru
+from .textfmt import fiv2_ref_ru, pct_phrase
 
 log = logging.getLogger("bs3.web")
 
@@ -31,8 +32,6 @@ TRAIT_TITLES = {
 MEMBER_TITLES = {**MODEL_TITLES,
                  "face": "лицо", "audio": "голос (CLAP)", "audio_whisper": "голос (Whisper)", "audio_xlsr": "голос (XLS-R)",
                  "audio_w2v_emo": "голос (wav2vec2)", "text": "речь", "behavior": "описание поведения"}
-# short row names for tables (the interview title is too long for a first column)
-ROW_TITLES = {**TRAIT_TITLES, "interview": "«Собеседование»"}
 # modality columns of the contribution table: (column title, second line)
 MODALITY_HEADS = {"face": ("Лицо", "кадры"), "audio": ("Голос", "CLAP"), "audio_whisper": ("Голос", "Whisper"),
                   "audio_xlsr": ("Голос", "XLS-R"), "audio_w2v_emo": ("Голос", "wav2vec2"), "text": ("Речь", "текст"),
@@ -126,25 +125,6 @@ def _legend(items: list[str]) -> str:
             + "".join(f"<span>{it}</span>" for it in items) + "</div>")
 
 
-def _is_fiv2(ref: str | None) -> bool:
-    """A percentile against the First Impressions V2 norms (6000 clips of that dataset). Percentiles against the pool
-    of processed videos ("пула …") or a group of them ("ref:…") are never shown (change of 2026-09-26)."""
-    r = ref or ""
-    return "First Impressions V2" in r or "FIV2" in r
-
-
-def _pct_phrase(pct, ref: str | None) -> tuple[str, bool]:
-    """(the FIV2 percentile in words, whether a percentile tick may be drawn): «выше, чем у 72% людей в FIV2»;
-    ("", False) for anything that is not a FIV2 percentile (Russian speech shows the score only)."""
-    if pct is None or not _is_fiv2(ref):
-        return "", False
-    p = max(0.0, min(100.0, float(pct)))
-    group = "людей в FIV2"
-    if 45 <= p <= 55:
-        return f"примерно посередине среди {group}", True
-    return (f"выше, чем у {p:.0f}% {group}" if p > 50 else f"ниже, чем у {100 - p:.0f}% {group}"), True
-
-
 TICK_NOTE = ("Риска на полоске — процентиль в First Impressions V2: у какой доли людей этого датасета оценка ниже; "
              "риска посередине — медиана датасета.")
 SCALE_NOTE = "Длина полоски — оценка системы от 0 до 1; уровни черт и буквы MBTI считаются по этой же шкале, середина — 0.5."
@@ -159,7 +139,7 @@ def _bar_html(traits: dict, interview: dict | None) -> str:
     for k, t in items:
         pct = t.get("percentile", t.get("percentile_vs_fiv2"))
         ref = t.get("percentile_ref", "train FIV2" if pct is not None else "")
-        phrase, tick_ok = _pct_phrase(pct, ref)
+        phrase, tick_ok = pct_phrase(pct, ref)
         if phrase:
             groups.setdefault(fiv2_ref_ru(ref), []).append(k)
         any_tick = any_tick or tick_ok
@@ -193,13 +173,6 @@ def _bar_html(traits: dict, interview: dict | None) -> str:
         notes.append(caveats.text("C2"))
     return ("<div style='max-width:640px'>" + "".join(rows) + _scale_row() + _legend(legend) +
             f"<div style='{NOTE};margin-top:8px'>{' '.join(notes)}</div></div>")
-
-
-def model_title(main: str | None) -> str:
-    """«OCEAN-AI, веса MuPTA» / «AMLAI 1.0»: the model of a clean view with its weights line (change request 3.1,
-    section 2)."""
-    title = MODEL_TITLES.get(main, str(main or "—"))
-    return title + (", веса MuPTA" if main == "oceanai" else "")
 
 
 def model_line(view: dict) -> str:
