@@ -17,7 +17,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from . import DEFAULT_MODEL, LANG, MODEL_TITLES, PRODUCT, __version__
+from . import DEFAULT_MODEL, LANG, MODEL_TITLES, PRODUCT, __version__, settings
 from .norms import TRAIT_KEYS
 from .report import build_report
 
@@ -32,12 +32,13 @@ def _add_models(p, backend: bool = True, models_dir: bool = True):
                             "weights")
     p.add_argument("--mm-ckpt", default=None,
                    help="mm: checkpoint path, comma-separated list or glob; several checkpoints are averaged "
-                        "(default ~/bs/mm_runs_seeds/seed*/best.pt, 5 seeds)")
-    p.add_argument("--ollama-model", default="qwen2.5vl:7b",
+                        f"(default {settings.shown(settings.MM_CHECKPOINTS)}, 5 seeds)")
+    p.add_argument("--ollama-model", default=settings.OLLAMA_MODEL,
                    help="mm: Ollama vision model for behaviour descriptions (qwen3-vl:30b gives the same accuracy, 3x heavier)")
     if models_dir:
-        p.add_argument("--models-dir", default=None, help="oceanai: weights cache (default ~/bs/models)")
-    p.add_argument("--asr-model", default="openai/whisper-large-v3-turbo", help="HF Whisper id for transcription")
+        p.add_argument("--models-dir", default=None,
+                       help=f"oceanai: weights cache (default {settings.shown(settings.OCEANAI_MODELS_DIR)})")
+    p.add_argument("--asr-model", default=settings.ASR_MODEL, help="HF Whisper id for transcription")
     p.add_argument("-v", "--verbose", action="store_true")
 
 
@@ -133,8 +134,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", default=None, help="write the JSON report here")
     p.add_argument("--no-asr", action="store_true", help="skip speech recognition (text branch then needs <stem>.txt or --transcript)")
     p.add_argument("--transcript", default=None, help="text file with the transcript (disables ASR)")
-    p.add_argument("--segment", type=float, default=20.0,
-                   help="videos longer than 30 s are analysed in segments of this many seconds (0 = never segment)")
+    p.add_argument("--segment", type=float, default=settings.SEGMENT_SEC,
+                   help=f"videos longer than {settings.SINGLE_CLIP_MAX_SEC:g} s are analysed in segments of this many "
+                        "seconds (0 = never segment)")
     p.set_defaults(fn=cmd_infer)
 
     p = sub.add_parser("explain", help="own model only: scores + modality/frame/word attributions, key frames")
@@ -148,9 +150,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(fn=cmd_explain)
 
     p = sub.add_parser("web", help="Gradio web UI: upload a video, choose the model, get the characterization")
-    p.add_argument("--port", type=int, default=7880)
-    p.add_argument("--host", default="0.0.0.0", help="bind address (0.0.0.0 = reachable from Windows via localhost)")
-    p.add_argument("--work-dir", default=None, help="where uploads and results are stored (default ~/bs3_data/web_jobs)")
+    p.add_argument("--port", type=int, default=settings.PORT)
+    p.add_argument("--host", default=settings.HOST, help="bind address (0.0.0.0 = reachable from Windows via localhost)")
+    p.add_argument("--work-dir", default=None,
+                   help=f"where uploads and results are stored (default {settings.shown(settings.JOBS_DIR)})")
     p.add_argument("--share", action="store_true", help="also create a public gradio.live link")
     _add_models(p, backend=False)                         # the page chooses the model per analysis
     p.set_defaults(fn=cmd_web)

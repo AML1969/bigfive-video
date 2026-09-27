@@ -22,6 +22,7 @@ import re
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence, Tuple
 
+from . import settings
 from .norms import RU_SHORT, TRAIT_KEYS
 
 # ---------------------------------------------------------------- trait names in the two cases the captions need
@@ -51,8 +52,8 @@ FRAME_PROMPT = (
 PHRASE_MAX = 40                     # characters, after trimming at the last comma
 PHRASE_NUM_PREDICT = 48             # the answer is a few words: a short budget keeps the five requests fast
 PHRASE_TRIES = 2                    # one retry, then the caption falls back to the expression
-PHRASE_TIMEOUT = 45                 # seconds per request: a caption never holds the job for minutes
-PHRASE_BUDGET = 30                  # seconds for all five frames together; what is left over keeps no phrase
+PHRASE_TIMEOUT = settings.PHRASE_TIMEOUT   # seconds per request: a caption never holds the job for minutes
+PHRASE_BUDGET = settings.PHRASE_BUDGET     # seconds for all five frames together; what is left over keeps no phrase
 # Verdicts about character or mood the phrase must not contain (the prompt forbids them; this is the safety net).
 # The seven names of the expression classes («радость», «грусть», «страх», «злость», «отвращение», «удивление»,
 # «нейтрально») are not verdicts: they are what the expression model itself reports, and the caption may repeat them.

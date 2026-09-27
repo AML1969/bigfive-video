@@ -111,20 +111,22 @@ def test_no_bs2_references_in_bs3_studio():
 
 
 def test_work_dirs_under_bs3_data():
-    env = {k: v for k, v in os.environ.items() if k != "BS3_JOURNAL"}
-    code = ("import sys, bs3.journal; "
-            "print(bs3.journal.PATH); "
+    env = {k: v for k, v in os.environ.items() if k not in ("BS3_DATA_DIR", "BS3_JOURNAL", "BS3_OLLAMA_URL")}
+    code = ("import sys, bs3.journal, bs3.settings as s, bs3.cli; "
+            "print(bs3.journal.PATH); print(s.JOBS_DIR); print(s.PORT); print(bs3.cli.parse_args(['web']).port); "
             "print(sorted(m for m in sys.modules if m == 'bs2' or m.startswith('bs2.')))")
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env, cwd=str(ROOT))
     assert r.returncode == 0, r.stderr
-    journal, bs2_mods = r.stdout.strip().splitlines()[-2:]
+    journal, jobs, port, web_port, bs2_mods = r.stdout.strip().splitlines()[-5:]
     base = str(Path.home() / "bs3_data")
     assert journal.startswith(base + os.sep), journal
+    assert jobs.startswith(base + os.sep), jobs
+    assert port == web_port == "7880", (port, web_port)
     assert bs2_mods == "[]", bs2_mods
+    # the work dir of webapp.main defaults to settings.JOBS_DIR (read from the source: importing webapp is slow)
     web = (ROOT / "bs3" / "webapp.py").read_text(encoding="utf-8")
-    assert re.search(r'expanduser\("~/bs3_data/web_jobs"\)', web), "default work dir of webapp.main is not ~/bs3_data"
-    cli = (ROOT / "bs3" / "cli.py").read_text(encoding="utf-8")
-    assert re.search(r"default=7880\b", cli), "default port of `bs3 web` is not 7880"
+    main = next(n for n in ast.parse(web).body if isinstance(n, ast.FunctionDef) and n.name == "main")
+    assert "work_dir or settings.JOBS_DIR" in ast.get_source_segment(web, main), "webapp.main: work dir default"
 
 
 def test_product_name_and_version():

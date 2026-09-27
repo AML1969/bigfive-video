@@ -19,6 +19,7 @@ from typing import Iterable
 
 import pandas as pd
 
+from . import settings
 from .norms import OCEANAI_COLUMNS, TRAIT_KEYS
 
 log = logging.getLogger("bs.oceanai")
@@ -31,8 +32,8 @@ MEDIA_EXTS = [".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".mpg", ".mpeg"]
 class BackendConfig:
     lang: str = "en"                      # language of speech in the videos: en | ru
     corpus: str | None = None             # fi | mupta; default follows lang
-    models_dir: str = os.path.expanduser("~/bs/models")
-    asr_model: str = "openai/whisper-large-v3-turbo"  # HF id used by the transformers Whisper inside OCEAN-AI
+    models_dir: str = settings.OCEANAI_MODELS_DIR
+    asr_model: str = settings.ASR_MODEL   # HF id used by the transformers Whisper inside OCEAN-AI
     disk: str = "googledisk"
     force_reload: bool = False
     # OCEAN-AI windowing parameters (documented defaults)

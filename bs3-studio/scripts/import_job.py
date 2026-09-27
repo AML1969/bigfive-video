@@ -25,8 +25,11 @@ import sys
 import tempfile
 from pathlib import Path
 
-BS3_ROOT = Path.home() / "bs3_data"
-DEFAULT_DEST = BS3_ROOT / "web_jobs"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # bs3-studio/: `import bs3` is this working tree
+from bs3 import settings  # noqa: E402
+
+BS3_ROOT = settings.DATA_DIR
+DEFAULT_DEST = settings.JOBS_DIR
 SOURCE_ROOT = Path.home() / "bs2_data" / "web_jobs"          # where 2.0 keeps its jobs (read only)
 
 

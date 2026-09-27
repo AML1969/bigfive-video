@@ -36,7 +36,10 @@ def _load(path: Path):
 
 def _no_models() -> None:
     """A test that reaches the translation model or Ollama fails at once instead of loading Marian or waiting on the
-    shared Ollama; a test that needs a translation stubs the call itself."""
+    shared Ollama; a test that needs a translation stubs the call itself. bs3.translate calls Ollama's availability
+    through its own name ollama_available; bs3.ollama.available answers «no» from its last check, which is dated
+    never to expire (test_ollama sets its own state)."""
+    import bs3.ollama
     import bs3.translate
 
     def _get(*_a, **_k):
@@ -44,6 +47,7 @@ def _no_models() -> None:
 
     bs3.translate.ollama_available = lambda *a, **k: False
     bs3.translate._get = _get
+    bs3.ollama._state.update(t=float("inf"), ok=False)
 
 
 def main(argv: list[str]) -> int:

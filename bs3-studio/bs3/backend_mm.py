@@ -2,7 +2,7 @@
 
 video -> 30 face crops -> CLIP ; wav 48 kHz -> CLAP ; Whisper transcript -> EmoRoBERTa ;
 (optional) behaviour description from a local Ollama vision model on sampled frames -> EmoRoBERTa ;
--> PersonalityFusionModel checkpoints (~/bs/mm_runs_seeds/seed*/best.pt, 5 seeds, averaged) -> 5 scores.
+-> PersonalityFusionModel checkpoints (settings.MM_CHECKPOINTS: 5 seeds, averaged) -> 5 scores.
 """
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ import subprocess
 import tempfile
 import time
 import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,6 +21,7 @@ import cv2
 import numpy as np
 import torch
 
+from . import ollama, settings
 from .mm.extractors import ClapAudioEncoder, ClipFaceEncoder, EmoRobertaTextEncoder, mean_std
 from .mm.faces import get_face_crops, select_uniform_frames
 from .mm.model import ModelConfig, PersonalityFusionModel
@@ -45,35 +45,15 @@ In your description:
 Your final response must be a fluent, continuous natural language interpretation of the person's visible behavior in the video, written as a single coherent paragraph without any line breaks, bullet points, special characters, or formatting. The response must express a complete, finished thought and must not exceed 75 tokens in total."""
 
 
-def default_ollama_url() -> str:
-    """Windows Ollama listens on localhost; from WSL (NAT mode) it is reachable through the default gateway."""
-    import urllib.error
-    cands = ["http://localhost:11434"]
-    try:
-        gw = subprocess.run(["sh", "-c", "ip route show default | awk '{print $3}'"], capture_output=True, text=True).stdout.strip()
-        if gw:
-            cands.append(f"http://{gw}:11434")
-    except Exception:
-        pass
-    for url in cands:
-        try:
-            with urllib.request.urlopen(f"{url}/api/tags", timeout=3) as r:
-                if r.status == 200:
-                    return url
-        except Exception:
-            continue
-    return cands[-1]
-
-
 @dataclass
 class MMConfig:
     # one path, a comma-separated list, or a glob: several checkpoints (e.g. seeds) are averaged
-    checkpoint: str = os.path.expanduser("~/bs/mm_runs_seeds/seed*/best.pt")
+    checkpoint: str = settings.MM_CHECKPOINTS
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
     lang: str = "en"
-    asr_model: str = "openai/whisper-large-v3-turbo"
-    ollama_url: str = ""                       # "" -> auto-detect (localhost, then the WSL default gateway)
-    ollama_model: str = "qwen2.5vl:7b"         # same accuracy as qwen3-vl:30b on FIV2 (0.914 vs 0.914 mACC), 3x lighter
+    asr_model: str = settings.ASR_MODEL
+    ollama_url: str = ""                       # "" -> ollama.url(): BS3_OLLAMA_URL, else localhost or the WSL gateway
+    ollama_model: str = settings.OLLAMA_MODEL
     behavior_frames: int = 16
     behavior_max_side: int = 640               # frames sent to the VLM are downscaled to this longest side
     n_frames: int = 30
@@ -205,22 +185,20 @@ class MMBackend:
         cap.release()
         return out
 
-    def _ollama(self, prompt: str, images: list[str], num_predict: int, timeout: int = 900,
-                attempts: int = 3) -> dict:
+    def _ollama(self, prompt: str, images: list[str], num_predict: int, timeout: int = settings.OLLAMA_DESCRIBE_TIMEOUT,
+                attempts: int = settings.OLLAMA_DESCRIBE_ATTEMPTS) -> dict:
         """One /api/generate call to the local vision model, with retries while Ollama (re)loads a model.
 
         "think": False -> Qwen3 models otherwise spend the whole token budget on hidden reasoning and
         return an empty response."""
         if not self.cfg.ollama_url:
-            self.cfg.ollama_url = default_ollama_url()
+            self.cfg.ollama_url = ollama.url()
         payload = {"model": self.cfg.ollama_model, "prompt": prompt, "images": images, "stream": False,
-                   "think": False, "keep_alive": "30m", "options": {"num_predict": num_predict, "temperature": 0.2}}
-        req = urllib.request.Request(f"{self.cfg.ollama_url}/api/generate", data=json.dumps(payload).encode("utf-8"),
-                                     headers={"Content-Type": "application/json"})
+                   "think": False, "keep_alive": settings.OLLAMA_KEEP_ALIVE,
+                   "options": {"num_predict": num_predict, "temperature": 0.2}}
         for attempt in range(1, attempts + 1):
             try:
-                with urllib.request.urlopen(req, timeout=timeout) as r:
-                    return json.loads(r.read().decode("utf-8"))
+                return ollama.post_json("/api/generate", payload, timeout, base=self.cfg.ollama_url)
             except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as e:
                 if attempt == attempts:
                     raise

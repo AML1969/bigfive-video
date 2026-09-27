@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from . import settings
 from .norms import TRAIT_KEYS
 from .report import fmt_secs, seg_label
 
@@ -34,7 +35,8 @@ def video_duration(path: str | Path) -> float:
         return 0.0
 
 
-def plan_segments(duration: float, seg_len: float = 20.0, min_seg: float = 6.0) -> list[tuple[float, float]]:
+def plan_segments(duration: float, seg_len: float = settings.SEGMENT_SEC,
+                  min_seg: float = settings.MIN_TAIL_SEC) -> list[tuple[float, float]]:
     """[(start, end)] covering the whole clip; a short tail is merged into the previous segment."""
     segs, t = [], 0.0
     while t < duration - 1e-3:
@@ -54,8 +56,9 @@ def cut_segment(video: Path, start: float, end: float, out: Path):
 
 
 class LongVideoAnalyzer:
-    def __init__(self, backend, lang: str = "en", seg_len: float = 20.0, single_max: float = 30.0,
-                 asr_model: str = "openai/whisper-large-v3-turbo", device: str | None = None):
+    def __init__(self, backend, lang: str = "en", seg_len: float = settings.SEGMENT_SEC,
+                 single_max: float = settings.SINGLE_CLIP_MAX_SEC, asr_model: str = settings.ASR_MODEL,
+                 device: str | None = None):
         self.backend, self.lang, self.seg_len, self.single_max = backend, lang, seg_len, single_max
         self.asr_model = asr_model
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")

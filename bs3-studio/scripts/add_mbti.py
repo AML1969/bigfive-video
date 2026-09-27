@@ -21,8 +21,9 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # bs3-studio/: the lazy `import bs3` is this tree
+from bs3 import settings  # noqa: E402  (standard library only: the rest of bs3 stays lazy)
 
-JOBS_ROOT = Path.home() / "bs3_data" / "web_jobs"
+JOBS_ROOT = settings.JOBS_DIR
 
 
 class AddRefused(RuntimeError):

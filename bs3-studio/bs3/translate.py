@@ -11,6 +11,9 @@ from typing import Dict, List
 
 import torch
 
+from . import ollama, settings
+from .ollama import available as ollama_available   # called through this name: tests and scripts replace it here
+
 log = logging.getLogger("bs.translate")
 _models: dict = {}
 _SENT = re.compile(r"(?<=[.!?])\s+")
@@ -104,8 +107,8 @@ def translate_text(text: str, src="en", tgt="ru", device=None) -> str:
 # «помолвленной» for 'engaged', «извращению» for 'extraversion', «разбитые губы» for 'parted lips'). Whole descriptions
 # go to the local Ollama model with a glossary; Marian is the fallback when Ollama is unreachable, its known mistakes
 # repaired by fix_marian_ru, and the caller stores which translator was used so that a Marian text is translated again
-# later.
-OLLAMA_MODEL = "qwen2.5vl:7b"         # the model that writes the behaviour descriptions (already loaded by the pipeline)
+# later. The model is the one that writes the behaviour descriptions (ollama.model(): --ollama-model, already loaded by
+# the pipeline).
 GLOSSARY_RU = """calm and composed -> спокойный и собранный; composed -> собранный; composure -> самообладание;
 engaged -> вовлечённый; engagement -> вовлечённость; attentive -> внимательный; attentiveness -> внимательность;
 demeanor -> поведение; laid-back -> непринуждённый; at ease, comfortable -> непринуждённо, непринуждённый;
@@ -120,49 +123,22 @@ agreeable -> доброжелательный; agreeableness -> доброжел
 emotional stability -> эмоциональная стабильность; frames -> кадры"""
 _OTHER_SCRIPT = re.compile("[%s]" % "".join(f"{chr(a)}-{chr(b)}" for a, b in (      # Hebrew, Arabic, Thai, CJK, Hangul
     (0x0590, 0x08FF), (0x0E00, 0x0EFF), (0x3040, 0x30FF), (0x3400, 0x9FFF), (0xAC00, 0xD7AF))))
-_OLLAMA_STATE = {"t": 0.0, "ok": False, "url": ""}
 
 
-def ollama_available(ttl: float = 60.0) -> bool:
-    """The Ollama server answers. Checked at most once a minute, so a page render does not wait for a dead server
-    again and again."""
-    import time
-    import urllib.request
-    now = time.time()
-    if now - _OLLAMA_STATE["t"] < ttl:
-        return _OLLAMA_STATE["ok"]
-    ok = False
-    try:
-        from .backend_mm import default_ollama_url
-        url = default_ollama_url()
-        with urllib.request.urlopen(f"{url}/api/tags", timeout=3) as r:
-            ok = r.status == 200
-        _OLLAMA_STATE["url"] = url
-    except Exception:  # noqa: BLE001
-        ok = False
-    _OLLAMA_STATE.update(t=now, ok=ok)
-    return ok
-
-
-def _ollama_json(prompt: str, num_predict: int, model: str = OLLAMA_MODEL, timeout: int = 300,
-                 temperature: float = 0.0, seed: int = 0) -> dict:
+def _ollama_json(prompt: str, num_predict: int, model: str | None = None,
+                 timeout: int = settings.OLLAMA_TRANSLATE_TIMEOUT, temperature: float = 0.0, seed: int = 0) -> dict:
     import json
     import urllib.error
-    import urllib.request
 
-    from .backend_mm import default_ollama_url
-    url = _OLLAMA_STATE["url"] or default_ollama_url()
     # no num_ctx here: a request with its own context size makes Ollama reload the model, and the behaviour-description
     # requests of the pipeline (frames, default context) would reload it back
-    payload = {"model": model, "prompt": prompt, "stream": False, "format": "json", "think": False, "keep_alive": "30m",
+    payload = {"model": model or ollama.model(), "prompt": prompt, "stream": False, "format": "json", "think": False,
+               "keep_alive": settings.OLLAMA_KEEP_ALIVE,
                "options": {"temperature": temperature, "seed": seed, "num_predict": num_predict}}
-    req = urllib.request.Request(f"{url}/api/generate", data=json.dumps(payload).encode("utf-8"),
-                                 headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            data = json.loads(r.read().decode("utf-8"))
+        data = ollama.post_json("/api/generate", payload, timeout)
     except (urllib.error.URLError, ConnectionError, TimeoutError, OSError):
-        _OLLAMA_STATE.update(ok=False)            # the next ollama_available() in the next minute says no at once
+        ollama.mark_down()            # ollama_available() says no at once for the next minute: the rest go to Marian
         raise
     return json.loads(data.get("response") or "{}")
 
@@ -223,12 +199,9 @@ def llm_translate(texts: List[str]) -> List[str | None]:
 
     # a few requests at a time (Ollama serves parallel requests of one loaded model when OLLAMA_NUM_PARALLEL allows)
     from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=LLM_PARALLEL) as ex:
+    with ThreadPoolExecutor(max_workers=settings.LLM_PARALLEL) as ex:
         list(ex.map(ask, todo))
     return out
-
-
-LLM_PARALLEL = 2          # more requests only queue up in Ollama and hold back other users of the model
 
 
 _NEUTER = {"ый": "ое", "ой": "ое", "ий": "ее"}
@@ -325,7 +298,7 @@ def _context_sentence(word: str, text: str) -> str:
     return ""
 
 
-def _ollama_dictionary(words: List[str], tgt: str, model: str = OLLAMA_MODEL, context: str | None = None,
+def _ollama_dictionary(words: List[str], tgt: str, model: str | None = None, context: str | None = None,
                        names: set | None = None) -> Dict[str, str]:
     """Dictionary-form translations from the local Ollama model (a sentence MT model turns 'calm' into
     'успокойся'; an LLM asked for lemmas gives 'спокойный'). A context sentence per word disambiguates the sense.
@@ -346,7 +319,7 @@ def _ollama_dictionary(words: List[str], tgt: str, model: str = OLLAMA_MODEL, co
               f"place, company or brand; a common word, a weekday, a month or a word of a film, book or video title is "
               f"not a name. Example of the expected output: {examples}\nAnswer with a JSON object mapping each "
               f"English word exactly as written to its entry.\nItems: {json.dumps(items, ensure_ascii=False)}")
-    obj = _ollama_json(prompt, num_predict=2500, model=model, timeout=180)
+    obj = _ollama_json(prompt, num_predict=2500, model=model, timeout=settings.OLLAMA_DICTIONARY_TIMEOUT)
     out = {}
     for w in words:
         t = obj.get(w) or obj.get(w.lower()) or obj.get(w.capitalize())

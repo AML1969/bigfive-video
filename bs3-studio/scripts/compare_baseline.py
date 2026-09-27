@@ -28,10 +28,11 @@ journal entries) and app.status (the progress line in its states, the error text
 
 Isolation. Every job is rendered from a temporary copy (result.json and explain/ copied, input.* linked for the media
 probe of the PDF), so the page, the words list and the PDF export write nothing into the job folder, and the folder
-is checked unchanged afterwards (names, sizes, mtimes). The journal goes to a temporary file. bs3.translate is
-replaced by a stub: the page never waits for Ollama or loads the translation model, and a request for either is
-recorded in render.notes (the page then shows what it shows without the translation). CUDA is hidden. The results of a
-run go only into its temporary folder and the baseline folder; no job folder and no journal of the service change.
+is checked unchanged afterwards (names, sizes, mtimes). The journal goes to a temporary file. bs3.translate and
+bs3.ollama are replaced by stubs: the page never waits for Ollama or loads the translation model, and a request for
+either is recorded in render.notes (the page then shows what it shows without the translation). CUDA is hidden. The
+results of a run go only into its temporary folder and the baseline folder; no job folder and no journal of the
+service change.
 
 Masked, the same way in capture and compare: the job folder and its temporary copy («<JOB>»), other temporary paths
 («<TMP>»), the date of the PDF («создан YYYY-MM-DD HH:MM»), the timestamp of a journal entry, `computed_at` of an
@@ -97,7 +98,8 @@ class Request:
 
 # ----------------------------------------------------------------------------------------------- isolation ----
 class Env:
-    """The process-wide setup of a run: temporary root, hidden CUDA, temporary journal, the translation stub."""
+    """The process-wide setup of a run: temporary root, hidden CUDA, temporary journal, the translation and Ollama
+    stubs."""
 
     def __init__(self, tmp: Path):
         self.tmp = tmp
@@ -111,6 +113,7 @@ class Env:
         if str(ROOT) not in sys.path:
             sys.path.insert(0, str(ROOT))
         sys.modules["bs3.translate"] = self._translate_stub()
+        sys.modules["bs3.ollama"] = self._ollama_stub()
         import logging
         logging.basicConfig(level=logging.ERROR)
 
@@ -135,6 +138,41 @@ class Env:
             return blocked(name)
 
         stub.ollama_available = ollama_available
+        stub.__getattr__ = __getattr__
+        return stub
+
+    def _ollama_stub(self) -> types.ModuleType:
+        """bs3.ollama without a server: it never answers, a call or an address lookup fails (and is noted). Setting
+        the model of the process (pipeline.Studio) needs no server and is kept."""
+        calls = self.calls
+        stub = types.ModuleType("bs3.ollama")
+        current = {"model": None}
+
+        def available(*_a, **_k) -> bool:
+            calls.append("ollama.available (answered: unreachable)")
+            return False
+
+        def post_json(path="", *_a, **_k):
+            calls.append(f"ollama.post_json {path} (blocked)")
+            raise RuntimeError(f"compare_baseline: Ollama is not available here ({path})")
+
+        def configure(model=None) -> None:
+            current["model"] = model or None
+
+        def model():
+            return current["model"]
+
+        def __getattr__(name: str):
+            if name.startswith("__"):
+                raise AttributeError(name)
+
+            def blocked(*_a, **_k):
+                calls.append(f"ollama.{name} (blocked)")
+                raise RuntimeError(f"compare_baseline: ollama.{name} is not available here")
+            return blocked
+
+        stub.available, stub.post_json, stub.configure, stub.model = available, post_json, configure, model
+        stub.mark_down = lambda: None
         stub.__getattr__ = __getattr__
         return stub
 

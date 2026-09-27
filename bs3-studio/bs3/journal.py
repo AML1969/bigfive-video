@@ -16,11 +16,11 @@ import threading
 import time
 from pathlib import Path
 
-from . import MODEL_TITLES
+from . import MODEL_TITLES, settings
 
 log = logging.getLogger("bs3.journal")
 
-PATH = Path(os.environ.get("BS3_JOURNAL", "~/bs3_data/logs/journal.txt")).expanduser()
+PATH = settings.JOURNAL_PATH          # a module attribute: tests and compare_baseline point it elsewhere
 _lock = threading.Lock()
 
 TRAITS = (("openness", "открытость"), ("conscientiousness", "добросовестность"), ("extraversion", "экстраверсия"),

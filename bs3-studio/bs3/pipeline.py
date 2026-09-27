@@ -16,7 +16,7 @@ from typing import Callable, Dict, List
 
 import numpy as np
 
-from . import DEFAULT_MODEL, LANG, MODALITIES, MODEL_TITLES
+from . import DEFAULT_MODEL, LANG, MODALITIES, MODEL_TITLES, ollama, settings
 from .report import build_report, fmt_secs
 
 log = logging.getLogger("bs3.pipeline")
@@ -38,11 +38,13 @@ class Studio:
     server; the other model is never run for a second opinion. The Whisper pipeline of the segment analyzer
     (LongVideoAnalyzer, one per member) is handed over to the analyzer of the next member instead of being loaded
     again. The speech language is fixed to Russian (bs3.LANG). The emotion, voice and face models are shared by both
-    members. `models_dir`: the OCEAN-AI weights cache (None = the default of BackendConfig, ~/bs/models)."""
+    members. `models_dir`: the OCEAN-AI weights cache (None = the default of BackendConfig, ~/bs/models).
+    `ollama_model` becomes the Ollama model of the whole process (ollama.configure): the translations use it too."""
 
-    def __init__(self, asr_model="openai/whisper-large-v3-turbo", ollama_model="qwen2.5vl:7b", mm_ckpt=None,
+    def __init__(self, asr_model=settings.ASR_MODEL, ollama_model=settings.OLLAMA_MODEL, mm_ckpt=None,
                  models_dir=None):
         self.asr_model, self.ollama_model, self.mm_ckpt = asr_model, ollama_model, mm_ckpt
+        ollama.configure(model=ollama_model)
         self.models_dir = models_dir
         self.lang = LANG
         self._lock = threading.Lock()

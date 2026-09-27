@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 import secrets
 import shutil
@@ -19,7 +18,7 @@ import threading
 import time
 from pathlib import Path, PurePosixPath
 
-from . import DEFAULT_MODEL, MODEL_TITLES, PRODUCT, PRODUCT_SLUG, caveats, characterization, journal, mbti_html
+from . import DEFAULT_MODEL, MODEL_TITLES, PRODUCT, PRODUCT_SLUG, caveats, characterization, journal, mbti_html, settings
 from .charts import (EMO_RU, fig_emotion_bars, fig_emotions_timeline, fig_face_expr, fig_radar, fig_speech_timeline,
                      fig_traits_timeline, fig_voice_timeline, plot_html as _plot_html)
 from .mbti import fact_card, get_mbti
@@ -778,19 +777,18 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
     return demo
 
 
-def main(port: int = 7880, work_dir: str | None = None, share: bool = False,
-         asr_model: str = "openai/whisper-large-v3-turbo", ollama_model: str = "qwen2.5vl:7b", mm_ckpt: str | None = None,
-         host: str = "0.0.0.0", models_dir: str | None = None):
+def main(port: int = settings.PORT, work_dir: str | None = None, share: bool = False,
+         asr_model: str = settings.ASR_MODEL, ollama_model: str = settings.OLLAMA_MODEL, mm_ckpt: str | None = None,
+         host: str = settings.HOST, models_dir: str | None = None):
     """The page picks the model per analysis (OCEAN-AI or AMLAI 1.0); the Studio loads each one on first use.
     `models_dir`: the OCEAN-AI weights cache (None = ~/bs/models)."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    os.environ.setdefault("no_proxy", "localhost,127.0.0.1,0.0.0.0")
-    os.environ.setdefault("NO_PROXY", "localhost,127.0.0.1,0.0.0.0")
-    wd = Path(work_dir or os.path.expanduser("~/bs3_data/web_jobs"))
+    settings.apply_process_env()              # before build_app imports gradio
+    wd = Path(work_dir or settings.JOBS_DIR)
     wd.mkdir(parents=True, exist_ok=True)
     studio = Studio(asr_model=asr_model, ollama_model=ollama_model, mm_ckpt=mm_ckpt, models_dir=models_dir)
     demo = build_app(studio, wd)
     # no allowed_paths: the page shows no file of the job folder (key frames are data URIs, charts are srcdoc), and the
     # PDF is handed to Gradio from its own temp folder (pdf_for_download); /gradio_api/file= serves no job file
-    demo.queue(default_concurrency_limit=1).launch(server_name=host, server_port=port, share=share, show_api=False,
-                                                    show_error=True, quiet=False)
+    demo.queue(default_concurrency_limit=settings.QUEUE_CONCURRENCY).launch(
+        server_name=host, server_port=port, share=share, show_api=False, show_error=True, quiet=False)

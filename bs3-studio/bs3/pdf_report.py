@@ -20,7 +20,7 @@ from pathlib import Path
 
 from fpdf import FPDF
 
-from . import MODALITIES, MODEL_TITLES, PRODUCT, caveats, frame_captions
+from . import MODALITIES, MODEL_TITLES, PRODUCT, caveats, frame_captions, settings
 from .narrative import NO_EXPLAIN_RU
 from .narrative2 import FACTS_LEGEND, analyses_parts, card_item, fact_label, fix_counts, key_facts, plural_ru
 from .norms import RU_SHORT, TRAIT_KEYS
@@ -1495,7 +1495,8 @@ def _render(report: dict, explanation, media, frames: list, charts: dict, fname:
             pdf.caption(FACTS_LEGEND)
     if "timeline" not in pdf.plan:
         dur = float(report.get("duration_sec") or 0)
-        pdf.para(("Ролик короче 30 с оценивается целиком" if 0 < dur <= 30 else "Ролик оценён целиком, одним отрезком")
+        pdf.para(("Ролик короче 30 с оценивается целиком" if 0 < dur <= settings.SINGLE_CLIP_MAX_SEC
+                  else "Ролик оценён целиком, одним отрезком")
                  + ", поэтому графиков по ходу ролика нет.", 8)
     _profile_section(pdf, report, explanation, charts)
     mbti_section(pdf, report, mb)
