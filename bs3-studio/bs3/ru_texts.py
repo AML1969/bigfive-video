@@ -1,12 +1,10 @@
-"""Russian texts for the web page and the PDF, whatever language is spoken in the video.
+"""Russian texts for the web page and the PDF.
 
 The models work in English (behaviour descriptions from the video-language model, word attributions of the text
-branch, Whisper run with lang=en), but every text a person reads is Russian. result.json keeps the English originals
-and gets the Russian versions next to them:
+branch), but every text a person reads is Russian. result.json keeps the English originals and gets the Russian
+versions next to them:
 
-  behavior_description_ru          translation of behavior_description (every speech language)
-  transcript_ru                    translation of the English transcript (lang=en; a Russian transcript is shown as is)
-  analyses.speech.vocabulary_ru    frequent words of English speech in Russian: [word, count, [English words]]
+  behavior_description_ru          translation of behavior_description
   explanation.json readable_words  attributed content words with their Russian translation (words.py)
 
 Each of them has a "<field>_by" next to it: "ollama" (the local LLM translated it), "ollama+marian" (the LLM was
@@ -15,6 +13,13 @@ without the mark (made before the LLM translated these texts), is translated aga
 
 The pipeline fills them once. A job processed before these fields existed gets them on the first render of the page or
 the first PDF export; they are stored back into the job folder, so later renders and exports do not translate again.
+
+The speech is Russian (3.1): a Russian transcript is shown as is. Older jobs processed as English speech carry two more
+Russian fields, which are read-only compatibility: they are shown as stored and never made or translated again.
+
+  transcript_ru                    translation of the English transcript (transcript_shown)
+  analyses.speech.vocabulary_ru    frequent words of the English speech in Russian: [word, count, [English words]]
+                                   (vocabulary_shown)
 """
 from __future__ import annotations
 
@@ -36,10 +41,6 @@ WRONG_LANGUAGE_NOTE = ("В транскрипте есть русские сло
 NO_TRANSCRIPT_TRANSLATION = "Перевод транскрипта на русский сейчас недоступен. Откройте результат ещё раз чуть позже."
 VOCABULARY_TOP = 15
 MIN_FREQUENT = 2          # «частые слова» / «чаще всего звучат»: a word said once is not frequent
-# English weekdays and months are capitalised in any sentence; their Russian names are not
-_NOT_NAMES = set("monday tuesday wednesday thursday friday saturday sunday january february march april may june july "
-                 "august september october november december".split())
-_TITLE_GLUE = set("a an the of and or in on at to for with my your our his her its their".split())
 
 
 def _lang(rep: dict) -> str:
@@ -52,40 +53,6 @@ def _retry(by) -> bool:
         return False
     from .translate import ollama_available
     return ollama_available()
-
-
-def _speaker_note(rep: dict) -> str:
-    """The speaker's grammatical gender for the transcript translation, from the behaviour description of the video
-    ('The woman appears …'); '' when it is not clear."""
-    desc = str(rep.get("behavior_description") or "").lower()
-    fem = len(re.findall(r"\b(?:woman|she|her|hers|herself|girl|lady)\b", desc))
-    masc = len(re.findall(r"\b(?:man|he|his|him|himself|boy|guy)\b", desc))
-    if fem >= 2 and fem >= 3 * masc:
-        return "The speaker is a woman: when she speaks about herself use feminine forms («я была», «я пришла»)."
-    if masc >= 2 and masc >= 3 * fem:
-        return "The speaker is a man: when he speaks about himself use masculine forms («я был», «я пришёл»)."
-    return ""
-
-
-def _title_words(text: str) -> set:
-    """Lower-cased words that appear inside a run of capitalised words looking like a title ('Draw My Life',
-    'A Fistful of Dollars'): three or more words, or a short function word inside. 'Clint Eastwood' is not a title."""
-    out = set()
-    for sent in re.split(r"(?<=[.!?])\s+", text or ""):
-        toks = re.findall(r"[A-Za-z][A-Za-z'\-]*", sent)
-        run: List[str] = []
-        for i, t in enumerate(toks + [""]):
-            cap = i > 0 and t[:1].isupper() and t != "I"
-            glue = bool(run) and t.lower() in _TITLE_GLUE and i + 1 < len(toks) and toks[i + 1][:1].isupper()
-            if cap or glue:
-                run.append(t)
-                continue
-            while run and run[-1].lower() in _TITLE_GLUE and not run[-1][:1].isupper():
-                run.pop()
-            if len(run) >= 3 or (len(run) >= 2 and any(w.lower() in _TITLE_GLUE for w in run)):
-                out.update(w.lower() for w in run)
-            run = []
-    return out
 
 
 def write_json(path: str | Path, data: dict) -> None:
@@ -114,81 +81,6 @@ def ensure_behavior(rep: dict) -> bool:
     if had and by == "marian":          # the retry fell back to Marian again: nothing better to store
         return False
     rep["behavior_description_ru"], rep["behavior_description_ru_by"] = ru, by
-    return True
-
-
-def ensure_transcript(rep: dict) -> bool:
-    text = rep.get("transcript") or ""
-    had = bool(rep.get("transcript_ru"))
-    if _lang(rep) != "en" or not text.strip() or (had and not _retry(rep.get("transcript_ru_by"))):
-        return False
-    try:
-        from .translate import translate_transcript
-        ru, by = translate_transcript(text, note=_speaker_note(rep))
-    except Exception as e:  # noqa: BLE001
-        log.warning("transcript translation failed: %s", str(e).splitlines()[0][:120])
-        return False
-    if not ru or (had and by == "marian"):
-        return False
-    rep["transcript_ru"], rep["transcript_ru_by"] = ru, by
-    return True
-
-
-def ensure_vocabulary(rep: dict) -> bool:
-    """English speech: content words of the whole transcript translated as dictionary entries; words with the same
-    translation are merged (work / working -> «работа»), so the counts are counts of the Russian word."""
-    sp = (rep.get("analyses") or {}).get("speech")
-    text = rep.get("transcript") or ""
-    if _lang(rep) != "en" or not sp or ("vocabulary_ru" in sp and not _retry(sp.get("vocabulary_ru_by"))):
-        return False
-    from .analyses.speech_stats import vocabulary
-    cands = vocabulary(text, top=3 * VOCABULARY_TOP, lang="en")
-    if not cands:
-        sp["vocabulary_ru"], sp["vocabulary_ru_by"] = [], "ollama"
-        return True
-    info: dict = {}
-    try:
-        from .translate import translate_words
-        tr = translate_words([w for w, _ in cands], "en", "ru", context=text, info=info)
-    except Exception as e:  # noqa: BLE001
-        log.warning("vocabulary translation failed: %s", str(e).splitlines()[0][:120])
-        return False
-    if "vocabulary_ru" in sp and info.get("by") != "ollama":
-        return False
-    # two different words with one translation are merged only when they share a stem (work / working); otherwise the
-    # later one is checked with Marian on its own, which keeps 'aunt' from joining 'uncle' as «дядя»
-    first: dict = {}
-    for w, _ in cands:
-        ru = (tr.get(w) or "").strip().lower()
-        if not ru:
-            continue
-        other = first.setdefault(ru, w)
-        if other != w and w[:4] != other[:4]:
-            try:
-                from .translate import translate_sentences, valid_translation
-                alone = translate_sentences([w], "en", "ru")[0].strip().strip(".").strip()
-                if valid_translation(alone, "ru") and alone.lower() != ru and len(alone.split()) <= 3:
-                    tr[w] = alone
-            except Exception:  # noqa: BLE001
-                pass
-    merged: dict = {}
-    titles = _title_words(text)
-    for w, n in cands:
-        ru = (tr.get(w) or "").strip()
-        if not ru:
-            continue
-        # a name keeps its capital letter: capitalised inside a sentence and never in lower case, not a weekday or a
-        # month, not a word of a title ('Draw My Life'), and marked as a name by the dictionary when it answered
-        lower = re.search(rf"(?<![A-Za-z']){re.escape(w)}(?![A-Za-z'])", text)
-        name = re.search(rf"[A-Za-z,;]\s+{re.escape(w.capitalize())}(?![A-Za-z'])", text)
-        name = (name and not lower and w not in _NOT_NAMES and w not in titles
-                and (info.get("by") != "ollama" or w in info.get("names", ())))
-        ru = ru[:1].upper() + ru[1:] if name else ru.lower()
-        item = merged.setdefault(ru.lower(), [ru, 0, []])
-        item[1] += int(n)
-        item[2].append(w)
-    sp["vocabulary_ru"] = sorted(merged.values(), key=lambda it: -it[1])[:VOCABULARY_TOP]
-    sp["vocabulary_ru_by"] = info.get("by", "marian")
     return True
 
 
@@ -236,9 +128,7 @@ def ensure_words(rep: dict, expl: dict | None) -> bool:
 def ensure_russian(rep: dict, expl: dict | None = None) -> Tuple[bool, bool]:
     """Fills every missing Russian text in place. Returns (result.json changed, explanation.json changed)."""
     t0 = time.time()
-    rep_changed = False
-    for fill in (ensure_behavior, ensure_transcript, ensure_vocabulary):
-        rep_changed = fill(rep) or rep_changed
+    rep_changed = ensure_behavior(rep)
     expl_changed = ensure_words(rep, expl)
     if rep_changed or expl_changed:
         log.info("Russian texts added in %.1f s", time.time() - t0)
@@ -280,7 +170,7 @@ def vocabulary_shown(rep: dict) -> List[Tuple[str, int]]:
         # counted again from the transcript (no model, instant), so older jobs follow the current list of function words
         from .analyses.speech_stats import vocabulary
         text = rep.get("transcript") or ""
-        items = vocabulary(text, top=VOCABULARY_TOP, lang="ru") if (sp and text.strip()) else \
+        items = vocabulary(text, top=VOCABULARY_TOP) if (sp and text.strip()) else \
             [(w, n) for w, n in sp.get("vocabulary") or []]
     else:
         items = [(it[0], it[1]) for it in sp.get("vocabulary_ru") or []]

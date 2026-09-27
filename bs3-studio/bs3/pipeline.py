@@ -209,7 +209,7 @@ def run_extra_analyses(studio: Studio, res: dict, lang: str, progress: Callable 
     if chunks:
         whole = stats_for(chunks, 0.0, float(res.get("duration_sec") or (tl[-1]["end"] if tl else 0.0)), lang=lang)
         out["speech"] = {**whole, "description": describe(whole),
-                         "vocabulary": vocabulary(res.get("transcript", ""), top=15, lang=lang)}
+                         "vocabulary": vocabulary(res.get("transcript", ""), top=15)}
     return out
 
 
@@ -252,7 +252,7 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, *, member: str
     inner = getattr(be, "backends", {}).get(member)
     corpus = getattr(getattr(inner, "cfg", None), "corpus", None) or be.cfg.corpus
     rep = build_report(local, res, backend=member, corpus=corpus, lang=lang, asr_model=studio.asr_model,
-                       modalities=MODALITIES[member], pool_lang=lang, primary=member, selected=member)
+                       modalities=MODALITIES[member], primary=member, selected=member)
     rep["variant_scores"] = {m: v for m, v in (res.get("variants") or {}).items() if m == member}
     for key in ("duration_sec", "segments", "timeline", "representative_segment", "chunks"):
         if res.get(key) is not None:

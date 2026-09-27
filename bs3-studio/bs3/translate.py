@@ -1,7 +1,8 @@
-"""Translation helpers for showing results in the interface language: Marian (Helsinki-NLP opus-mt) on the GPU for
-sentences, the local Ollama model for whole texts and dictionary entries (Marian is their fallback). The models compute
-in English (text branch, behaviour descriptions from the VLM, word attributions); the web page and the PDF show
-Russian translations next to / instead of the English originals, which stay in result.json."""
+"""Russian translations of the English texts the models produce, for the web page and the PDF: the behaviour
+descriptions of the video-language model (translate_description: the local Ollama model with a glossary, Marian as the
+fallback) and the attributed words of AMLAI 1.0 explanations (translate_words: an Ollama dictionary, Marian for the
+rest). Marian (Helsinki-NLP opus-mt) runs on the GPU. The English originals stay in result.json. The speech is Russian
+(3.1), so no transcript is translated: older English jobs show the translation stored with them (ru_texts)."""
 from __future__ import annotations
 
 import logging
@@ -81,45 +82,6 @@ def translate_sentences(sentences: List[str], src="en", tgt="ru", device=None, b
 
 
 _CYR = re.compile(r"[А-Яа-яЁё]")
-_LAT = re.compile(r"[A-Za-z]")
-_REPEAT = re.compile(r"([^\w\s]{1,3})(?:\s*\1){2,}")        # «♪ ♪ ♪ ♪»: a Marian loop on input it cannot read
-
-
-def _script_runs(sentence: str, keep_min: int = 3) -> List[list]:
-    """[[text, keep]]: runs of at least `keep_min` Russian words are kept as spoken (Whisper forced to English still
-    writes whole Russian phrases, which Marian en-ru turns into garbage), everything else is translated."""
-    runs: List[list] = []                          # [script, tokens, Russian words]
-    for t in sentence.split():
-        script = "cyr" if (_CYR.search(t) and not _LAT.search(t)) else ("lat" if _LAT.search(t) else None)
-        if runs and script in (None, runs[-1][0]):
-            runs[-1][1].append(t); runs[-1][2] += script == "cyr"
-        else:
-            runs.append([script or "lat", [t], int(script == "cyr")])
-    out: List[list] = []
-    for script, toks, n_ru in runs:
-        keep = script == "cyr" and n_ru >= keep_min
-        if out and out[-1][1] == keep:
-            out[-1][0] += " " + " ".join(toks)
-        else:
-            out.append([" ".join(toks), keep])
-    return out
-
-
-def translate_long(text: str, src="en", tgt="ru", device=None) -> str:
-    """A whole transcript: split into sentences (and over-long sentences into pieces), translated in batches. Into
-    Russian, phrases already spoken in Russian stay as they are."""
-    sents = [s for s in _SENT.split((text or "").strip()) if s.strip()]
-    plan = [_script_runs(s) if tgt == "ru" else [[s, False]] for s in sents]
-    tr = iter(translate_sentences([t for runs in plan for t, keep in runs if not keep], src, tgt, device))
-    parts: List[str] = []
-    for runs in plan:
-        for t, keep in runs:
-            t = t if keep else next(tr)
-            # a phrase kept as spoken that opens a sentence starts with a capital letter, as the translated ones do
-            if keep and (not parts or parts[-1].rstrip()[-1:] in ".!?…"):
-                t = t[:1].upper() + t[1:]
-            parts.append(t)
-    return _REPEAT.sub(r"\1", " ".join(parts)).strip()
 
 
 def translate_text(text: str, src="en", tgt="ru", device=None) -> str:
@@ -139,10 +101,10 @@ def translate_text(text: str, src="en", tgt="ru", device=None) -> str:
 
 # ---------------------------------------------------------------- whole texts through the local LLM
 # Marian garbles the stock phrases of the behaviour descriptions («спокойной и спокойной» for 'calm and composed',
-# «помолвленной» for 'engaged', «извращению» for 'extraversion', «разбитые губы» for 'parted lips') and loses the thread
-# of a spoken monologue (the speaker changes gender from one sentence to the next). Whole texts go to the local Ollama
-# model with a glossary; Marian is the fallback when Ollama is unreachable, its known mistakes repaired by
-# fix_marian_ru, and the caller stores which translator was used so that a Marian text is translated again later.
+# «помолвленной» for 'engaged', «извращению» for 'extraversion', «разбитые губы» for 'parted lips'). Whole descriptions
+# go to the local Ollama model with a glossary; Marian is the fallback when Ollama is unreachable, its known mistakes
+# repaired by fix_marian_ru, and the caller stores which translator was used so that a Marian text is translated again
+# later.
 OLLAMA_MODEL = "qwen2.5vl:7b"         # the model that writes the behaviour descriptions (already loaded by the pipeline)
 GLOSSARY_RU = """calm and composed -> спокойный и собранный; composed -> собранный; composure -> самообладание;
 engaged -> вовлечённый; engagement -> вовлечённость; attentive -> внимательный; attentiveness -> внимательность;
@@ -205,48 +167,39 @@ def _ollama_json(prompt: str, num_predict: int, model: str = OLLAMA_MODEL, timeo
     return json.loads(data.get("response") or "{}")
 
 
-def _llm_answer_ok(en: str, ru, kind: str) -> bool:
-    """A usable translation: Russian text of a plausible length, no other scripts; English words only where the source
-    has them and they look like names (a capital letter: 'YouTube', 'Draw My Life'), none at all in a behaviour
-    description. An untranslated 'two days' is rejected."""
+def _llm_answer_ok(en: str, ru) -> bool:
+    """A usable translation of a behaviour description: Russian text of a plausible length, no other scripts and no
+    English words at all."""
     if not isinstance(ru, str) or not _CYR.search(ru) or _OTHER_SCRIPT.search(ru):
         return False
     ratio = len(ru.strip()) / max(1, len(en.strip()))
     if not 0.45 <= ratio <= 2.6:
         return False
     latin = re.findall(r"[A-Za-z][A-Za-z'\-]*", ru)
-    if kind == "behavior":
-        return not latin
-    return all(w[:1].isupper() and re.search(rf"(?<![A-Za-z]){re.escape(w)}(?![A-Za-z])", en) for w in latin)
+    return not latin
 
 
-def llm_translate(texts: List[str], kind: str = "behavior", note: str = "") -> List[str | None]:
-    """Russian translations of English texts from the local Ollama model; None where it failed or the answer does not
-    look like a translation (the caller falls back to Marian). kind: "behavior" (a description of nonverbal behaviour)
-    or "speech" (a piece of a spoken transcript, possibly with phrases already in Russian). note: one more instruction
-    (the speaker's gender)."""
+def llm_translate(texts: List[str]) -> List[str | None]:
+    """Russian translations of English descriptions of nonverbal behaviour from the local Ollama model; None where it
+    failed or the answer does not look like a translation (the caller falls back to Marian)."""
     import json
     out: List[str | None] = [None] * len(texts)
     todo = [i for i, t in enumerate(texts) if t and t.strip()]
     if not todo or not ollama_available():
         return out
-    what = ("descriptions of a person's nonverbal behaviour and personality impression" if kind == "behavior" else
-            "pieces of an automatic speech transcript of one speaker (recognition errors are possible; words or "
-            "phrases already written in Russian stay as they are)")
+    what = "descriptions of a person's nonverbal behaviour and personality impression"
     rules = (f"Use these terms:\n{GLOSSARY_RU}\nAdjectives agree with their noun in gender and case. Write only Russian "
-             "words in Cyrillic, no English words.") if kind == "behavior" else (
-             "Keep names of people, places, brands and titles in their usual Russian spelling (or in Latin letters "
-             "exactly as in the source when there is no Russian spelling). Keep the speaker's grammatical gender the "
-             "same in every piece.")
+             "words in Cyrillic, no English words.")
 
-    src = {i: _prepare_behavior_en(texts[i]) if kind == "behavior" else texts[i].strip() for i in todo}
+    src = {i: _prepare_behavior_en(texts[i]) for i in todo}
 
     def ask(i: int) -> None:
         # one text per request: with several texts in one answer the model mixed them up (the gender of one segment
         # leaked into the next). A repeated request samples a little (temperature, seed): at 0 it would return the
-        # same broken answer again
+        # same broken answer again. The space before the line break is kept: the translations were checked with
+        # exactly this prompt
         prompt = (f"You are a professional English-Russian translator. Translate the text below ({what}) into natural, "
-                  f"grammatical Russian. Keep the full meaning: do not add, drop or summarise anything. {rules} {note}\n"
+                  f"grammatical Russian. Keep the full meaning: do not add, drop or summarise anything. {rules} \n"
                   "Answer with a JSON object {\"ru\": \"<the Russian translation>\"}.\n"
                   f"Text: {json.dumps(src[i], ensure_ascii=False)}")
         hint = ""
@@ -260,14 +213,11 @@ def llm_translate(texts: List[str], kind: str = "behavior", note: str = "") -> L
                 log.warning("Ollama translation failed (%s)", str(e).splitlines()[0][:80])
                 continue
             ru = obj.get("ru") if isinstance(obj, dict) else None
-            if kind == "speech" and isinstance(ru, str) and not _llm_answer_ok(src[i], ru, kind):
-                ru = _patch_latin_runs(src[i], ru) or ru
-            if _llm_answer_ok(src[i], ru, kind):
+            if _llm_answer_ok(src[i], ru):
                 out[i] = _fix_llm_ru(" ".join(ru.split()))
                 return
-            left = sorted({w for w in re.findall(r"[A-Za-z][A-Za-z'\-]*", ru) if kind == "behavior" or not (
-                w[:1].isupper() and re.search(rf"(?<![A-Za-z]){re.escape(w)}(?![A-Za-z])", src[i]))}) if isinstance(ru, str) else []
-            # the next try names the English words the answer kept («первые два two days»)
+            left = sorted(set(re.findall(r"[A-Za-z][A-Za-z'\-]*", ru))) if isinstance(ru, str) else []
+            # the next try names the English words the answer kept («occasionalными»)
             hint = (f"\nA previous translation left these English words untranslated: {', '.join(left[:12])}. "
                     "Translate them into Russian too.") if left else ""
 
@@ -279,23 +229,6 @@ def llm_translate(texts: List[str], kind: str = "behavior", note: str = "") -> L
 
 
 LLM_PARALLEL = 2          # more requests only queue up in Ollama and hold back other users of the model
-
-
-def _patch_latin_runs(en: str, ru: str) -> str | None:
-    """A transcript answer that is fine except for a few short English fragments the model copied along with the
-    Russian words around them («наша идея первые два two days»): the fragments translated by Marian. None when there
-    are more or longer fragments (the answer is then asked for again)."""
-    runs = list(re.finditer(r"[A-Za-z][A-Za-z'\-]*(?:\s+[A-Za-z][A-Za-z'\-]*)*", ru))
-    bad = [m for m in runs if not all(w[:1].isupper() and re.search(rf"(?<![A-Za-z]){re.escape(w)}(?![A-Za-z])", en)
-                                      for w in m.group(0).split())]
-    if not bad or len(bad) > 4 or any(len(m.group(0).split()) > 3 for m in bad):
-        return None
-    tr = translate_sentences([m.group(0) for m in bad], "en", "ru")
-    out = ru
-    for m, t in sorted(zip(bad, tr), key=lambda mt: -mt[0].start()):
-        t = t.strip().strip(".").strip()
-        out = out[:m.start()] + (t[:1].lower() + t[1:] if m.group(0)[:1].islower() else t) + out[m.end():]
-    return out if _llm_answer_ok(en, out, "speech") else None
 
 
 _NEUTER = {"ый": "ое", "ой": "ое", "ий": "ее"}
@@ -364,7 +297,7 @@ def translate_description(text: str) -> tuple:
         m = _PREFIX.match(line)
         heads.append(m.group(1) if m else "")
         bodies.append(line[len(heads[-1]):].strip())
-    ru = llm_translate(bodies, "behavior")
+    ru = llm_translate(bodies)
     fallback = False
     for i, body in enumerate(bodies):
         if body and ru[i] is None:
@@ -377,27 +310,6 @@ def _translator(fallback: bool) -> str:
     """"ollama"; "ollama+marian" when Ollama answered but a piece was rejected (asking again later would not help);
     "marian" when Ollama was unreachable (the text is translated again once it answers)."""
     return "ollama" if not fallback else ("ollama+marian" if ollama_available() else "marian")
-
-
-def translate_transcript(text: str, note: str = "") -> tuple:
-    """A whole English transcript in Russian: (text, "ollama" | "marian"). Pieces of a few sentences go to the LLM,
-    so every piece keeps its context; a piece the LLM could not translate goes through Marian."""
-    sents = [s for s in _SENT.split((text or "").strip()) if s.strip()]
-    chunks: List[str] = []
-    for s in sents:
-        if chunks and len(chunks[-1]) + len(s) < 700:
-            chunks[-1] += " " + s
-        else:
-            chunks.append(s)
-    ru = llm_translate(chunks, "speech", note)
-    fallback = False
-    for i, c in enumerate(chunks):
-        if ru[i] is None:
-            ru[i] = translate_long(c, "en", "ru")
-            fallback = True
-    out = _REPEAT.sub(r"\1", " ".join(r for r in ru if r)).strip()
-    # a recording often starts mid-sentence ('a point in my video …'); the text shown still starts with a capital
-    return out[:1].upper() + out[1:], _translator(fallback)
 
 
 def _context_sentence(word: str, text: str) -> str:

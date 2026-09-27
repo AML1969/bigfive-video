@@ -114,7 +114,7 @@ def cmd_infer(a):
             pool_add(v, res["scores"], a.lang, primary)
         rep = build_report(v, res, backend=a.backend, corpus=be.cfg.corpus, lang=be.cfg.lang,
                            asr_model=None if (a.no_asr or transcript is not None) else a.asr_model,
-                           modalities=mods, pool_lang=a.lang if primary else None, primary=primary)
+                           modalities=mods, primary=primary)
         rep["timings_sec"]["model_load"] = round(be.load_seconds, 1)
         if "timings" in res:
             rep["timings_sec"].update(res["timings"])
