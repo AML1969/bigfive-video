@@ -341,6 +341,104 @@ def test_pdf_for_download():
         assert pdf.exists()                                                     # the job folder is not Gradio's
 
 
+@contextlib.contextmanager
+def _patched(module, **names):
+    """Module globals replaced while the block runs, the old values back afterwards."""
+    old = {k: getattr(module, k) for k in names}
+    for k, v in names.items():
+        setattr(module, k, v)
+    try:
+        yield
+    finally:
+        for k, v in old.items():
+            setattr(module, k, v)
+
+
+def test_pdf_button_click():
+    """The click of «Экспорт в PDF» as the launched app runs it (Blocks.process_api: the job folder from the session's
+    gr.State, the registered handler, the button's postprocess and Gradio's path check), started from a directory that
+    holds neither the job folder nor the system temp folder: the button gets the copy in Gradio's upload folder
+    (pdf_for_download). The control: a handler that hands over the stored PDF of export_pdf is refused there, so the
+    download would fail. No job yet and a failed export end in the Russian error dialog, the failure also in the log."""
+    import asyncio
+    import logging
+    import gradio as gr
+    from gradio.exceptions import InvalidPathError
+    from gradio.state_holder import SessionState
+    from gradio.utils import get_upload_folder
+    from bs3.pipeline import Studio
+    with tempfile.TemporaryDirectory() as d, _gradio_temp(Path(d)) as up:
+        base = Path(d)
+        job = _job_folder(base / "web_jobs")
+        pdf = job / JOB_FILES[-1]
+        demo = webapp.build_app(Studio(), base / "web_jobs")
+        btn = next(c for c in demo.blocks.values() if isinstance(c, gr.DownloadButton))
+        fns = [f for f in demo.fns.values() if [c._id for c in f.outputs] == [btn._id]]
+        assert len(fns) == 1 and fns[0].fn.__name__ == "make_pdf", [f.name for f in fns]
+        click = fns[0]
+        assert len(click.inputs) == 1 and isinstance(click.inputs[0], gr.State)
+        state = SessionState(demo)
+        state[click.inputs[0]._id] = str(job)                               # what analyze left in job_state
+
+        def run():
+            return asyncio.run(demo.process_api(block_fn=click, inputs=[None], state=state))["data"][0]
+
+        elsewhere = base / "elsewhere"
+        elsewhere.mkdir()
+        cwd, tmpdir = os.getcwd(), tempfile.tempdir
+        demo.has_launched = True                                            # Gradio checks paths only once launched
+        os.chdir(elsewhere)
+        tempfile.tempdir = str(elsewhere)
+        try:
+            with _patched(webapp, export_pdf=lambda job_dir: str(pdf)):
+                out = run()
+                refused = False
+                with _patched(webapp, pdf_for_download=lambda job_dir: webapp.export_pdf(job_dir)):
+                    try:
+                        run()
+                    except InvalidPathError:
+                        refused = True
+        finally:
+            os.chdir(cwd)
+            tempfile.tempdir = tmpdir
+            demo.has_launched = False
+        assert refused, "the stored PDF passed without allowed_paths: the click above proves nothing"
+        got = Path(out["path"])
+        assert got.parent.parent == Path(get_upload_folder()) == up and re.fullmatch(r"[0-9a-f]{32}", got.parent.name)
+        assert out["orig_name"] == got.name == pdf.name and job not in got.parents
+        assert got.read_bytes() == pdf.read_bytes() and pdf.exists()
+        assert _client(demo).get(out["url"]).status_code == 200
+
+        # no job yet: the dialog asks for an analysis; a failed export: the dialog in Russian, the details in the log
+        for job_dir in ("", None):
+            try:
+                click.fn(job_dir)
+            except gr.Error as e:
+                assert (e.message, e.title) == ("Сначала проанализируйте видео", webapp.ERROR_TITLE)
+            else:
+                raise AssertionError("no error without a job")
+        records = []
+        handler = logging.Handler()
+        handler.emit = records.append
+        web_log = logging.getLogger("bs3.web")
+        web_log.addHandler(handler)
+
+        def broken(job_dir):
+            raise RuntimeError("poppler is missing")
+
+        try:
+            with _patched(webapp, export_pdf=broken):
+                click.fn(str(job))
+        except gr.Error as e:
+            assert (e.message, e.title) == ("Не удалось собрать PDF. Подробности записаны в журнал сервера.",
+                                            webapp.ERROR_TITLE)
+        else:
+            raise AssertionError("no error for a failed export")
+        finally:
+            web_log.removeHandler(handler)
+        assert [r.getMessage() for r in records] == [f"PDF export failed for {job}"] and records[0].exc_info
+
+
 def test_launch_without_allowed_paths():
     """The web app and the preview start Gradio without allowed_paths (what the two tests above rely on)."""
     root = Path(webapp.__file__).resolve().parents[1]
