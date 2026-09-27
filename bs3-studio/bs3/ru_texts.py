@@ -166,7 +166,7 @@ def vocabulary_shown(rep: dict) -> List[Tuple[str, int]]:
     sp = (rep.get("analyses") or {}).get("speech") or {}
     if _lang(rep) != "en":
         # counted again from the transcript (no model, instant), so older jobs follow the current list of function words
-        from .analyses.speech_stats import vocabulary
+        from .words import vocabulary
         text = rep.get("transcript") or ""
         items = vocabulary(text, top=VOCABULARY_TOP) if (sp and text.strip()) else \
             [(w, n) for w, n in sp.get("vocabulary") or []]

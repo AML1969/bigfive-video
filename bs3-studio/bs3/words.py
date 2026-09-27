@@ -4,12 +4,16 @@ The text branch works on the English translation, so the raw attribution is a li
 function words ('to', 'your', 'on'). For the interface we keep content words only, translate them into Russian as
 dictionary entries (context-aware) whatever the speech language, and for a Russian transcript map each one back to the
 word actually spoken (prefix match on the stem), grouped by the direction of the effect. The page and the PDF show
-Russian words only; a word without a translation is left out."""
+Russian words only; a word without a translation is left out.
+
+The words of the speech itself are counted here too (spoken_words, vocabulary): the speech analytics of the pipeline
+(analyses/speech_stats) and the frequent words of the «Речь» tab and the PDF (ru_texts.vocabulary_shown) split a
+transcript into words the same way."""
 from __future__ import annotations
 
 import re
 from collections import Counter
-from typing import Dict
+from typing import Dict, List, Tuple
 
 from .textfmt import clean_word
 
@@ -95,3 +99,31 @@ def shown_word(item: dict) -> str | None:
     when there is no translation (lists made before translations were stored for English speech)."""
     word = item.get("source") or item.get("ru")
     return word if word and re.search(r"[A-Za-z]", word) is None else None
+
+
+# ---------------------------------------------------------------- the words of the speech
+_WORD = re.compile(r"[A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё'\-]*")
+
+
+def spoken_words(text: str) -> List[str]:
+    """The words of a transcript, lower-cased: letters of either alphabet, with an inner apostrophe or hyphen."""
+    return [w.lower() for w in _WORD.findall(text or "")]
+
+
+def vocabulary(text: str, top: int = 12) -> List[Tuple[str, int]]:
+    """Most frequent content words of Russian speech (short/function words and fillers removed)."""
+    stop = set("""и в во не что он на я с со как а то все она так его но да ты к у же вы за бы по только ее мне было вот от меня
+    еще нет о из ему теперь когда даже ну вдруг ли если уже или ни быть был него до вас нибудь опять уж вам ведь там потом себя
+    ничего ей может они тут где есть надо ней для мы тебя их чем была сам чтоб без будто чего раз тоже себе под будет ж тогда
+    кто этот того потому этого какой совсем ним здесь этом один почти мой тем чтобы нее сейчас были куда зачем всех никогда
+    можно при наконец два об другой хоть после над больше тот через эти нас про всего них какая много разве три эту моя
+    впрочем хорошо свою этой перед иногда лучше чуть том нельзя такой им более всегда конечно всю между это которые который
+    очень the a an and or of to in on at for with is are was were be it this that i you he she we they my your
+    самый самая самое самые самого самой самому самым самом самых самыми свой своя своё свое свои своего своей своему
+    своим своём своем своих своими числе включая также которая которое которого которой которому котором которым
+    которых которыми которую этот этих этим этими этому такая такое такие такого таких таким такими какие каких какое
+    каким какую всех всем всеми весь вся всё просто именно лишь нужно будут буду будем была были было могу может могут
+    можем хотя тоже ещё чтобы между вообще сейчас потому поэтому где-то что-то кто-то наш наша наше наши нашего нашей
+    наших нашим мои моих моей моего ваш ваша ваши него неё нему ними""".split())
+    words = [w for w in spoken_words(text) if len(w) > 3 and w not in stop]
+    return Counter(words).most_common(top)

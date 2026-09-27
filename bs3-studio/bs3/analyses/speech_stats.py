@@ -10,20 +10,18 @@ the filler-word lists. Works on the whole video and on each segment.
 from __future__ import annotations
 
 import re
-from collections import Counter
 from typing import Dict, List, Tuple
+
+# the words of a transcript are split the same way for the numbers here and for the frequent words the page
+# shows; vocabulary is read from here by the pipeline, which stores it with the other speech numbers
+from ..words import spoken_words, vocabulary  # noqa: F401
 
 FILLERS = {
     "ru": ["ну", "вот", "как бы", "типа", "значит", "это самое", "в общем", "короче", "так сказать", "собственно",
            "э-э", "эм", "ммм", "в принципе", "получается", "то есть"],
     "en": ["um", "uh", "like", "you know", "i mean", "sort of", "kind of", "basically", "actually", "so", "well", "right"],
 }
-_WORD = re.compile(r"[A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё'\-]*")
 _SENT = re.compile(r"[.!?…]+")
-
-
-def _words(text: str) -> List[str]:
-    return [w.lower() for w in _WORD.findall(text or "")]
 
 
 def _count_fillers(text: str, lang: str) -> int:
@@ -44,9 +42,9 @@ def stats_for(chunks: List[Tuple[float, float, str]], start: float, end: float, 
             sel.append((a, b, t))
             # a Whisper chunk that only partly overlaps the segment contributes the same share of its words to the
             # tempo; counting all its words over the overlapped seconds gave 300-500 words/min on short overlaps
-            rate_words += len(_words(t)) * (max(0.0, b - a) / max(1e-6, e - s))
+            rate_words += len(spoken_words(t)) * (max(0.0, b - a) / max(1e-6, e - s))
     text = " ".join(t for _, _, t in sel)
-    words = _words(text)
+    words = spoken_words(text)
     speech = sum(max(0.0, e - s) for s, e, _ in sel)
     wall = max(1e-6, end - start)
     pauses = [sel[i + 1][0] - sel[i][1] for i in range(len(sel) - 1)]
@@ -54,7 +52,7 @@ def stats_for(chunks: List[Tuple[float, float, str]], start: float, end: float, 
     if sel:
         pause_time += max(0.0, sel[0][0] - start) if sel[0][0] - start >= pause_min else 0.0
         pause_time += max(0.0, end - sel[-1][1]) if end - sel[-1][1] >= pause_min else 0.0
-    sentences = [s for s in _SENT.split(text) if _words(s)]
+    sentences = [s for s in _SENT.split(text) if spoken_words(s)]
     n = len(words)
     fill = _count_fillers(text, lang)
     return {
@@ -91,22 +89,3 @@ def describe(st: Dict) -> str:
     if st.get("mean_sentence"):
         parts.append(f"средняя фраза {st['mean_sentence']:.0f} слов")
     return "; ".join(parts).capitalize() + "."
-
-
-def vocabulary(text: str, top: int = 12) -> List[Tuple[str, int]]:
-    """Most frequent content words of Russian speech (short/function words and fillers removed)."""
-    stop = set("""и в во не что он на я с со как а то все она так его но да ты к у же вы за бы по только ее мне было вот от меня
-    еще нет о из ему теперь когда даже ну вдруг ли если уже или ни быть был него до вас нибудь опять уж вам ведь там потом себя
-    ничего ей может они тут где есть надо ней для мы тебя их чем была сам чтоб без будто чего раз тоже себе под будет ж тогда
-    кто этот того потому этого какой совсем ним здесь этом один почти мой тем чтобы нее сейчас были куда зачем всех никогда
-    можно при наконец два об другой хоть после над больше тот через эти нас про всего них какая много разве три эту моя
-    впрочем хорошо свою этой перед иногда лучше чуть том нельзя такой им более всегда конечно всю между это которые который
-    очень the a an and or of to in on at for with is are was were be it this that i you he she we they my your
-    самый самая самое самые самого самой самому самым самом самых самыми свой своя своё свое свои своего своей своему
-    своим своём своем своих своими числе включая также которая которое которого которой которому котором которым
-    которых которыми которую этот этих этим этими этому такая такое такие такого таких таким такими какие каких какое
-    каким какую всех всем всеми весь вся всё просто именно лишь нужно будут буду будем была были было могу может могут
-    можем хотя тоже ещё чтобы между вообще сейчас потому поэтому где-то что-то кто-то наш наша наше наши нашего нашей
-    наших нашим мои моих моей моего ваш ваша ваши него неё нему ними""".split())
-    words = [w for w in _words(text) if len(w) > 3 and w not in stop]
-    return Counter(words).most_common(top)

@@ -11,7 +11,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from bs3 import cli, frame_captions, journal, longvideo, pipeline, settings, translate
+from bs3 import cli, frame_captions, frame_phrase, journal, longvideo, pipeline, settings, translate
 
 ROOT = Path(__file__).resolve().parents[1]            # bs3-studio/
 HOME = Path.home()
@@ -189,6 +189,16 @@ def _ast_defaults(rel: str, owner: str, member: str | None = None) -> dict:
     return {a.arg: ast.unparse(d) for a, d in zip(args, fn.args.defaults)}
 
 
+def _def_source(rel: str, *names: str) -> str:
+    """The source of a function (`names` = its name) or of a method (class name, method name), read without importing
+    the module."""
+    src = (ROOT / rel).read_text(encoding="utf-8")
+    node = ast.parse(src)
+    for name in names:
+        node = next(n for n in node.body if isinstance(n, (ast.ClassDef, ast.FunctionDef)) and n.name == name)
+    return ast.get_source_segment(src, node)
+
+
 def test_modules_take_their_defaults_from_settings():
     web = cli.parse_args(["web"])
     assert (web.port, web.host, web.asr_model, web.ollama_model) == (settings.PORT, settings.HOST, settings.ASR_MODEL,
@@ -202,8 +212,11 @@ def test_modules_take_their_defaults_from_settings():
     assert (an["seg_len"], an["single_max"], an["asr_model"]) == (settings.SEGMENT_SEC, settings.SINGLE_CLIP_MAX_SEC,
                                                                    settings.ASR_MODEL)
     assert _defaults(translate._ollama_json)["timeout"] == settings.OLLAMA_TRANSLATE_TIMEOUT
-    assert (frame_captions.PHRASE_TIMEOUT, frame_captions.PHRASE_BUDGET) == (settings.PHRASE_TIMEOUT,
-                                                                             settings.PHRASE_BUDGET)
+    # the frame-phrase requests read their time limits from settings, and no module keeps a copy of the two numbers
+    assert "timeout=settings.PHRASE_TIMEOUT" in _def_source("bs3/backend_mm.py", "MMBackend", "describe_frame")
+    assert _def_source("bs3/mm/explain.py", "key_frame_info").count("settings.PHRASE_BUDGET") == 2
+    assert not [(m.__name__, n) for m in (frame_captions, frame_phrase) for n in ("PHRASE_TIMEOUT", "PHRASE_BUDGET")
+                if hasattr(m, n)]
     mm = _ast_defaults("bs3/backend_mm.py", "MMConfig")
     assert (mm["checkpoint"], mm["asr_model"], mm["ollama_model"]) == (
         "settings.MM_CHECKPOINTS", "settings.ASR_MODEL", "settings.OLLAMA_MODEL"), mm

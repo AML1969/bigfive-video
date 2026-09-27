@@ -220,8 +220,8 @@ class MMBackend:
     def describe_frame(self, image_b64: str) -> str:
         """A few words about ONE key frame (the caption under it): the same local vision model, one image, a short
         token budget and a shorter timeout — a caption is never worth holding the job for minutes."""
-        from .frame_captions import FRAME_PROMPT, PHRASE_NUM_PREDICT, PHRASE_TIMEOUT
-        data = self._ollama(FRAME_PROMPT, [image_b64], PHRASE_NUM_PREDICT, timeout=PHRASE_TIMEOUT, attempts=1)
+        from .frame_phrase import FRAME_PROMPT, PHRASE_NUM_PREDICT
+        data = self._ollama(FRAME_PROMPT, [image_b64], PHRASE_NUM_PREDICT, timeout=settings.PHRASE_TIMEOUT, attempts=1)
         return " ".join(str(data.get("response", "")).split()).strip()
 
     # ---------------------------------------------------------------- prediction

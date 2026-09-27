@@ -8,7 +8,7 @@ Environment variables: BS3_DATA_DIR (the data folder, default ~/bs3_data), BS3_J
 by bs3.ollama.url on localhost, then on the WSL default gateway).
 
 Domain constants stay next to their logic, not here: config/mbti.json, the score bands, the palette, the caveats, the
-lexicon, the prompt limits of the frame phrase (PHRASE_* in frame_captions), the frame counts of MMConfig, the
+lexicon, the prompt limits of the frame phrase (PHRASE_* in frame_phrase), the frame counts of MMConfig, the
 windowing of BackendConfig and the model ids pinned in analyses/ and mm/ (the models the features were trained with).
 """
 from __future__ import annotations

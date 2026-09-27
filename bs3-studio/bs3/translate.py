@@ -2,14 +2,13 @@
 descriptions of the video-language model (translate_description: the local Ollama model with a glossary, Marian as the
 fallback) and the attributed words of AMLAI 1.0 explanations (translate_words: an Ollama dictionary, Marian for the
 rest). Marian (Helsinki-NLP opus-mt) runs on the GPU. The English originals stay in result.json. The speech is Russian
-(3.1), so no transcript is translated: older English jobs show the translation stored with them (ru_texts)."""
+(3.1), so no transcript is translated: older English jobs show the translation stored with them (ru_texts).
+torch and transformers are imported only when Marian really translates: importing this module loads neither."""
 from __future__ import annotations
 
 import logging
 import re
 from typing import Dict, List
-
-import torch
 
 from . import ollama, settings
 from .ollama import available as ollama_available   # called through this name: tests and scripts replace it here
@@ -33,7 +32,10 @@ def _get(src: str, tgt: str, device: str):
 
 
 def _device(device: str | None) -> str:
-    return device or ("cuda" if torch.cuda.is_available() else "cpu")
+    if device:
+        return device
+    import torch
+    return "cuda" if torch.cuda.is_available() else "cpu"
 
 
 MAX_PIECE_TOKENS = 200     # Marian has 512 positions for the input and the output: long pieces are split before that
@@ -63,21 +65,23 @@ def _pieces(sentence: str, tok, limit: int = MAX_PIECE_TOKENS) -> List[str]:
     return out + ([cur] if cur else [])
 
 
-@torch.no_grad()
 def translate_sentences(sentences: List[str], src="en", tgt="ru", device=None, batch: int = 16) -> List[str]:
     """One translation per input sentence; over-long sentences are translated in pieces and joined back."""
     if not sentences:
         return []
-    tok, mdl = _get(src, tgt, _device(device))
-    flat, owner = [], []
-    for i, s in enumerate(sentences):
-        for p in _pieces(s, tok):
-            flat.append(p); owner.append(i)
-    tr = []
-    for i in range(0, len(flat), batch):
-        enc = tok(flat[i:i + batch], return_tensors="pt", padding=True, truncation=True, max_length=400).to(mdl.device)
-        gen = mdl.generate(**enc, max_new_tokens=400, num_beams=2)
-        tr += tok.batch_decode(gen, skip_special_tokens=True)
+    import torch
+    with torch.no_grad():
+        tok, mdl = _get(src, tgt, _device(device))
+        flat, owner = [], []
+        for i, s in enumerate(sentences):
+            for p in _pieces(s, tok):
+                flat.append(p); owner.append(i)
+        tr = []
+        for i in range(0, len(flat), batch):
+            enc = tok(flat[i:i + batch], return_tensors="pt", padding=True, truncation=True,
+                      max_length=400).to(mdl.device)
+            gen = mdl.generate(**enc, max_new_tokens=400, num_beams=2)
+            tr += tok.batch_decode(gen, skip_special_tokens=True)
     out = [""] * len(sentences)
     for i, t in zip(owner, tr):
         out[i] = f"{out[i]} {t}".strip()

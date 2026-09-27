@@ -45,12 +45,10 @@ PDF_MODULES = ("pdf_report", "pdf_charts", "pdf_mbti", "pdf", "pdf.*")
 WEB_MODULES = ("webapp", "charts", "webparts", "mbti_html", "web", "web.*")
 HEAVY = ("torch", "cv2", "transformers", "pandas", "librosa")
 # modules whose docstring promises no bs3 import at all (palette is loaded standalone by scripts/check_palette.py)
-NO_BS3_IMPORTS = ("palette", "settings", "jobfiles", "textfmt")
+NO_BS3_IMPORTS = ("palette", "settings", "jobfiles", "textfmt", "frame_phrase")
 
 # (importer, imported, the stage of the refactoring plan that removes the edge)
 ALLOW = {
-    ("ru_texts", "analyses.speech_stats", 11),     # vocabulary(): the text layer counts words without analyses/
-    ("translate", "torch", 11),                    # torch imported inside the function
     ("pdf_charts", "charts", 12),                  # _segments -> segments
     ("pdf_charts", "pdf_report", 12),              # TEXT_W_MM -> pdf.layout, _empty_text, _seg_words -> segments
     ("pdf_mbti", "pdf_report", 12),                # Report, NOTE_GREY, TEXT_W_MM -> pdf.document

@@ -208,7 +208,8 @@ def key_frame_info(paths: Sequence[str], crops: Optional[Sequence] = None, raw_j
     built from) and a short phrase about what is visible (`phrase_fn` — the local vision model, one request per
     frame, one retry, then the frame keeps no phrase and the caption falls back to the expression).
     Both helpers are optional; a failure of either never breaks the explanation."""
-    from ..frame_captions import PHRASE_BUDGET, PHRASE_TRIES, clean_phrase
+    from .. import settings
+    from ..frame_phrase import PHRASE_TRIES, clean_phrase
     from ..labels import EXPR_RU
 
     info = [{"file": Path(p).name, "frame": _key_index(p)} for p in paths]
@@ -231,9 +232,9 @@ def key_frame_info(paths: Sequence[str], crops: Optional[Sequence] = None, raw_j
             b64 = raw_jpegs.get(rec["file"])
             if not b64:
                 continue
-            if time.time() - t0 > PHRASE_BUDGET:      # the captions never hold the job: the rest keep none
+            if time.time() - t0 > settings.PHRASE_BUDGET:   # the captions never hold the job: the rest keep none
                 log.warning("key-frame phrases: out of the %.0fs budget, the remaining frames keep none",
-                            PHRASE_BUDGET)
+                            settings.PHRASE_BUDGET)
                 break
             for _ in range(PHRASE_TRIES):
                 try:
@@ -250,5 +251,5 @@ def key_frame_info(paths: Sequence[str], crops: Optional[Sequence] = None, raw_j
 
 
 def _key_index(path: str) -> Optional[int]:
-    from ..frame_captions import _frame_index
+    from ..frame_phrase import _frame_index
     return _frame_index(path)
