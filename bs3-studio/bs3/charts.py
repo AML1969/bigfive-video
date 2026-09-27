@@ -16,6 +16,7 @@ from .labels import EMO_RU, EMOTION_ORDER, EXPR_ORDER, RADAR_LABEL, VOICE_RU, mo
 from .norms import RU_TITLES, TRAIT_KEYS
 from .palette import (BARS_WEB, EMO_ALIAS, FONT_FAMILY, RADAR_WEB, SPEECH_WEB, THEME, TRAIT_SYMBOL, TRAIT_WEB,
                       VOICE_SYMBOL, VOICE_WEB, emo)
+from .scores import shown_model
 from .segments import representative, scored
 from .textfmt import clock, seg_label
 
@@ -169,7 +170,7 @@ def fig_radar(rep: dict, theme: str = "dark"):
     full = [RU_TITLES[k] for k in TRAIT_KEYS]
     main = [rep["traits"][k]["score"] for k in TRAIT_KEYS]
     # one model per analysis (3.1): the trace is named after it («OCEAN-AI, веса MuPTA» / «AMLAI 1.0»)
-    name = model_title((rep.get("view_meta") or {}).get("main_system") or (rep.get("model") or {}).get("selected"))
+    name = model_title(shown_model(rep))
     fig = go.Figure()
     fig.add_trace(go.Scatterpolar(
         r=main + main[:1], theta=theta + theta[:1], customdata=full + full[:1], mode="lines+markers", fill="toself",

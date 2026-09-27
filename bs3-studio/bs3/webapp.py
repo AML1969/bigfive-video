@@ -18,19 +18,19 @@ import threading
 import time
 from pathlib import Path, PurePosixPath
 
-from . import (DEFAULT_MODEL, MODEL_TITLES, PRODUCT, PRODUCT_SLUG, caveats, characterization, jobfiles, journal,
-               mbti_html, settings)
+from . import (DEFAULT_MODEL, MODEL_TITLES, PRODUCT, PRODUCT_SLUG, caveats, characterization, jobfiles, jobview,
+               journal, mbti_html, settings)
 from .charts import (fig_emotion_bars, fig_emotions_timeline, fig_face_expr, fig_radar, fig_speech_timeline,
                      fig_traits_timeline, fig_voice_timeline, plot_html as _plot_html)
 from .labels import EMO_RU
-from .mbti import fact_card, get_mbti
+from .mbti import fact_card
 from .narrative import NO_EXPLAIN_RU, method_notes
 from .narrative2 import FACTS_LEGEND, card_item, fact_label, key_facts
 from .palette import (ACCENT, BUTTON_PRIMARY, BUTTON_PRIMARY_HOVER, BUTTON_STOP, BUTTON_STOP_HOVER, CARD_TINT,
                       FACT_VALUE, HTML as PAL, PAGE_NOTE_OPACITY, SUBDUED_TEXT_LIGHT)
 from .pipeline import Studio, run_analysis
-from .ru_texts import ensure_russian, ensure_russian_job, transcript_shown, vocabulary_shown
-from .scores import FACT_STATES, clean_view, data_json
+from .ru_texts import transcript_shown, vocabulary_shown
+from .scores import FACT_STATES, data_json, has_explanations
 from .segments import representative
 from .textfmt import clock, fix_counts, fmt_secs, mmss_labels, plural_ru, seg_label
 from .webparts import NOTE, _bar_html, _contrib_html, _words_text, model_line, table_html, th_text
@@ -230,8 +230,7 @@ def _frames_html(rep: dict, expl: dict | None = None, max_side: int = 640) -> st
 
     from . import frame_captions
 
-    main = (rep.get("view_meta") or {}).get("main_system") or (rep.get("model") or {}).get("selected")
-    if main != "mm":
+    if not has_explanations(rep):
         return f"<p style='font-size:14px'>{NO_FRAMES_OCEANAI}</p>"
     # the frames of the job folder being shown, found by name (jobfiles); without a folder there are none
     paths = [str(p) for p in jobfiles.key_frame_paths(rep["job_dir"], rep)] if rep.get("job_dir") else []
@@ -321,7 +320,8 @@ def page_outputs(rep: dict) -> tuple:
     (without the PDF button). Jobs processed before the Russian texts existed get them here, stored back.
 
     Design 10.5: the numbers come from the clean view (scores.clean_view), the MBTI section from mbti.get_mbti (the
-    saved one, or computed now and never written), the characterization from characterization.build. The first 22
+    saved one, or computed now and never written), the characterization from characterization.build, each built once
+    (jobview.for_page; the app renders that JobView with page_values and hands it to the journal). The first 22
     values keep their places (index 2 — the key facts with the type card first, index 3 — the characterization), then
     five new ones: «Как получены оценки», «Эмоции и голос: коротко», the MBTI panel, the letter strip and «Как читать
     тип MBTI». One model everywhere (3.1): the bars, the panel and the strip are the model recorded in the job; the
@@ -335,21 +335,17 @@ def page_outputs(rep: dict) -> tuple:
     The files of the job (explanation.json, the key frames) are read from the folder `rep["job_dir"]` (jobfiles). A
     `rep` without it renders without them: no explanation, no key frames, and «Сохранено в» and the job folder of the
     PDF button stay empty."""
-    job = Path(rep["job_dir"]) if rep.get("job_dir") else None
-    expl_path = jobfiles.explanation_path(job) if job else None
-    expl = jobfiles.read_json(expl_path) if job else None
-    if job:
-        ensure_russian_job(job, rep, expl)
-    else:
-        ensure_russian(rep, expl)
-    view = clean_view(rep)
-    mb = get_mbti(rep, view)
-    ch = characterization.build(view, mb)
-    main = (view.get("view_meta") or {}).get("main_system")
+    return page_values(jobview.for_page(rep))
+
+
+def page_values(jv: jobview.JobView) -> tuple:
+    """The values of page_outputs for a JobView (jobview.for_page): the app renders a finished analysis from it and
+    hands the same JobView to the journal entry of that analysis (journal.result)."""
+    rep, view, mb, expl, job = jv.rep, jv.view, jv.mb, jv.expl, jv.job
     # explanations exist for AMLAI 1.0 only: an OCEAN-AI job says so once, in the first block of the tab, and the
     # other blocks stay empty (an older job may carry the explanation and the behaviour description of the second
     # model of 3.0; the page shows one model)
-    own = main == "mm"
+    own = has_explanations(view)
     contrib = _contrib_html(expl) if own else f"<p style='font-size:14px;margin:0'>{NO_EXPLAIN_RU}</p>"
     data, _ = data_json(rep)
     # the transcript block; an older job processed as English shows its Russian translation with a one-line note
@@ -357,13 +353,13 @@ def page_outputs(rep: dict) -> tuple:
     # fill=True: charts in a row of two windows grow to the height of the window next to them (see APP_CSS)
     out = (_plot_html(fig_radar, view, fill=True),
            _bar_html(view["traits"], view.get("interview")),
-           _facts_html(view, mb), ch.html(), _plot_html(fig_traits_timeline, view),
+           _facts_html(view, mb), jv.character.html(), _plot_html(fig_traits_timeline, view),
            _plot_html(fig_emotions_timeline, view), _plot_html(fig_voice_timeline, view, fill=True),
            _plot_html(fig_speech_timeline, view, fill=True), _plot_html(fig_emotion_bars, view),
            _segments_table(view), _speech_html(view),
            "\n\n".join(t for t in (note, transcript) if t), _face_html(view), _plot_html(fig_face_expr, view),
            _frames_html(view, expl if own else None), contrib,
-           _words_text(expl, rep, expl_path) if (expl and own) else "",
+           _words_text(expl) if (expl and own) else "",
            mmss_labels(rep.get("behavior_description_ru") or "") if own else "", model_text(view, rep, mb),
            json.dumps(_without_server_paths(data), ensure_ascii=False, indent=2), job.name if job else "",
            str(job) if job else "",
@@ -379,20 +375,20 @@ def export_pdf(job_dir: str | Path) -> str:
     from .media import probe_media
     from .pdf_report import build_pdf
     job = Path(job_dir)
-    rep, expl = jobfiles.load_job(job)          # the files of this folder, whatever paths result.json stores
-    ensure_russian_job(job, rep, expl)          # jobs processed before the Russian texts: translate once, store back
-    view = clean_view(rep)                      # the PDF shows the same clean numbers as the page (design 6.1)
-    mb = get_mbti(rep, view)                    # saved section or computed now; never written (design 7.2)
-    ch = characterization.build(view, mb)
-    view["chart_files"] = save_pdf_charts(view, job / jobfiles.CHARTS_DIR, expl)
-    frames = [str(p) for p in jobfiles.key_frame_paths(job, rep)]
+    # the files of this folder, whatever paths result.json stores; jobs processed before the Russian texts are
+    # translated once and stored back; the same clean numbers (design 6.1), the saved MBTI section or one computed now
+    # and never written (design 7.2) and the same characterization as the page
+    jv = jobview.load_job(job)
+    view = jv.view
+    view["chart_files"] = save_pdf_charts(view, job / jobfiles.CHARTS_DIR, jv.expl)
+    frames = [str(p) for p in jobfiles.key_frame_paths(job, jv.rep)]
     media = view.get("media")
     if not media or "error" in media:
         inp = jobfiles.input_file(job)
         media = probe_media(inp) if inp else None
     stem = re.sub(r"[^A-Za-z0-9А-Яа-яЁё._-]+", "_", Path(view.get("original_file_name") or "video").stem)[:60]
-    return build_pdf(view, job / f"{PRODUCT_SLUG}_report_{stem}.pdf", explanation=expl, media=media, key_frames=frames,
-                     mbti=mb, character=ch)
+    return build_pdf(view, job / f"{PRODUCT_SLUG}_report_{stem}.pdf", explanation=jv.expl, media=media,
+                     key_frames=frames, mbti=jv.mb, character=jv.character)
 
 
 def pdf_for_download(job_dir: str | Path) -> str:
@@ -593,8 +589,8 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
 
     N_REST = N_PAGE + 1           # page_outputs + the PDF button (design 10.5: 28)
 
-    def render(rep: dict) -> tuple:
-        return page_outputs(rep) + (gr.update(interactive=True),)
+    def render(jv: jobview.JobView) -> tuple:
+        return page_values(jv) + (gr.update(interactive=True),)
 
     def analyze(video, member, request: gr.Request):
         """`member`: the model chosen on the page ("oceanai" | "mm"); the speech is Russian (pipeline). Explanations
@@ -636,8 +632,9 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
             yield (_status_html(state["frac"], msg, state="error"),) + (gr.update(),) * N_REST
             raise gr.Error(msg, title=ERROR_TITLE)
         rep = result["r"]
-        outs = render(rep)
-        journal.result(request, rep, time.time() - state["t0"])        # builds its own view, type and summary
+        jv = jobview.for_page(rep)
+        outs = render(jv)
+        journal.result(request, rep, time.time() - state["t0"], jv=jv)   # the page's view, type and summary
         yield (_status_html(1.0, f"обработано за {fmt_secs(time.time() - state['t0'])}", state="done"),) + outs
 
     # `from __future__ import annotations` keeps «gr.Request» as a string, and Gradio resolves it in the module namespace,
@@ -770,14 +767,14 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
         if preview_job:
             # the finished job becomes the initial value of every output (set before the page config is built), so
             # the page arrives filled; a demo.load event did not always reach the browser
-            rep, _ = jobfiles.load_job(preview_job)
-            filled = (_status_html(1.0, "предпросмотр готового результата", state="done"),) + page_outputs(rep)
+            jv = jobview.load_job(preview_job)
+            filled = (_status_html(1.0, "предпросмотр готового результата", state="done"),) + page_values(jv)
             for comp, value in zip(outputs, filled):
                 comp.value = value
             pdf_btn.interactive = True
             # the radio shows the model the previewed job was processed with (an imported 2.0 job: OCEAN-AI)
             from .scores import recorded_model
-            model.value = recorded_model(rep) or DEFAULT_MODEL
+            model.value = recorded_model(jv.rep) or DEFAULT_MODEL
     return demo
 
 

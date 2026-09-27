@@ -65,8 +65,9 @@ EMO_STATE = {"neutral": NEUTRAL, "sadness": BELOW, "fear": BELOW, "disgust": BEL
              "joy": ABOVE, "surprise": ABOVE, "anger": ABOVE}
 
 __all__ = ["clean_view", "segment_ok", "level", "level_phrase", "score_text", "shown", "LEVELS_RU",
-           "main_system", "recorded_model", "data_json", "scale_state", "tempo_state", "emotion_state",
-           "FACT_STATES", "TEMPO_BAND", "NEUTRAL", "BELOW", "ABOVE", "READ_FALLBACK", "scored", "num"]
+           "main_system", "recorded_model", "shown_model", "has_explanations", "data_json", "scale_state",
+           "tempo_state", "emotion_state", "FACT_STATES", "TEMPO_BAND", "NEUTRAL", "BELOW", "ABOVE", "READ_FALLBACK",
+           "scored", "num"]
 
 
 def num(x) -> float | None:
@@ -113,6 +114,20 @@ def main_system(rep: dict) -> tuple[str, bool]:
         if _has_scores(var.get(s)):
             return s, recorded is not None
     return recorded or READ_FALLBACK, recorded is not None
+
+
+def shown_model(rep: dict) -> str | None:
+    """The model a report is shown as ("oceanai" | "mm"), for its title and for what it shows: the model of a clean
+    view (`view_meta.main_system`, see main_system), else the model a raw result.json names (recorded_model); None
+    when a raw result.json names none."""
+    return (rep.get("view_meta") or {}).get("main_system") or recorded_model(rep)
+
+
+def has_explanations(view: dict) -> bool:
+    """Does the report show explanations (key frames, modality shares, words, the behaviour description)? They exist
+    for AMLAI 1.0 only (3.1): an OCEAN-AI job shows none, also an older one that carries the explanations of the
+    second model of 3.0 (the page and the PDF show one model)."""
+    return shown_model(view) == "mm"
 
 
 def segment_ok(rep: dict, t: dict) -> bool:

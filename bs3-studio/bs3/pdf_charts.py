@@ -24,6 +24,7 @@ from .palette import (BARS_PDF, EMO_ALIAS, EMO_HEAT_L, EMO_HEAT_PDF, MODALITY_PD
                       TRAIT_MARKER_PDF, TRAIT_PDF, VOICE_MARKER_PDF, VOICE_PDF, emo_heat_pdf, emo_heat_step,
                       emo_heat_text_pdf, emo_pdf)
 from .pdf.layout import TEXT_W_MM
+from .scores import shown_model
 from .segments import as_float, dominant_emotion, emotion_shares, representative, scored, seg_words
 from .textfmt import clock
 
@@ -195,8 +196,7 @@ def _radar_chart(plt, rep: dict, out_dir: Path) -> Optional[str]:
     ax.grid(color=GRID, lw=0.5)
     ax.spines["polar"].set_color(AXIS); ax.spines["polar"].set_linewidth(0.8)
     main = [float(traits[k]["score"]) for k in TRAIT_KEYS]
-    main_label = "Оценка модели " + model_title((rep.get("view_meta") or {}).get("main_system")
-                                               or (rep.get("model") or {}).get("selected"))
+    main_label = "Оценка модели " + model_title(shown_model(rep))
     ax.plot(closed, main + main[:1], color=RADAR_PDF["main"], lw=SERIES_LW, marker="o", ms=SERIES_MS, label=main_label,
             zorder=3, clip_on=False)
     ax.fill(closed, main + main[:1], color=RADAR_PDF["main"], alpha=0.14, lw=0, zorder=2)

@@ -10,7 +10,6 @@ CSS variables such as --block-background-fill switch with the theme by themselve
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 from . import MODEL_TITLES
 from .labels import ROW_TITLES, model_title
@@ -185,13 +184,12 @@ def model_line(view: dict) -> str:
     return f"Модель {model_title(main)}" + (f": {scores}." if scores else ".")
 
 
-def _words_text(expl: dict, rep: dict, expl_path: Path | None = None) -> str:
-    """Readable word attributions (content words in Russian for any speech language, grouped by direction); computed
-    once and stored in explanation.json under "readable_words" so the PDF shows the same lists."""
+def _words_text(expl: dict) -> str:
+    """Readable word attributions (content words in Russian for any speech language, grouped by direction), from the
+    lists explanation.json keeps under "readable_words", which the PDF prints too. Reads only: the lists of an older
+    job are made and stored before the page is built, with its other Russian texts (jobview,
+    ru_texts.ensure_russian_job)."""
     from .narrative import words_summary
-    from .ru_texts import ensure_words, write_json
-    if ensure_words(rep, expl) and expl_path is not None:
-        write_json(expl_path, expl)
     return "\n\n".join(words_summary(expl.get("readable_words") or {}, expl, TRAIT_TITLES))
 
 

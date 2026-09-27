@@ -19,7 +19,7 @@ import os
 import re
 from pathlib import Path
 
-from . import MODALITIES, MODEL_TITLES, PRODUCT, caveats, frame_captions, segments, settings
+from . import MODALITIES, MODEL_TITLES, PRODUCT, caveats, frame_captions, jobview, segments, settings
 from .labels import EMO_RU, EMOTION_ORDER, VOICE_RU, model_title
 from .narrative import NO_EXPLAIN_RU
 from .narrative2 import FACTS_LEGEND, analyses_parts, card_item, key_facts
@@ -28,7 +28,7 @@ from .pdf.document import RADAR_W_MM, ROW_GAP_MM, Report
 from .pdf_charts import save_modalities_chart
 from .pdf_mbti import characterization_block, mbti_section, segment_types_by_start
 from .ru_texts import transcript_shown, vocabulary_shown
-from .scores import scored
+from .scores import has_explanations, scored, shown_model
 from .segments import (behavior_by_segment, dominant_emotion, empty_text, odd_segments, representative, seg_words,
                        segment_rows)
 from .textfmt import clock, fix_counts, fmt_secs, plural_ru, seg_label
@@ -73,12 +73,6 @@ def _encoder(v) -> str:
     s = str(v or "")
     m = re.match(r"^Lav([fc])(\d[\d.]*)$", s)
     return f"FFmpeg (libav{'format' if m.group(1) == 'f' else 'codec'} {m.group(2)})" if m else s
-
-
-def _main_model(report: dict) -> str | None:
-    """The model a clean view shows ("oceanai" | "mm"); a raw report gives the recorded one (scores.recorded_model)."""
-    from .scores import recorded_model
-    return (report.get("view_meta") or {}).get("main_system") or recorded_model(report)
 
 
 def _asr_ru(name) -> str:
@@ -136,7 +130,7 @@ def _plan(pdf: Report, report: dict, explanation, frames, charts: dict, mb: dict
            "emotions": bool(te.get("mean") or fa.get("mean") or charts.get("emotions")),
            "voice_speech": bool(an.get("voice") or an.get("speech") or charts.get("voice") or charts.get("speech")),
            # explanations exist for AMLAI 1.0 only (3.1): an OCEAN-AI job gets one line under section 4 instead
-           "explain": bool(explanation or frames) and _main_model(report) == "mm",
+           "explain": bool(explanation or frames) and has_explanations(report),
            "how_to_read": True}          # numbered like the rest: between the sections and the lettered appendices
     n = 0
     for key, ok in has.items():
@@ -147,7 +141,7 @@ def _plan(pdf: Report, report: dict, explanation, frames, charts: dict, mb: dict
     # the behaviour description is written for AMLAI 1.0 (its video-language model); an older OCEAN-AI job that
     # carries the description of the second model of 3.0 does not print it: one model in the report
     appx = {"file": True, "segments": len(segment_rows(report)) >= 2,
-            "behavior": bool(report.get("behavior_description_ru")) and _main_model(report) == "mm",
+            "behavior": bool(report.get("behavior_description_ru")) and has_explanations(report),
             "transcript": bool(note or transcript)}
     letters = iter("АБВГДЕ")
     for key, ok in appx.items():
@@ -187,7 +181,7 @@ def _passport(pdf: Report, report: dict, media: dict | None, fname: str) -> None
         analysis.append(f"время обработки {fmt_secs(t.get('total_wall', t.get('total')))}")
     # one model per analysis (3.1): the model of the view, «OCEAN-AI, веса MuPTA» or «AMLAI 1.0»
     rows = [("Файл", " · ".join(parts)), ("Анализ", " · ".join(p for p in analysis if p)),
-            ("Модель", model_title(_main_model(report))),
+            ("Модель", model_title(shown_model(report))),
             ("Отчёт", f"создан {_dt.datetime.now().strftime('%Y-%m-%d %H:%M')}; технические сведения о файле и анализе — "
                       f"в приложении {pdf.appx.get('file', 'А')}")]
     pdf.set_font("ui", "B", 8.5)
@@ -491,7 +485,7 @@ def _frame_caption(pdf: Report, entry: dict | None, x: float, y: float, width: f
 
 def _no_explain_note(pdf: Report, report: dict) -> None:
     """An OCEAN-AI job (3.1): one line under section 4 in place of section 5 — no empty section, no heading."""
-    if "explain" in pdf.plan or _main_model(report) == "mm":
+    if "explain" in pdf.plan or has_explanations(report):
         return
     pdf.ln(1)
     pdf.caption(NO_EXPLAIN_RU, 8)
@@ -621,7 +615,7 @@ def _analysis_rows(report: dict) -> list:
     those are replaced by the modalities of the shown model, bs3.MODALITIES), version, segments, time. The speech is
     always Russian, so no language row."""
     m = report.get("model") or {}
-    main = _main_model(report)
+    main = shown_model(report)
     mods = [x for x in report.get("modalities_used") or [] if x not in MODEL_TITLES] or list(MODALITIES.get(main, ()))
     rows = [("Модель", model_title(main)),
             ("Распознавание речи", _asr_ru(m.get("asr_model")) if m.get("asr_model") else "готовый транскрипт"),
@@ -722,7 +716,7 @@ def _segments_table(pdf: Report, report: dict, mb: dict | None = None) -> None:
                    f"{pdf.plan['mbti']}). " if "mbti" in pdf.plan else "MBTI — тип отрезка, X — ось на границе. ")
     if any_no_primary:
         legend += ("«—» в столбцах Big Five" + (" и MBTI" if mbti_col else "")
-                   + f" — модель {MODEL_TITLES.get(_main_model(report), 'OCEAN-AI')} не дала оценки отрезка, он не "
+                   + f" — модель {MODEL_TITLES.get(shown_model(report), 'OCEAN-AI')} не дала оценки отрезка, он не "
                    "вошёл в основные оценки. ")
     legend += ("Возб. — возбуждение, Увер. — уверенность, Позит. — позитивность. "
                "Эмоция — преобладающая в отрезке и её доля. Темп — слов в минуту речи; «—» — речи в отрезке меньше 3 с. "
@@ -965,14 +959,16 @@ def _render(report: dict, explanation, media, frames: list, charts: dict, fname:
 def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = None, media: dict | None = None,
               key_frames: list[str] | None = None, mbti: dict | None = None, character=None) -> str:
     """The PDF of a clean view (scores.clean_view; a raw result.json is cleaned here). `mbti` — the section of
-    mbti.get_mbti, `character` — characterization.build; both are computed here when the caller does not pass them."""
-    if not report.get("view_meta"):
+    mbti.get_mbti, `character` — characterization.build; both are computed here when the caller does not pass them
+    (jobview.from_report: the view, its section and its characterization, each built once)."""
+    if mbti is None and character is None:
+        jv = jobview.from_report(report)
+        report, mbti, character = jv.view, jv.mb, jv.character
+    elif not report.get("view_meta"):
         from .scores import clean_view
         report = clean_view(report)
-    if character is None:
+    if character is None:                           # the characterization of the caller's own section
         from . import characterization
-        from .mbti import get_mbti
-        mbti = mbti if mbti is not None else get_mbti(report, report)
         character = characterization.build(report, mbti)
     fname = report.get("original_file_name") or (media or {}).get("file_name") or Path(report.get("input", "")).name
     frames = [p for p in (key_frames or []) if os.path.exists(p)]

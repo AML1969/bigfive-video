@@ -79,29 +79,30 @@ def _scores(scores: dict) -> str:
 def result_lines(rep: dict) -> list[str]:
     """Body of a result entry (design 10.6; one model since 3.1): the clean scores of the model the view shows
     (scores.clean_view), its MBTI type, the paragraph «Коротко» of the characterization and the job folder. The view,
-    the type and the characterization are built here from `rep`; nothing is written back."""
-    from . import characterization
-    from .mbti import get_mbti, journal_lines
-    from .scores import clean_view
+    the type and the characterization are built here from `rep` (jobview.from_report); nothing is written back."""
+    from . import jobview
+    return _lines(jobview.from_report(rep))
 
-    view = clean_view(rep)
-    meta = view.get("view_meta") or {}
-    model = view.get("model") or {}
-    main_sys = meta.get("main_system") or model.get("selected") or model.get("primary")
+
+def _lines(jv) -> list[str]:
+    """result_lines of a JobView (jobview): its view, MBTI section and characterization as they are."""
+    from .mbti import journal_lines
+    from .scores import shown_model
+
+    view = jv.view
     main = {k: (v.get("score") if isinstance(v, dict) else v) for k, v in (view.get("traits") or {}).items()}
-    line = f"Итог ({model_title(main_sys)}): {_scores(main)}"
+    line = f"Итог ({model_title(shown_model(view))}): {_scores(main)}"
     iv = view.get("interview")
     iv = iv.get("score") if isinstance(iv, dict) else iv
     if iv is not None:
         line += f"; «пригласил бы на собеседование» {float(iv):.2f}"
     lines = [line]
-    mb = get_mbti(rep, view)
-    lines += journal_lines(mb)
-    short = re.sub(r"\s+", " ", characterization.build(view, mb).short_plain() or "").strip()
+    lines += journal_lines(jv.mb)
+    short = re.sub(r"\s+", " ", jv.character.short_plain() or "").strip()
     if short:
         lines.append(f"Характеристика (коротко): {short}")
-    if rep.get("job_dir"):
-        lines.append(f"Папка: {rep['job_dir']}")
+    if jv.rep.get("job_dir"):
+        lines.append(f"Папка: {jv.rep['job_dir']}")
     return lines
 
 
@@ -115,11 +116,13 @@ def start(request, video, member: str) -> None:
     _write("СТАРТ", request, f"{_file(video)}, модель {MODEL_TITLES.get(member, member)}")
 
 
-def result(request, rep: dict, wall_sec: float) -> None:
+def result(request, rep: dict, wall_sec: float, jv=None) -> None:
+    """`jv`: the JobView the page of this analysis was built from (jobview.for_page); the entry then takes its view,
+    type and characterization instead of building them again. Without it they are built from `rep` (result_lines)."""
     name = rep.get("original_file_name") or Path(str(rep.get("input", ""))).name
     tail = f"файл «{name}», ролик {clock(rep.get('duration_sec', 0))}, обработка {clock(wall_sec)}"
     try:
-        body = result_lines(rep)
+        body = result_lines(rep) if jv is None else _lines(jv)
     except Exception:  # noqa: BLE001
         log.exception("journal: could not format the result")
         body = ["(не удалось оформить итог, см. result.json в папке задачи)"]
