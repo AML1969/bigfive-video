@@ -17,7 +17,7 @@ import secrets
 import shutil
 import threading
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from . import DEFAULT_MODEL, MODEL_TITLES, PRODUCT, PRODUCT_SLUG, caveats, characterization, journal, mbti_html
 from .charts import (EMO_RU, fig_emotion_bars, fig_emotions_timeline, fig_face_expr, fig_radar, fig_speech_timeline,
@@ -300,6 +300,24 @@ def model_text(view: dict, rep: dict, mb: dict | None) -> str:
     return "\n".join(lines)
 
 
+def _without_server_paths(data: dict) -> dict:
+    """The result.json of the tab «Данные» without the server paths the file keeps: `job_dir`, `input`, every
+    `key_frames` entry and every `timeline[].file` become the file or folder name alone. Works in place on the copy
+    scores.data_json made; the file on disk keeps its paths."""
+    def name(v):
+        return PurePosixPath(v).name if isinstance(v, str) else v
+
+    for key in ("job_dir", "input"):
+        if key in data:
+            data[key] = name(data[key])
+    if isinstance(data.get("key_frames"), list):
+        data["key_frames"] = [name(v) for v in data["key_frames"]]
+    for t in data.get("timeline") if isinstance(data.get("timeline"), list) else []:
+        if isinstance(t, dict) and "file" in t:
+            t["file"] = name(t["file"])
+    return data
+
+
 def page_outputs(rep: dict) -> tuple:
     """Everything the result page shows for a finished job, in the order of the output blocks after the status line
     (without the PDF button). Jobs processed before the Russian texts existed get them here, stored back.
@@ -311,7 +329,10 @@ def page_outputs(rep: dict) -> tuple:
     тип MBTI». One model everywhere (3.1): the bars, the panel and the strip are the model recorded in the job; the
     tab «Объяснения» of an OCEAN-AI job shows one note (narrative.NO_EXPLAIN_RU) in its first block. The «Данные» tab
     shows result.json as it lies on disk, except that for Russian speech the 2.0 fields that 3.x does not use
-    (percentiles, the stored 2.0 summary) are left out, with a note (scores.data_json)."""
+    (percentiles, the stored 2.0 summary) are left out, with a note (scores.data_json), and that the paths on the server
+    are shown as file and folder names (_without_server_paths); «Сохранено в» is the name of the job folder. The last
+    of the first 22 values, the job folder the PDF button reads, stays the full path: it goes into a gr.State, which
+    Gradio keeps on the server and does not send to the browser with the results of an analysis."""
     job = Path(rep["job_dir"])
     expl_path = job / "explain" / "explanation.json"
     expl = json.loads(expl_path.read_text(encoding="utf-8")) if expl_path.exists() else None
@@ -339,7 +360,7 @@ def page_outputs(rep: dict) -> tuple:
            _frames_html(view, expl if own else None), contrib,
            _words_text(expl, rep, expl_path) if (expl and own) else "",
            mmss_labels(rep.get("behavior_description_ru") or "") if own else "", model_text(view, rep, mb),
-           json.dumps(data, ensure_ascii=False, indent=2), str(job / "result.json"), str(job),
+           json.dumps(_without_server_paths(data), ensure_ascii=False, indent=2), job.name, str(job),
            # the five blocks after the first 22 (design 10.3, 10.5)
            mbti_html.method_html(method_notes(view)), mbti_html.emo_intro_html(view),
            mbti_html.types_html(mb), mbti_html.strip_html(mb), mbti_html.read_html(mb))

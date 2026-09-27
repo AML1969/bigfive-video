@@ -5,7 +5,8 @@
 row under the top pair; page_outputs of a synthetic OCEAN-AI job (the note of the tab «Объяснения», the model line)
 and of a job of AMLAI 1.0. Gradio is imported here (a few seconds); the Studio loads nothing until an analysis.
 What Gradio serves (in-process through TestClient, no port): no file of a job folder by /gradio_api/file=, the PDF of
-the button from a copy in Gradio's own temp folder, which Gradio deletes with its other temp files."""
+the button from a copy in Gradio's own temp folder, which Gradio deletes with its other temp files. The page shows no
+server path: «Сохранено в» holds the job name, the result.json of the tab «Данные» file and folder names."""
 from __future__ import annotations
 
 import contextlib
@@ -44,6 +45,42 @@ def _own(name: str = "B") -> dict:
 
 def _strip(html: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
+
+
+def _server_paths(r: dict, job: Path, upload: Path) -> None:
+    """The paths a result.json keeps on the server: the upload, the key frames and the segment files."""
+    r["input"] = str(upload)
+    r["key_frames"] = [str(job / "explain" / "key_01_frame10.jpg")]
+    for i, t in enumerate(r["timeline"], 1):
+        t["file"] = str(job / "segments" / f"seg{i:02d}_0-20s.mp4")
+
+
+def _no_server_paths(outs: tuple, tmp: str, job: Path) -> None:
+    """The page shows the job name in «Сохранено в» and names in the result.json of the tab «Данные»; only the hidden
+    job folder of the PDF button (index 21, a gr.State kept on the server) holds the path."""
+    assert outs[20] == job.name and outs[21] == str(job)
+    assert f'"job_dir": "{job.name}"' in outs[19]
+    shown = json.loads(outs[19])
+    assert shown["input"] == "input.mp4" and shown["key_frames"] == ["key_01_frame10.jpg"]
+    files = [t["file"] for t in shown["timeline"]]
+    assert files == [f"seg{i:02d}_0-20s.mp4" for i in range(1, len(files) + 1)] and files
+    leaks = [i for i, o in enumerate(outs) if isinstance(o, str) and i != 21 and tmp in o]
+    assert leaks == [], leaks
+
+
+def test_result_json_without_server_paths():
+    """The paths become names; missing, null and odd entries pass as they are (older jobs)."""
+    data = {"job_dir": "/home/u/bs3_data/web_jobs/20000101_000000_0f3a9c1e", "input": "/home/u/source/j/input.mp4",
+            "key_frames": ["/home/u/j/explain/key_01_frame10.jpg", None],
+            "timeline": [{"file": "/home/u/j/segments/seg01_0-20s.mp4", "segment": 1}, {"file": None}, {}, "odd"],
+            "media": {"file_name": "clip.mp4"}, "model": {"asr_model": "openai/whisper-large-v3-turbo"}}
+    out = webapp._without_server_paths(data)
+    assert out is data and out["job_dir"] == "20000101_000000_0f3a9c1e" and out["input"] == "input.mp4"
+    assert out["key_frames"] == ["key_01_frame10.jpg", None]
+    assert out["timeline"] == [{"file": "seg01_0-20s.mp4", "segment": 1}, {"file": None}, {}, "odd"]
+    assert out["model"]["asr_model"] == "openai/whisper-large-v3-turbo" and out["media"] == {"file_name": "clip.mp4"}
+    for odd in ({"key_frames": None, "timeline": None, "input": None}, {}):
+        assert webapp._without_server_paths(dict(odd)) == odd
 
 
 def test_page_builds_with_the_model_radio_and_no_checkbox():
@@ -98,8 +135,15 @@ def test_page_outputs_oceanai_job():
         for t in r["timeline"]:
             if isinstance(t.get("scores"), dict):
                 t["scores"]["interview"] = 0.4
-        r = _job(r, Path(d), "20000101_000000")
+        # a job of the older naming (no random suffix) still opens; its result.json keeps the server paths, and the
+        # upload of an imported 2.0 job lies outside the job folder
+        job = Path(d) / "20000101_000000"
+        _server_paths(r, job, Path(d) / "source" / "input.mp4")
+        r = _job(r, Path(d), job.name)
         outs = webapp.page_outputs(r)
+        saved = json.loads((job / "result.json").read_text(encoding="utf-8"))
+    assert saved["input"] == str(Path(d) / "source" / "input.mp4") and saved["job_dir"] == str(job)   # file unchanged
+    _no_server_paths(outs, d, job)
     assert len(outs) == webapp.N_PAGE == 27
     bars, facts, contrib, words, desc, members = outs[1], outs[2], outs[15], outs[16], outs[17], outs[18]
     assert _strip(contrib) == NO_EXPLAIN_RU and words == "" and desc == ""     # the one note of the tab «Объяснения»
@@ -128,8 +172,11 @@ def test_page_outputs_own_model_job():
         r = _own("B")
         r["behavior_description_ru"] = "[0–20 с] Человек говорит спокойно."
         r["interview"] = {"score": 0.4011, "name_ru": "впечатление «пригласить на собеседование»"}
-        r = _job(r, Path(d), "20000102_000000")
+        job = Path(d) / "20000102_000000_0f3a9c1e"                     # a job of 3.1: time stamp and random suffix
+        _server_paths(r, job, job / "input.mp4")
+        r = _job(r, Path(d), job.name)
         outs = webapp.page_outputs(r)
+    _no_server_paths(outs, d, job)
     contrib, members, frames = outs[15], outs[18], outs[14]
     assert contrib == ""                                                        # no explanation on disk: empty, no note
     # the label of AMLAI 1.0 with its bar and C2 under the bars; a fresh job leaves nothing out of the tab «Данные»

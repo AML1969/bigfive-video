@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 import shutil
 import subprocess
 import tempfile
@@ -238,8 +239,10 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, *, member: str
     title = MODEL_TITLES[member]
     t0 = time.time()
     studio.stop_event.clear()
-    job = work_dir / time.strftime("%Y%m%d_%H%M%S")
-    job.mkdir(parents=True, exist_ok=True)
+    # the start time and a random suffix: the name of a new job cannot be guessed from the time of the upload, and two
+    # analyses started in the same second get two folders (older jobs keep their names without the suffix)
+    job = work_dir / f"{time.strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(4)}"
+    job.mkdir(parents=True)
     src = Path(video_path)
     if not src.is_file():
         raise RuntimeError("Файл загрузки не найден. Загрузите видео заново и дождитесь конца загрузки.")

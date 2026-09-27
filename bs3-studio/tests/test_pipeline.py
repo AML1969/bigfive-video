@@ -8,6 +8,7 @@ from __future__ import annotations
 import inspect
 import json
 import logging
+import re
 import sys
 import tempfile
 import threading
@@ -357,6 +358,7 @@ def test_run_analysis_one_member_each():
             # written where the page reads it
             job = Path(r["job_dir"])
             assert job.parent == work and (job / "result.json").exists()
+            assert re.fullmatch(r"\d{8}_\d{6}_[0-9a-f]{8}", job.name), job.name     # time stamp + random suffix
             saved = json.loads((job / "result.json").read_text(encoding="utf-8"))
             assert saved["model"]["selected"] == member and set(saved["variant_scores"]) == {member}
             assert saved["mbti"]["schema_version"] == 3
@@ -370,6 +372,27 @@ def test_run_analysis_one_member_each():
             assert ("interview" in v) == (member == "mm")
             shown, trimmed = data_json(saved)
             assert shown == saved and trimmed is False
+
+
+def test_run_analysis_same_second_two_folders():
+    """Two analyses started in the same second (the time stamp fixed) get two job folders: the random suffix keeps
+    them apart, and neither run writes into the folder of the other."""
+    real = pipeline.time
+    fixed = types.SimpleNamespace(**vars(real))
+    fixed.strftime = lambda fmt, *a: "20000101_000000"
+    pipeline.time = fixed
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            _, r1, work = _run("oceanai", explain=False, tmp=Path(d))
+            _, r2, _ = _run("oceanai", explain=False, tmp=Path(d))
+            j1, j2 = Path(r1["job_dir"]), Path(r2["job_dir"])
+            assert j1 != j2 and sorted(p.name for p in work.iterdir()) == sorted((j1.name, j2.name))
+            for job in (j1, j2):
+                assert re.fullmatch(r"20000101_000000_[0-9a-f]{8}", job.name), job.name
+                assert (job / "input.mp4").is_file()
+                assert json.loads((job / "result.json").read_text(encoding="utf-8"))["job_dir"] == str(job)
+    finally:
+        pipeline.time = real
 
 
 def test_run_analysis_oceanai_skips_explanations_even_when_asked():
