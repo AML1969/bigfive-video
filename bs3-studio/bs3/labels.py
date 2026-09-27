@@ -16,6 +16,9 @@ EMO_RU = {"joy": "радость", "surprise": "удивление", "neutral": 
 VOICE_RU = {"arousal": "возбуждение", "dominance": "уверенность", "valence": "позитивность"}
 # the labels of the text-emotion model in the order of the charts, the bars and the tables (analyses/emotions_text)
 EMOTION_ORDER = ["joy", "surprise", "neutral", "sadness", "fear", "anger", "disgust"]
+# the same seven in the rows of the PDF heatmap «Эмоции по ходу ролика», «нейтрально» last and apart; the emotion
+# shares of a segment (segments.emotion_shares) are counted in this order
+HEAT_ROWS = ["joy", "surprise", "sadness", "fear", "anger", "disgust", "neutral"]
 # the labels of the facial-expression model: their Russian names (stored with the key frames) and the order of the
 # charts (analyses/face_expr)
 EXPR_RU = {"angry": "злость", "disgust": "отвращение", "fear": "страх", "happy": "радость", "neutral": "нейтрально",

@@ -9,7 +9,7 @@ voice section says that it builds no explanations) — and «Как читать
 analysis parameters, the values of every segment (with the MBTI type of the segment), behaviour descriptions of the
 notable segments, the transcript. Every chart of the web page has a print version (pdf_charts.py). The report is built
 from the clean view (scores.clean_view). The original file name of the video is printed exactly as it is, also in the
-footer of every page, so pages of two reports cannot be mixed up.
+footer of every page, so pages of two reports cannot be mixed up. The per-segment data come from segments.py.
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from pathlib import Path
 
 from fpdf import FPDF
 
-from . import MODALITIES, MODEL_TITLES, PRODUCT, caveats, frame_captions, settings
+from . import MODALITIES, MODEL_TITLES, PRODUCT, caveats, frame_captions, segments, settings
 from .labels import EMO_RU, EMOTION_ORDER, VOICE_RU, model_title
 from .narrative import NO_EXPLAIN_RU
 from .narrative2 import FACTS_LEGEND, analyses_parts, card_item, fact_label, key_facts
@@ -28,7 +28,9 @@ from .norms import RU_SHORT, RU_TITLES, TRAIT_KEYS
 from .palette import CARD_PDF, FACT_VALUE_PDF, SCORE_BAR_PDF, TRAIT_BAR_PDF
 from .ru_texts import transcript_shown, vocabulary_shown
 from .scores import scored
-from .textfmt import SEC_LABEL, clock, fiv2_ref_ru, fix_counts, fmt_secs, pct_phrase, plural_ru, seg_label
+from .segments import (behavior_by_segment, dominant_emotion, empty_text, odd_segments, representative, seg_words,
+                       segment_rows)
+from .textfmt import clock, fiv2_ref_ru, fix_counts, fmt_secs, pct_phrase, plural_ru, seg_label
 
 # «Значения по отрезкам» has 14 columns: the short trait names are broken over two lines where one line is wider than
 # its column of numbers; the legend under the table joins the halves back («Добро-жел.» -> «Доброжел.»)
@@ -593,50 +595,13 @@ class Report(FPDF):
             self.ln()
 
 
-def _empty_text(r: dict) -> bool:
-    """The segment's own transcript is empty: the text-emotion model then answers "neutral 100%", which is no data."""
-    return "text_en" in r and not str(r.get("text_en") or "").strip()
-
-
-def _seg_words(r: dict) -> int:
-    try:
-        return int((r.get("speech") or {}).get("words") or 0)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _scored(report: dict) -> list:
-    return [t for t in (report.get("timeline") or []) if t.get("scores")]
-
-
-def _rep_segment(report: dict):
-    """The representative segment (closest to the mean profile; explanations and key frames are built on it) of a
-    video with at least two scored segments, otherwise None."""
-    segs = _scored(report)
-    if len(segs) < 2:
-        return None
-    return next((t for t in segs if t.get("segment") == report.get("representative_segment")), None)
-
-
-def behavior_by_segment(report: dict) -> list:
-    """[(start, end, text)] of behavior_description_ru split on its «[0–20 с]» labels; [] when it has none."""
-    text = str(report.get("behavior_description_ru") or "")
-    ms = list(SEC_LABEL.finditer(text))
-    out = []
-    for i, m in enumerate(ms):
-        s, e = float(m.group(1).replace(",", ".")), float(m.group(2).replace(",", "."))
-        body = text[m.end(): ms[i + 1].start() if i + 1 < len(ms) else len(text)].strip()
-        out.append((s, e, body))
-    return out
-
-
 # ---------------------------------------------------------------- plan: which sections and appendices are printed
 def _plan(pdf: Report, report: dict, explanation, frames, charts: dict, mb: dict | None = None) -> None:
     an = report.get("analyses") or {}
     te, fa = an.get("emotions_text") or {}, an.get("face") or {}
     has = {"profile": True,
            "mbti": bool(mb),             # right after the Big Five section, when at least the main type is computed
-           "timeline": bool(charts.get("traits")) and len(_scored(report)) >= 2,
+           "timeline": bool(charts.get("traits")) and len(segments.scored(report)) >= 2,
            "emotions": bool(te.get("mean") or fa.get("mean") or charts.get("emotions")),
            "voice_speech": bool(an.get("voice") or an.get("speech") or charts.get("voice") or charts.get("speech")),
            # explanations exist for AMLAI 1.0 only (3.1): an OCEAN-AI job gets one line under section 4 instead
@@ -650,7 +615,7 @@ def _plan(pdf: Report, report: dict, explanation, frames, charts: dict, mb: dict
     note, transcript = transcript_shown(report)
     # the behaviour description is written for AMLAI 1.0 (its video-language model); an older OCEAN-AI job that
     # carries the description of the second model of 3.0 does not print it: one model in the report
-    appx = {"file": True, "segments": len(_segment_rows(report)) >= 2,
+    appx = {"file": True, "segments": len(segment_rows(report)) >= 2,
             "behavior": bool(report.get("behavior_description_ru")) and _main_model(report) == "mm",
             "transcript": bool(note or transcript)}
     letters = iter("АБВГДЕ")
@@ -800,7 +765,7 @@ def _timeline_section(pdf: Report, report: dict, charts: dict, has_expl: bool) -
     cap = ""
     if std:
         cap = "Разброс между отрезками: " + ", ".join(f"{RU_SHORT[k].lower()} ±{std.get(k, 0):.2f}" for k in TRAIT_KEYS) + "."
-    seg = _rep_segment(report)
+    seg = representative(report, min_scored=2)
     if seg:
         cap += (f" Рамка и ★ — отрезок {_seg(report, seg['start'], seg['end'])}, ближайший к среднему профилю"
                 + (f": по нему построены объяснения (раздел {pdf.plan['explain']})." if has_expl and "explain" in pdf.plan
@@ -828,7 +793,7 @@ def _emotions_section(pdf: Report, report: dict, charts: dict) -> None:
                 "лицо — модель выражений по кадрам.")
     # an отрезок whose own transcript came out empty is «нет текста» everywhere else in the report, but the stored
     # average counts it as «нейтрально 100%»: say so, so the two views do not read as contradicting each other
-    no_text = [r for r in per if _empty_text(r)]
+    no_text = [r for r in per if empty_text(r)]
     if no_text and (an.get("emotions_text") or {}).get("mean"):
         n = len(no_text)
         prof_cap += (" Один отрезок без распознанного текста учтён в средней доле по речи как нейтральный." if n == 1
@@ -857,10 +822,10 @@ def _emotions_section(pdf: Report, report: dict, charts: dict) -> None:
         # hatched gaps. A segment with an empty transcript is not always silent: its own recognition may return nothing
         # while the whole-video transcript still has words in that window (tempo and pauses come from there), so
         # «нет речи» is said only when there are no words at all
-        text_gaps = [r for r in per if _empty_text(r) or not r.get("emotions_text")]
+        text_gaps = [r for r in per if empty_text(r) or not r.get("emotions_text")]
         gaps = []
         if text_gaps:
-            gaps.append("по речи — " + ("в отрезке нет речи" if all(_seg_words(r) == 0 for r in text_gaps)
+            gaps.append("по речи — " + ("в отрезке нет речи" if all(seg_words(r) == 0 for r in text_gaps)
                                         else "для отрезка нет распознанного текста"))
         if any(not (r.get("face") or {}).get("expressions") for r in per):
             gaps.append("по лицу — лицо не найдено")
@@ -1005,7 +970,7 @@ def _explain_section(pdf: Report, report: dict, explanation, frames: list, chart
     """5. What drove the score of AMLAI 1.0: key frames, modality contributions, words."""
     if "explain" not in pdf.plan:
         return
-    seg = _rep_segment(report)
+    seg = representative(report, min_scored=2)
     tl_all = report.get("timeline") or []
     if seg and "timeline" in pdf.plan:
         intro = (f"Объяснения построены для модели AMLAI 1.0 по отрезку {_seg(report, seg['start'], seg['end'])}, "
@@ -1142,33 +1107,22 @@ def _analysis_rows(report: dict) -> list:
     return rows
 
 
-def _segment_rows(report: dict) -> list:
-    """[(start, end, timeline entry or None, per_segment entry or None)] in time order, matched by the start."""
-    by: dict = {}                       # rounded start -> [timeline entry, per_segment entry, start, end]
-    for t in report.get("timeline") or []:
-        by.setdefault(int(round(float(t["start"]))), [None, None, float(t["start"]), float(t["end"])])[0] = t
-    for r in (report.get("analyses") or {}).get("per_segment") or []:
-        by.setdefault(int(round(float(r["start"]))), [None, None, float(r["start"]), float(r["end"])])[1] = r
-    return [(s, e, t, r) for _, (t, r, s, e) in sorted(by.items())]
-
-
 def _dominant_text(r: dict | None, source: str) -> str:
     """«нейтрально 99%» as on the web; «нет речи» / «нет текста» for an empty transcript, «—» without data."""
-    from .pdf_charts import dominant_emotion
     if not r:
         return "—"
-    if source == "text" and _empty_text(r):
-        return "нет речи" if _seg_words(r) == 0 else "нет текста"
+    if source == "text" and empty_text(r):
+        return "нет речи" if seg_words(r) == 0 else "нет текста"
     d = dominant_emotion(r, source)
     # only the seven text emotions are named (the face labels come aliased to them); any other label stays as it is
     return f"{EMO_RU[d[0]] if d[0] in EMOTION_ORDER else d[0]} {d[1]:.0%}" if d else "—"
 
 
 def _segments_table(pdf: Report, report: dict, mb: dict | None = None) -> None:
-    rows_in = _segment_rows(report)
-    tl_scored = _scored(report)
+    rows_in = segment_rows(report)
+    tl_scored = segments.scored(report)
     keys = TRAIT_KEYS + (["interview"] if tl_scored and all("interview" in t["scores"] for t in tl_scored) else [])
-    seg = _rep_segment(report)
+    seg = representative(report, min_scored=2)
     star = bool(seg)
     # the MBTI type of the main system on every segment, with X on the borderline axes (design 10.7, task T27)
     from .pdf_mbti import segment_types_by_start
@@ -1257,13 +1211,11 @@ def _notable(report: dict, has_expl: bool) -> dict:
     """{start of a segment: [reasons]} of the notable segments, at most BEHAVIOR_MAX, chosen in this order: the segment
     for the explanations, segments with unusual scores (largest deviation first), segments whose dominant speech
     emotion or facial expression differs from the one of the whole video (largest share first)."""
-    from .narrative import odd_segments
-    from .pdf_charts import dominant_emotion
     from .palette import EMO_ALIAS
     an = report.get("analyses") or {}
     per = an.get("per_segment") or []
     cands: list = []                    # (start, reason) in priority order
-    seg = _rep_segment(report)
+    seg = representative(report, min_scored=2)
     if seg and has_expl:
         cands.append((float(seg["start"]), "отрезок для объяснений ★"))
     for t, z in sorted(odd_segments(report), key=lambda tz: -abs(tz[1])):
@@ -1271,7 +1223,7 @@ def _notable(report: dict, has_expl: bool) -> dict:
     te_dom = (an.get("emotions_text") or {}).get("dominant")
     speech = []
     for r in per:
-        d = None if _empty_text(r) else dominant_emotion(r, "text")
+        d = None if empty_text(r) else dominant_emotion(r, "text")
         if d and te_dom and d[0] != te_dom:
             speech.append((d[1], float(r["start"]), "в речи нейтральный тон" if d[0] == "neutral" else
                            f"в речи преобладает {EMO_RU.get(d[0], d[0])}"))
@@ -1297,7 +1249,7 @@ def _notable(report: dict, has_expl: bool) -> dict:
 def _behavior_appendix(pdf: Report, report: dict, has_expl: bool) -> None:
     entries = behavior_by_segment(report)
     letter = pdf.appx["behavior"]
-    n_all = max(len(entries), len(_segment_rows(report)))
+    n_all = max(len(entries), len(segment_rows(report)))
     if not entries:                      # a description without segment labels is printed as it is
         pdf.h2(f"Приложение {letter}. Описание поведения", keep_mm=20)
         pdf.caption("Описание строит видеоязыковая модель по кадрам ролика.", 7.5)

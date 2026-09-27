@@ -31,6 +31,7 @@ from .palette import (ACCENT, BUTTON_PRIMARY, BUTTON_PRIMARY_HOVER, BUTTON_STOP,
 from .pipeline import Studio, run_analysis
 from .ru_texts import ensure_russian, ensure_russian_job, transcript_shown, vocabulary_shown
 from .scores import FACT_STATES, clean_view, data_json
+from .segments import representative
 from .textfmt import clock, fix_counts, fmt_secs, mmss_labels, plural_ru, seg_label
 from .webparts import NOTE, _bar_html, _contrib_html, _words_text, model_line, table_html, th_text
 
@@ -251,8 +252,7 @@ def _frames_html(rep: dict, expl: dict | None = None, max_side: int = 640) -> st
         return f"<p style='font-size:14px'>{NO_FRAMES_MM}</p>"
     # frames come from the representative segment of a long video, otherwise from the whole video (no timeline): the
     # moment is then counted from 0, the same rule as in the PDF
-    tl_all = rep.get("timeline") or []
-    seg = next((t for t in tl_all if t.get("segment") == rep.get("representative_segment")), None) if tl_all else None
+    seg = representative(rep, among="all")
     entries = frame_captions.build(rep, shown, expl)
     tenths = frame_captions.has_tenths(rep, shown, None, expl)
     figs = []

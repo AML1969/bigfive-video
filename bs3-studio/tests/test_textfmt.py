@@ -9,7 +9,7 @@ that table; OLD keeps the old bodies, and every run compares them with `clock` a
 from __future__ import annotations
 
 from bs3 import (caveats, characterization, charts, journal, mbti, mbti_html, narrative, narrative2, pdf_charts,
-                 pdf_mbti, pdf_report, report, scores, textfmt, webapp, webparts)
+                 pdf_mbti, pdf_report, report, scores, segments, textfmt, webapp, webparts)
 from bs3.textfmt import (clean_word, clock, fiv2_ref_ru, fix_counts, fmt_secs, mmss_labels, pct_phrase, plural_ru,
                          seg_label)
 
@@ -128,7 +128,7 @@ def test_the_copies_are_gone():
               "mmss_labels": mmss_labels, "clean_word": clean_word, "clock": clock, "fiv2_ref_ru": fiv2_ref_ru,
               "pct_phrase": pct_phrase}
     for mod in (caveats, characterization, charts, journal, mbti, mbti_html, narrative, narrative2, pdf_charts,
-                pdf_mbti, pdf_report, scores, webapp, webparts):
+                pdf_mbti, pdf_report, scores, segments, webapp, webparts):
         for name, fn in shared.items():
             assert getattr(mod, name, fn) is fn, f"{mod.__name__}.{name} is a copy"
     old = {caveats: "_plural", characterization: "_plural", mbti_html: "_mmss", pdf_mbti: "_mmss", journal: "_mmss",
@@ -137,6 +137,7 @@ def test_the_copies_are_gone():
         assert not hasattr(mod, name), f"{mod.__name__}.{name}"
     assert not hasattr(webparts, "_pct_phrase") and not hasattr(webparts, "_is_fiv2")
     assert pdf_report.pct_phrase is pct_phrase
+    assert segments.SEC_LABEL is textfmt.SEC_LABEL           # behavior_by_segment (from pdf_report, stage 12)
     for name in ("fmt_secs", "seg_label", "mmss_labels", "clean_word", "_SEC_LABEL"):
         assert not hasattr(report, name), f"report.{name}"
     assert hasattr(report, "build_report") and hasattr(report, "DISCLAIMER_RU")

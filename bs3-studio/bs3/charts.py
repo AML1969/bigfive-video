@@ -16,16 +16,13 @@ from .labels import EMO_RU, EMOTION_ORDER, EXPR_ORDER, RADAR_LABEL, VOICE_RU, mo
 from .norms import RU_TITLES, TRAIT_KEYS
 from .palette import (BARS_WEB, EMO_ALIAS, FONT_FAMILY, RADAR_WEB, SPEECH_WEB, THEME, TRAIT_SYMBOL, TRAIT_WEB,
                       VOICE_SYMBOL, VOICE_WEB, emo)
+from .segments import representative, scored
 from .textfmt import clock, seg_label
 
 # legend names that differ from the shared RU_TITLES (the dotted line style of the interview series is named explicitly)
 _TRAIT_NAME = {**RU_TITLES, "interview": "Пригласить на собеседование (пунктир)"}
 # the page font for the chart iframes (the same Google Fonts file as the Gradio theme, so it comes from the cache)
 FONT_CSS = "https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600&display=swap"
-
-
-def _segments(rep: dict) -> List[dict]:
-    return [t for t in (rep.get("timeline") or []) if t.get("scores")]
 
 
 def _x(segs: List[dict]):
@@ -113,7 +110,7 @@ def fig_traits_timeline(rep: dict, theme: str = "dark"):
     T = THEME[theme]
     title, subtitle = "Big Five по ходу ролика", "оценка каждого отрезка по шкале от 0 до 1"
     fig = go.Figure()
-    segs = _segments(rep)
+    segs = scored(rep)
     if not segs:
         return _empty(fig, theme, title, subtitle, "Оценок по отрезкам нет: ролик слишком короткий")
     timeline = rep.get("timeline") or segs
@@ -132,8 +129,7 @@ def fig_traits_timeline(rep: dict, theme: str = "dark"):
     t_max = max(t["end"] for t in timeline)
     # a band label grows away from the nearer plot edge, so it is never cut off at the right border
     side = lambda x0, x1: "right" if (x0 + x1) / 2 > 0.6 * t_max else "left"
-    rep_i = rep.get("representative_segment")
-    t_rep = next((t for t in segs if t["segment"] == rep_i), None) if rep_i else None
+    t_rep = representative(rep)             # among the scored segments, however many there are
     if t_rep:
         fig.add_vrect(x0=t_rep["start"], x1=t_rep["end"], fillcolor=T["band"], layer="below",
                       line=dict(color=T["band_border"], width=1, dash="dash"), annotation_text="отрезок для объяснений",

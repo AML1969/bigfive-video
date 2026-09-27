@@ -25,6 +25,7 @@ from typing import Iterable, List, Optional, Sequence, Tuple
 # PHRASE_MAX and PHRASE_TRIES are not used here: they stay readable as frame_captions.* (tests/test_frame_captions.py)
 from .frame_phrase import PHRASE_MAX, PHRASE_TRIES, _decoded_index, _frame_index, clean_phrase  # noqa: F401
 from .norms import RU_SHORT, TRAIT_KEYS
+from .segments import representative
 
 # ---------------------------------------------------------------- trait names in the two cases the captions need
 # «повысил оценку экстраверсии» (genitive) on the page, «повысил экстраверсию» (accusative) in the narrow PDF cell
@@ -55,7 +56,7 @@ def moments(report: dict, frames: Sequence[str], media: dict | None = None,
     of the whole video by enough to move the printed second; jobs made before this change have no `clip_fps` and
     keep the average rate they were rendered with. Without any frame rate there is no moment at all."""
     tl_all = report.get("timeline") or []
-    seg = next((t for t in tl_all if t.get("segment") == report.get("representative_segment")), None) if tl_all else None
+    seg = representative(report, among="all")
     fps = float((explanation or {}).get("clip_fps") or (media or {}).get("fps")
                 or (report.get("media") or {}).get("fps") or 0)
     start = float(seg["start"]) if seg else 0.0

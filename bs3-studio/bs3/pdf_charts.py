@@ -18,13 +18,13 @@ import math
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from .charts import _segments
-from .labels import EMO_RU, EMOTION_ORDER, RADAR_LABEL, ROW_TITLES, VOICE_RU, model_title
+from .labels import EMO_RU, EMOTION_ORDER, HEAT_ROWS, RADAR_LABEL, ROW_TITLES, VOICE_RU, model_title
 from .norms import RU_TITLES, TRAIT_KEYS
 from .palette import (BARS_PDF, EMO_ALIAS, EMO_HEAT_L, EMO_HEAT_PDF, MODALITY_PDF, RADAR_PDF, SPEECH_PDF, THEME,
                       TRAIT_MARKER_PDF, TRAIT_PDF, VOICE_MARKER_PDF, VOICE_PDF, emo_heat_pdf, emo_heat_step,
                       emo_heat_text_pdf, emo_pdf)
-from .pdf_report import TEXT_W_MM, _empty_text, _seg_words
+from .pdf_report import TEXT_W_MM
+from .segments import as_float, dominant_emotion, emotion_shares, representative, scored, seg_words
 from .textfmt import clock
 
 log = logging.getLogger("bs3.pdf")
@@ -102,13 +102,6 @@ def _rgba(css: str) -> Tuple[float, float, float, float]:
         return r / 255, g / 255, b / 255, a
     s = s.lstrip("#")
     return int(s[0:2], 16) / 255, int(s[2:4], 16) / 255, int(s[4:6], 16) / 255, 1.0
-
-
-def _num(v) -> float:
-    try:
-        return NAN if v is None else float(v)
-    except (TypeError, ValueError):
-        return NAN
 
 
 def _pct(v: float) -> str:
@@ -219,7 +212,7 @@ def _radar_chart(plt, rep: dict, out_dir: Path) -> Optional[str]:
 def _traits_chart(plt, rep: dict, out_dir: Path) -> Optional[str]:
     from matplotlib.patches import Patch
     from matplotlib.transforms import blended_transform_factory
-    segs = _segments(rep)
+    segs = scored(rep)
     if not segs:
         return None
     timeline = rep.get("timeline") or segs        # full timeline: skipped segments break the lines (NaN) instead of
@@ -228,12 +221,11 @@ def _traits_chart(plt, rep: dict, out_dir: Path) -> Optional[str]:
     keys = list(TRAIT_KEYS) + (["interview"] if all("interview" in t["scores"] for t in segs) else [])
     x = [(t["start"] + t["end"]) / 2 for t in timeline]
     for k in keys:
-        ax.plot(x, [_num((t.get("scores") or {}).get(k)) if t.get("scores") else NAN for t in timeline],
+        ax.plot(x, [as_float((t.get("scores") or {}).get(k)) if t.get("scores") else NAN for t in timeline],
                 color=TRAIT_PDF[k], marker=TRAIT_MARKER_PDF[k], ms=SERIES_MS, lw=SERIES_LW, ls=":" if k == "interview" else "-",
                 label=RU_TITLES[k], clip_on=False, zorder=3)
     handles, labels = ax.get_legend_handles_labels()
-    rep_i = rep.get("representative_segment")
-    t_rep = next((t for t in segs if t["segment"] == rep_i), None) if rep_i and len(segs) > 1 else None
+    t_rep = representative(rep, min_scored=2)       # the PDF marks it only when more than one segment is scored
     if t_rep:
         band, border = _rgba(_L["band"]), _L["band_border"]
         ax.axvspan(t_rep["start"], t_rep["end"], facecolor=band, edgecolor=border, lw=0.8, ls="--", zorder=1)
@@ -276,7 +268,7 @@ def _emotion_profile_chart(plt, rep: dict, out_dir: Path) -> Optional[str]:
     w = 0.38 if len(series) == 2 else 0.6
     for i, (m, lab, col, hatch) in enumerate(series):
         off = (i - (len(series) - 1) / 2) * w
-        ys = [max(0.0, _num(m.get(k)) if not math.isnan(_num(m.get(k))) else 0.0) for k in EMOTION_ORDER]
+        ys = [max(0.0, as_float(m.get(k)) if not math.isnan(as_float(m.get(k))) else 0.0) for k in EMOTION_ORDER]
         # white hatching on the face bars: the hatch takes the edge colour, the edge itself is not drawn (lw=0)
         bars = ax.bar([j + off for j in range(len(ys))], ys, width=w, color=col, label=lab, zorder=2,
                       **(dict(hatch=hatch, edgecolor="white", linewidth=0) if hatch else dict(linewidth=0)))
@@ -328,7 +320,7 @@ def _face_expr_chart(plt, rep: dict, out_dir: Path) -> Optional[str]:
 
 
 # ---------------------------------------------------------------- emotions over time: heatmap, speech and face paired
-HEAT_ROWS = ["joy", "surprise", "sadness", "fear", "anger", "disgust", "neutral"]     # «нейтрально» last and apart
+# the rows: labels.HEAT_ROWS, «нейтрально» last and apart; the cells: segments.emotion_shares and dominant_emotion
 HEAT_SOURCES = {"text": "речь", "face": "лицо"}
 HEAT_MIN_LABEL = 15                 # numbers from this share (%), where they fit into the cell
 HEAT_STEP_LABELS = ["меньше 5 % (пустая клетка)", "5–14 %", "15–29 %", "30–49 %", "50 % и больше"]
@@ -337,33 +329,6 @@ HEAT_DECOR_MM = 34                  # title, subtitle, time axis and legend of t
 # side in one swatch: a single hue would look like the legend of that one row, and a grey ramp like the legend of
 # «нейтрально»; three hues at the same lightness say what the step really means — the same share in any colour
 HEAT_LEGEND_HUES = ("joy", "sadness", "neutral")
-
-
-def emotion_shares(r: dict, source: str) -> Optional[Dict[str, float]]:
-    """{emotion: share} of one segment rescaled to sum 1 (rounded model outputs leave 0.99…), or None = no data. Face
-    labels are mapped to the text keys (happy -> joy …); an empty transcript is no data, not «neutral 100%»."""
-    d = ((r.get("face") or {}).get("expressions") or {}) if source == "face" else ({} if _empty_text(r) else
-                                                                                   (r.get("emotions_text") or {}))
-    vals = {k: 0.0 for k in HEAT_ROWS}
-    for k, v in d.items():
-        k, x = EMO_ALIAS.get(k, k), _num(v)
-        if k in vals and not math.isnan(x):
-            vals[k] += max(0.0, x)
-    total = sum(vals.values())
-    if not d or total <= 1e-6:
-        return None
-    return {k: v / total for k, v in vals.items()}
-
-
-def dominant_emotion(r: dict, source: str) -> Optional[Tuple[str, float]]:
-    """(emotion key, raw share) of the largest raw value, the way the per-segment table picks it; None = no data."""
-    d = ((r.get("face") or {}).get("expressions") or {}) if source == "face" else ({} if _empty_text(r) else
-                                                                                   (r.get("emotions_text") or {}))
-    items = [(k, _num(v)) for k, v in d.items() if not math.isnan(_num(v))]
-    if not items:
-        return None
-    k, v = max(items, key=lambda kv: kv[1])
-    return EMO_ALIAS.get(k, k), v
 
 
 def _emotions_chart(plt, rep: dict, per: List[dict], out_dir: Path) -> str:
@@ -439,7 +404,7 @@ def _emotions_chart(plt, rep: dict, per: List[dict], out_dir: Path) -> str:
         why = []
         if "text" in gap_src:
             gaps = [r for r, sh in zip(per, data["text"]) if sh is None]
-            why.append("в отрезке нет речи" if all(_seg_words(r) == 0 for r in gaps) else "нет текста речи")
+            why.append("в отрезке нет речи" if all(seg_words(r) == 0 for r in gaps) else "нет текста речи")
         if "face" in gap_src:
             why.append("лицо не найдено")
         if holes:
@@ -479,7 +444,7 @@ def _voice_chart(plt, rep: dict, per: List[dict], out_dir: Path) -> str:
     fig, ax = _figure(plt, "voice")
     ax.set_title("Голос по ходу ролика")
     for d, name in VOICE_RU.items():
-        ax.plot(x, [_num((r.get("voice") or {}).get(d)) for r in per], color=VOICE_PDF[d], marker=VOICE_MARKER_PDF[d],
+        ax.plot(x, [as_float((r.get("voice") or {}).get(d)) for r in per], color=VOICE_PDF[d], marker=VOICE_MARKER_PDF[d],
                 ms=SERIES_MS, lw=SERIES_LW, label=name, clip_on=False, zorder=3)
     ax.set_ylim(0, 1); ax.set_ylabel("уровень (0 — низкий,\n1 — высокий)", fontsize=8.5)
     ax.set_axisbelow(True); ax.grid(color=GRID, lw=0.5)
@@ -524,7 +489,7 @@ def _speech_chart(plt, rep: dict, per: List[dict], out_dir: Path) -> str:
     ax.set_ylabel("слов в минуту", color=BARS_TEXT); ax.tick_params(axis="y", colors=BARS_TEXT)
     ax.set_axisbelow(True); ax.grid(color=GRID, lw=0.5)
     ax2 = ax.twinx()
-    ax2.plot(x, [_num((r.get("speech") or {}).get("pause_share")) for r in per], color=pause_c, lw=SERIES_LW, marker="s",
+    ax2.plot(x, [as_float((r.get("speech") or {}).get("pause_share")) for r in per], color=pause_c, lw=SERIES_LW, marker="s",
              ms=SERIES_MS, mfc="white", mec=pause_c, clip_on=False, zorder=3,
              path_effects=[pe.withStroke(linewidth=3.0, foreground="white")])
     ax2.set_ylim(0, 1); ax2.set_yticks([0, .2, .4, .6, .8, 1]); ax2.yaxis.set_major_formatter(PercentFormatter(1.0, decimals=0))
@@ -574,7 +539,7 @@ def _modalities_chart(plt, expl: dict | None, out_dir: Path) -> Optional[str]:
     fig, ax = _figure(plt, "modalities", height_mm=20 + 6 * len(keys))
     tr = blended_transform_factory(ax.transAxes, ax.transData)
     for i, k in enumerate(keys):
-        shares = [max(0.0, _num((ixg[k].get(m) or {}).get("share")) if not math.isnan(_num((ixg[k].get(m) or {}).get("share")))
+        shares = [max(0.0, as_float((ixg[k].get(m) or {}).get("share")) if not math.isnan(as_float((ixg[k].get(m) or {}).get("share")))
                       else 0.0) for m in mods]
         total = sum(shares) or 1.0
         left, small = 0.0, []

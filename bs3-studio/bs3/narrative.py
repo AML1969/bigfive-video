@@ -9,6 +9,7 @@ import numpy as np
 
 from . import MODEL_TITLES
 from .norms import RU_TITLES, TRAIT_KEYS
+from .segments import odd_segments, scored
 from .textfmt import plural_ru, seg_label
 
 # where the scores come from, by the model that ran (one model per analysis since 3.1)
@@ -52,17 +53,6 @@ def top_directions(ups: Dict[str, float], downs: Dict[str, float], k: int = 4) -
     return top_up, top_down
 
 
-def odd_segments(rep: dict) -> List[tuple]:
-    """[(timeline entry, z)] of the segments whose mean of the five scores lies more than 2 standard deviations from
-    the other segments (at least 4 scored segments), in time order; z > 0 — the scores are higher."""
-    tl = [t for t in (rep.get("timeline") or []) if t.get("scores")]
-    means = np.array([np.mean([t["scores"][k] for k in TRAIT_KEYS]) for t in tl])
-    if len(means) < 4 or means.std() <= 0:
-        return []
-    z = (means - means.mean()) / means.std()
-    return [(t, float(z_)) for t, z_ in zip(tl, z) if abs(z_) > 2.0]
-
-
 def method_notes(view: dict) -> str:
     """«Как получены оценки» (design 9; one model since 3.1): which model gave the scores, the scale of levels and
     letters, how stable the scores are over the video and the segments without a score (C13). Built on the clean view
@@ -78,7 +68,7 @@ def method_notes(view: dict) -> str:
     parts.append(SCALE_RU)
 
     # stability over the segments the model scored
-    tl = [t for t in (view.get("timeline") or []) if t.get("scores")]
+    tl = scored(view)
     std = view.get("scores_std_across_segments") or view.get("scores_std") or {}
     if tl and std:
         n = len(tl)
