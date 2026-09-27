@@ -6,8 +6,9 @@ import sys
 import time
 from pathlib import Path
 
-from bs3.pipeline import Studio, run_analysis
-from bs3.webapp import export_pdf
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # bs3-studio/: `import bs3` is this working tree
+from bs3.pipeline import Studio, run_analysis  # noqa: E402
+from bs3.webapp import export_pdf  # noqa: E402
 
 video, lang = sys.argv[1], (sys.argv[2] if len(sys.argv) > 2 else "ru")
 t0 = time.time()

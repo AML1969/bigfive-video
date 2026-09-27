@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import unittest
 from pathlib import Path
 
 from samples import english, rep
@@ -24,6 +25,9 @@ GONE = ("торое мнение", "своя модель", "своей моде
         "основная оценка", "Основная система", "Участники", "среднее двух систем", "Согласие", "английской речи",
         "для английской", "для русской речи")
 
+# the test PDFs go here and are removed with it, not left behind in /tmp
+_TMP = tempfile.TemporaryDirectory(prefix="bs3_pdf_test_")
+
 
 def _parts(r: dict):
     view = scores.clean_view(r)
@@ -33,7 +37,7 @@ def _parts(r: dict):
 
 def _build(r: dict, explanation: dict | None = None) -> tuple[Path, dict]:
     view, mb, ch = _parts(r)
-    out = Path(tempfile.mkdtemp(prefix="bs3_pdf_test_")) / "report.pdf"
+    out = Path(tempfile.mkdtemp(dir=_TMP.name)) / "report.pdf"
     pdf_report.build_pdf(view, out, explanation=explanation, mbti=mb, character=ch)
     return out, mb
 
@@ -59,9 +63,9 @@ EXPL = {"modalities": {"input_x_gradient": {k: {"face": {"share": 0.6}, "audio":
                                                     "down": []} for k in TRAIT_KEYS}}}
 
 
-def _text(path: Path) -> str | None:
+def _text(path: Path) -> str:
     if not shutil.which("pdftotext"):
-        return None
+        raise unittest.SkipTest("pdftotext (poppler-utils) not installed")
     r = subprocess.run(["pdftotext", "-enc", "UTF-8", str(path), "-"], capture_output=True, text=True, check=True)
     return re.sub(r"\s+", " ", r.stdout)
 
@@ -124,8 +128,6 @@ def test_pdf_builds_and_reads():
         path, mb = _build(rep(name))
         assert path.exists() and path.stat().st_size > 10_000, name
         text = _text(path)
-        if text is None:                                               # poppler-utils not installed: only the build
-            continue
         for s in ("Характеристика личности", "Коротко.", "Границы вывода.", "Ключевые факты", "Тип MBTI · OCEAN-AI",
                   "Big Five: профиль и оценки", "Как получены оценки", "Оценки по чертам",
                   "2. Тип MBTI (перевод шкал Big Five)", "OCEAN-AI, веса MuPTA: ", "Модель OCEAN-AI, веса MuPTA",
@@ -150,15 +152,14 @@ def test_pdf_builds_and_reads():
     # sample B: the strip summary (design 13.2) and the MBTI column with the types of the segments
     path, mb = _build(rep("B"))
     text = _text(path)
-    if text is not None:
-        assert "OCEAN-AI: ENFJ во всех 26 отрезках с оценкой; все четыре оси совпадают с итогом во всех отрезках" in text
-        assert "F, отчётливо (0.74)" in text and "E, умеренно (0.46)" in text
-        assert "Число в скобках после буквы — уверенность по оси" in text          # the number is labelled
-        assert "Согласие" not in text
-        appx = text.split("Значения по отрезкам", 1)[-1]
-        assert "ENFJ" in appx
-        assert "«—» в столбцах Big Five и MBTI — модель OCEAN-AI не дала оценки отрезка" in appx
-        assert "MBTI — тип отрезка, X — ось на границе" in appx
+    assert "OCEAN-AI: ENFJ во всех 26 отрезках с оценкой; все четыре оси совпадают с итогом во всех отрезках" in text
+    assert "F, отчётливо (0.74)" in text and "E, умеренно (0.46)" in text
+    assert "Число в скобках после буквы — уверенность по оси" in text          # the number is labelled
+    assert "Согласие" not in text
+    appx = text.split("Значения по отрезкам", 1)[-1]
+    assert "ENFJ" in appx
+    assert "«—» в столбцах Big Five и MBTI — модель OCEAN-AI не дала оценки отрезка" in appx
+    assert "MBTI — тип отрезка, X — ось на границе" in appx
 
 
 def test_pdf_own_model():
@@ -167,26 +168,24 @@ def test_pdf_own_model():
     path, mb = _build(_own("B"))
     assert path.exists() and mb["source"] == "own_model" and mb["type"] == "ISXX"
     text = _text(path)
-    if text is not None:
-        assert "ISXX" in text and "ISTP" in text and "ENFJ" not in text
-        assert "AMLAI 1.0: " in text and "Модель AMLAI 1.0" in text
-        # OCEAN-AI and its weights are named once, in C7 of «Как читать тип MBTI» (both models on purpose)
-        rest = text.replace("OCEAN-AI (веса MuPTA) или AMLAI 1.0", "")
-        assert "MuPTA" not in rest and "OCEAN-AI" not in rest
-        assert NO_EXPLAIN_RU[:50] not in text and "Что повлияло" not in text
-        assert caveats.text("C20")[:40] not in text
-        assert "Обучающие данные First Impressions V2" in text
-        for bad in GONE:
-            assert bad not in text.replace("по рецепту MM-PSYCHE", ""), bad
+    assert "ISXX" in text and "ISTP" in text and "ENFJ" not in text
+    assert "AMLAI 1.0: " in text and "Модель AMLAI 1.0" in text
+    # OCEAN-AI and its weights are named once, in C7 of «Как читать тип MBTI» (both models on purpose)
+    rest = text.replace("OCEAN-AI (веса MuPTA) или AMLAI 1.0", "")
+    assert "MuPTA" not in rest and "OCEAN-AI" not in rest
+    assert NO_EXPLAIN_RU[:50] not in text and "Что повлияло" not in text
+    assert caveats.text("C20")[:40] not in text
+    assert "Обучающие данные First Impressions V2" in text
+    for bad in GONE:
+        assert bad not in text.replace("по рецепту MM-PSYCHE", ""), bad
     path, mb = _build(_own("B"), explanation=EXPL)
     text = _text(path)
-    if text is not None:
-        # numbered like the rest (the fixtures carry no analyses, so it is section 3 here, 5 in a full report)
-        assert re.search(r"\d\. Что повлияло на оценку модели AMLAI 1\.0", text)
-        assert "Объяснения построены для модели AMLAI 1.0 по " in text        # «по отрезку …» with a timeline chart
-        assert "Слова, на которые откликнулась модель" in text and NO_EXPLAIN_RU[:50] not in text
-        for bad in GONE:
-            assert bad not in text.replace("по рецепту MM-PSYCHE", ""), bad
+    # numbered like the rest (the fixtures carry no analyses, so it is section 3 here, 5 in a full report)
+    assert re.search(r"\d\. Что повлияло на оценку модели AMLAI 1\.0", text)
+    assert "Объяснения построены для модели AMLAI 1.0 по " in text        # «по отрезку …» with a timeline chart
+    assert "Слова, на которые откликнулась модель" in text and NO_EXPLAIN_RU[:50] not in text
+    for bad in GONE:
+        assert bad not in text.replace("по рецепту MM-PSYCHE", ""), bad
 
 
 def test_pdf_oceanai_ignores_explanation():
@@ -196,26 +195,24 @@ def test_pdf_oceanai_ignores_explanation():
     r["behavior_description_ru"] = "[0–20 с] Человек говорит спокойно."
     path, mb = _build(r, explanation=EXPL)
     text = _text(path)
-    if text is not None:
-        assert "Что повлияло" not in text and NO_EXPLAIN_RU[:50] in text
-        assert "Слова, на которые откликнулась модель" not in text and "Описание поведения" not in text
+    assert "Что повлияло" not in text and NO_EXPLAIN_RU[:50] in text
+    assert "Слова, на которые откликнулась модель" not in text and "Описание поведения" not in text
     own = _own("B")
     own["behavior_description_ru"] = "[0–20 с] Человек говорит спокойно."
     text = _text(_build(own)[0])
-    if text is not None:                # 33 segments, one description: the appendix of the notable segments
-        assert "Приложение В. Описание поведения" in text
+    # 33 segments, one description: the appendix of the notable segments
+    assert "Приложение В. Описание поведения" in text
 
 
 def test_pdf_old_english_job():
     path, mb = _build(english("B"))
     assert path.exists() and mb["source"] == "ocean_ai"
     text = _text(path)
-    if text is not None:
-        assert "среднее двух систем" not in text and "торое мнение" not in text
-        assert "пороги предварительные" not in text
-        assert "Модель OCEAN-AI, веса MuPTA" in text
-        for bad in GONE:
-            assert bad not in text, bad
+    assert "среднее двух систем" not in text and "торое мнение" not in text
+    assert "пороги предварительные" not in text
+    assert "Модель OCEAN-AI, веса MuPTA" in text
+    for bad in GONE:
+        assert bad not in text, bad
 
 
 def test_analysis_rows_one_model():
@@ -248,25 +245,23 @@ def test_interview_label_and_c2_follow_the_model():
     assert "interview" not in view
     pdf = pdf_report.Report()
     assert pdf._bar_rows(view["traits"], view.get("interview")) == [(k, view["traits"][k]) for k in TRAIT_KEYS]
-    out = Path(tempfile.mkdtemp(prefix="bs3_pdf_test_")) / "oa.pdf"
+    out = Path(tempfile.mkdtemp(dir=_TMP.name)) / "oa.pdf"
     pdf_report.build_pdf(view, out, mbti=mb, character=ch)
     text = _text(out)
-    if text is not None:
-        assert "собеседовани" not in text.lower() and "Собе-" not in text and "ChaLearn" not in text
-        assert caveats.text("C1")[:40] in text and caveats.text("C10")[:40] in text
+    assert "собеседовани" not in text.lower() and "Собе-" not in text and "ChaLearn" not in text
+    assert caveats.text("C1")[:40] in text and caveats.text("C10")[:40] in text
     own = _own("B")
     own["interview"] = {"score": 0.4011, "name_ru": "впечатление «пригласить на собеседование»"}
     for t in own["timeline"]:
         t["scores"]["interview"] = 0.4
     view, mb, ch = _parts(own)
     assert view["interview"] == {"score": 0.4011, "name_ru": "впечатление «пригласить на собеседование»"}
-    out = Path(tempfile.mkdtemp(prefix="bs3_pdf_test_")) / "mm.pdf"
+    out = Path(tempfile.mkdtemp(dir=_TMP.name)) / "mm.pdf"
     pdf_report.build_pdf(view, out, mbti=mb, character=ch)
     text = _text(out)
-    if text is not None:
-        assert "Впечатление «собеседование» 0.40" in text and caveats.text("C2")[:50] in text
-        assert "Коричневая полоска — впечатление «собеседование» (метка модели AMLAI 1.0, шкала 0…1)" in text
-        assert "Big Five и «собеседование», 0…1" in text
+    assert "Впечатление «собеседование» 0.40" in text and caveats.text("C2")[:50] in text
+    assert "Коричневая полоска — впечатление «собеседование» (метка модели AMLAI 1.0, шкала 0…1)" in text
+    assert "Big Five и «собеседование», 0…1" in text
 
 
 def test_short_transcript_stays_with_appendix_a():
@@ -307,9 +302,8 @@ def test_short_transcript_stays_with_appendix_a():
 def test_build_pdf_computes_missing_parts():
     """A caller that passes only the raw result gets the same characterization and type."""
     r = rep("B")
-    out = Path(tempfile.mkdtemp(prefix="bs3_pdf_test_")) / "raw.pdf"
+    out = Path(tempfile.mkdtemp(dir=_TMP.name)) / "raw.pdf"
     pdf_report.build_pdf(r, out)
-    text = _text(out)
     assert out.exists()
-    if text is not None:
-        assert "Характеристика личности" in text and "ENFJ" in text
+    text = _text(out)
+    assert "Характеристика личности" in text and "ENFJ" in text

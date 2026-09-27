@@ -47,6 +47,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # bs3-studio/: `import bs3` is this working tree
 from import_job import import_job, tree_sha256  # noqa: E402
 
 from bs3 import PRODUCT  # noqa: E402

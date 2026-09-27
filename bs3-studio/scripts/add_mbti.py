@@ -20,6 +20,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # bs3-studio/: the lazy `import bs3` is this tree
+
 JOBS_ROOT = Path.home() / "bs3_data" / "web_jobs"
 
 

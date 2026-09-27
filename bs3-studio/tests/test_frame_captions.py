@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 import tempfile
+import unittest
 from pathlib import Path
 
 from samples import rep
@@ -272,13 +273,13 @@ def test_old_explanation_without_signs_and_phrases_still_renders():
         assert out.stat().st_size > 1000
 
 
-def _pdf_text(expl: dict, size: tuple) -> str | None:
+def _pdf_text(expl: dict, size: tuple) -> str:
     import shutil
     import subprocess
 
     from bs3 import characterization, mbti, pdf_report, scores
     if not shutil.which("pdftotext"):
-        return None
+        raise unittest.SkipTest("pdftotext (poppler-utils) not installed")
     with tempfile.TemporaryDirectory() as d:
         r, paths, expl = _job_with_frames(Path(d), expl, size)
         view = scores.clean_view(r)
@@ -297,8 +298,6 @@ def _caption_expl() -> dict:
 
 def test_pdf_prints_the_two_caption_lines():
     txt = _pdf_text(_caption_expl(), (200, 120))            # three frames in a row: both lines fit whole
-    if txt is None:
-        return
     assert "· улыбается, смотрит в камеру" in txt
     assert "радость 62% · повысил экстраверсию" in txt
     assert "и коротко то, что на нём видно" in txt
@@ -306,8 +305,6 @@ def test_pdf_prints_the_two_caption_lines():
 
 def test_pdf_caption_in_a_narrow_cell_keeps_the_moment_and_the_direction():
     txt = _pdf_text(_caption_expl(), (120, 200))            # five portrait frames in a row: 34.8 mm per caption
-    if txt is None:
-        return
     assert "· улыбается, смотрит в…" in txt                 # cut by words at 6 pt, never overflowing the frame
     assert "повысил экстраверсию" in txt                    # the shorter second line, not a cut «радость 62% · …»
     assert "радость 62% · повысил" not in txt
@@ -357,8 +354,6 @@ def test_narrow_pdf_caption_keeps_the_direction_of_a_long_trait_name():
     assert e["effect_short"] == "повысил эмоциональную стабильность" and e["effect_mini"] == "повысил эм. стаб."
     assert fc.pdf_second_line(e).index("повысил эм. стаб.") < fc.pdf_second_line(e).index("радость 62%")
     txt = _pdf_text(expl, (120, 200))
-    if txt is None:
-        return
     assert "повысил эм. стаб." in txt
 
 

@@ -1,11 +1,13 @@
-"""Isolation of BS Profiler 3.0 from BS 2.0 (design 2.1, 13.1).
+"""Isolation of BS Profiler 3.1 from BS 2.0 (design 2.1, 13.1).
 
 - nothing under bs2-studio/ and bs/ differs from the tag v3-base (the last commit before the 3.0 scaffold), neither in
   commits nor in the working tree;
 - no file of bs3-studio/ (except README.md) imports bs2 or names its variables; its work dir is named only by the
   offline scripts that read old 2.0 jobs; the 2.0 port and name may appear only in documentation (comments,
   docstrings, the project description), never in code;
-- the 3.0 work dirs lie under ~/bs3_data; the product name and version come from bs3/__init__.py.
+- the 3.1 work dirs lie under ~/bs3_data; the product name and version come from bs3/__init__.py.
+
+Runs on its own too: ~/bs/venv/bin/python bs3-studio/tests/test_isolation.py (through tests/run.py).
 """
 from __future__ import annotations
 
@@ -138,3 +140,9 @@ def test_product_name_and_version():
     assert bs3.LANG == "ru"
     text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert 'version = "3.1.0a1"' in text
+
+
+if __name__ == "__main__":
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import run
+    sys.exit(run.main([__file__]))

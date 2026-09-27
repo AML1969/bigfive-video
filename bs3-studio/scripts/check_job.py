@@ -146,9 +146,9 @@ def check_pdf(c: Checks, job: Path, shown: str | None) -> None:
 
 
 def main(argv: list[str]) -> int:
-    if not argv:
+    if not argv or argv[0] in ("-h", "--help"):
         print(__doc__)
-        return 2
+        return 0 if argv else 2
     bad = 0
     for arg in argv:
         job = Path(arg).expanduser().resolve()

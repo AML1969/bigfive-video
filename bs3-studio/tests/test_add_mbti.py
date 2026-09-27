@@ -2,8 +2,10 @@
 a job under the 3.0 jobs root, a job elsewhere is refused and its file stays byte for byte the same."""
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import importlib.util
+import io
 import json
 import tempfile
 from pathlib import Path
@@ -74,7 +76,11 @@ def test_refuses_outside_root_and_leaves_file_unchanged():
             else:
                 raise AssertionError(f"not refused: {target}")
         assert _sha(job / "result.json") == before
-        assert m.main([str(job)]) == 2                     # the default root is ~/bs3_data/web_jobs: refused too
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):              # main() prints the refusal to stderr
+            rc = m.main([str(job)])
+        assert rc == 2                                     # the default root is ~/bs3_data/web_jobs: refused too
+        assert f"{JOB_ID}: refused: " in err.getvalue() and " is not a job under " in err.getvalue()
         assert _sha(job / "result.json") == before
 
 

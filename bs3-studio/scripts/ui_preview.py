@@ -23,6 +23,7 @@ port = int(sys.argv[2]) if len(sys.argv) > 2 else 7882
 os.environ.setdefault("GRADIO_TEMP_DIR", str(Path.home() / "bs3_data" / "gradio_tmp"))
 Path(os.environ["GRADIO_TEMP_DIR"]).mkdir(parents=True, exist_ok=True)
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # bs3-studio/: `import bs3` is this working tree
 from bs3.pipeline import Studio  # noqa: E402
 from bs3.webapp import build_app  # noqa: E402
 

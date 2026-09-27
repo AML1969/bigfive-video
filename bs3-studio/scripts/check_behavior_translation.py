@@ -10,7 +10,8 @@ import sys
 import time
 from pathlib import Path
 
-import bs3.translate as tr
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # bs3-studio/: `import bs3` is this working tree
+import bs3.translate as tr  # noqa: E402
 
 CLIPS = Path.home() / "bs" / "eval" / "fi_test200"
 # Marian's errors seen in real reports («спокойной и спокойной» for 'calm and composed', «извращению» for
