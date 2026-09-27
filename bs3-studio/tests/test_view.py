@@ -141,9 +141,10 @@ def test_a_report_that_names_no_model_is_read_as_ocean_ai():
     assert scores.READ_FALLBACK == "oceanai" != bs3.DEFAULT_MODEL
     assert scores.main_system({}) == ("oceanai", False)
     assert scores.main_system({"model": {"backend": "ensemble"}}) == ("oceanai", False)
-    from bs3.narrative import build_narrative
+    from bs3.narrative import method_notes
     r = {"model": {"lang": "ru"}, "traits": {k: {"score": 0.4} for k in TRAIT_KEYS}}
-    assert "OCEAN-AI" in build_narrative(r) and "AMLAI" not in build_narrative(r)
+    t = method_notes(scores.clean_view(r))
+    assert t.startswith("Оценки дала система OCEAN-AI") and "AMLAI" not in t
 
 
 def test_recorded_model():
@@ -215,7 +216,7 @@ def test_levels_agree_with_the_letters():
     from bs3 import mbti
     for i in range(10001):
         v = i / 10000
-        a = mbti.mbti_for("oceanai", {"extraversion": v}, "ru")["axes"]["EI"]
+        a = mbti.mbti_for("oceanai", {"extraversion": v})["axes"]["EI"]
         assert (scores.level(v) == "mid") == a["borderline"], v
         assert a["value"] == scores.shown(v) and f"{a['value']:.2f}" == scores.score_text(v), v
         if not a["borderline"]:
@@ -232,7 +233,7 @@ def test_rounded_once():
     from bs3 import mbti, mbti_html
     sc = {"openness": 0.6497, "conscientiousness": 0.35049, "extraversion": 0.47531, "agreeableness": 0.75499,
           "emotional_stability": 0.5}
-    m = mbti.mbti_for("mm", sc, "ru")
+    m = mbti.mbti_for("mm", sc)
     ax = m["axes"]
     assert (ax["SN"]["value"], ax["SN"]["letter"], ax["SN"]["borderline"]) == (0.65, "N", False)
     assert (ax["JP"]["value"], ax["JP"]["letter"], ax["JP"]["borderline"]) == (0.35, "P", False)

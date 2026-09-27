@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from typing import Dict, List
+from typing import Dict
 
-from .norms import TRAIT_KEYS
 from .report import clean_word
 
 STOP_EN = set("""
@@ -49,7 +48,7 @@ def _source_word(ru_lemma: str, transcript_ru: str, counts: Counter) -> str | No
     return best
 
 
-def readable_words(expl: dict, key: str, lang: str, transcript_ru: str | None = None, context_en: str | None = None,
+def readable_words(expl: dict, key: str, transcript_ru: str | None = None, context_en: str | None = None,
                    top_k: int = 5, info: dict | None = None) -> Dict[str, dict]:
     """{trait: {"up": [{"ru","en","source"}...], "down": [...]}} for expl[key]; content words with a Russian
     translation only (for English speech too: the page is in Russian). `transcript_ru` is the Russian transcript as
@@ -96,30 +95,3 @@ def shown_word(item: dict) -> str | None:
     when there is no translation (lists made before translations were stored for English speech)."""
     word = item.get("source") or item.get("ru")
     return word if word and re.search(r"[A-Za-z]", word) is None else None
-
-
-def _label(item: dict, lang: str, show_en: bool) -> str | None:
-    word = shown_word(item)
-    return f"{word} ({item['en']})" if (word and show_en) else word
-
-
-def format_words(rw: Dict[str, dict], titles: Dict[str, str], lang: str, show_en: bool = False) -> List[str]:
-    """One line per trait: 'Открытость опыту — выше: сложная, ответ; ниже: подход'."""
-    lines = []
-    for trait in list(TRAIT_KEYS) + [k for k in rw if k not in TRAIT_KEYS]:
-        if trait not in rw:
-            continue
-        parts = []
-        up = [w for w in (_label(i, lang, show_en) for i in rw[trait]["up"]) if w]
-        down = [w for w in (_label(i, lang, show_en) for i in rw[trait]["down"]) if w]
-        if up:
-            parts.append("выше: " + ", ".join(up))
-        if down:
-            parts.append("ниже: " + ", ".join(down))
-        lines.append(f"{titles.get(trait, trait)} — " + ("; ".join(parts) if parts else "значимых слов нет"))
-    return lines
-
-
-WORDS_NOTE = ("Слова из речи (или из описания поведения), сильнее всего сдвинувшие оценку модели AMLAI 1.0: «выше» — в сторону "
-              "большего значения черты, «ниже» — меньшего. Служебные слова отброшены; для русской речи показано слово, как "
-              "оно прозвучало.")

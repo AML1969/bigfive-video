@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the BS Profiler 3.0 web UI inside WSL (detached). Own port, log, job folder and Gradio temp folder;
+# Start the BS Profiler 3.1 web UI inside WSL (detached). Own port, log, job folder and Gradio temp folder;
 # независим от BS 2.0 на :7870.
 # Usage: run_web3.sh [PORT]      Stop: pkill -f "bs3 web"
 set -uo pipefail

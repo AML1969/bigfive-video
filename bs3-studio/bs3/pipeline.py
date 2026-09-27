@@ -16,7 +16,6 @@ from typing import Callable, Dict, List
 import numpy as np
 
 from . import DEFAULT_MODEL, LANG, MODALITIES, MODEL_TITLES
-from .norms import TRAIT_KEYS
 from .report import build_report, fmt_secs
 
 log = logging.getLogger("bs3.pipeline")
@@ -145,7 +144,7 @@ def _weighted(rows: List[dict], w: List[float], keys: List[str]) -> Dict[str, fl
     return {k: round(float(sum(r.get(k, 0.0) * wi for r, wi in zip(rows, w))), 4) for k in keys}
 
 
-def run_extra_analyses(studio: Studio, res: dict, lang: str, work_dir: Path, progress: Callable | None = None,
+def run_extra_analyses(studio: Studio, res: dict, lang: str, progress: Callable | None = None,
                        should_stop: Callable | None = None) -> dict:
     """Per-segment text emotions, voice dimensions, facial expressions and speech statistics. Uses the segments and
     Whisper chunks already produced by the Big Five pass; single short clips are treated as one segment."""
@@ -209,12 +208,12 @@ def run_extra_analyses(studio: Studio, res: dict, lang: str, work_dir: Path, pro
                        if any(f.get("head_motion") is not None for f in fa) else None}
     if chunks:
         whole = stats_for(chunks, 0.0, float(res.get("duration_sec") or (tl[-1]["end"] if tl else 0.0)), lang=lang)
-        out["speech"] = {**whole, "description": describe(whole, lang),
+        out["speech"] = {**whole, "description": describe(whole),
                          "vocabulary": vocabulary(res.get("transcript", ""), top=15, lang=lang)}
     return out
 
 
-def run_analysis(studio: Studio, work_dir: Path, video_path: str, member: str = DEFAULT_MODEL, explain: bool = True,
+def run_analysis(studio: Studio, work_dir: Path, video_path: str, *, member: str = DEFAULT_MODEL, explain: bool = True,
                  progress: Callable | None = None) -> dict:
     """Whole request: copy the upload, Big Five by the chosen model only (`member`: "oceanai" | "mm", segmented),
     extra analyses, explanations (AMLAI 1.0 only), plain-language texts; writes <job>/result.json and returns it with
@@ -255,13 +254,13 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, member: str = 
     rep = build_report(local, res, backend=member, corpus=corpus, lang=lang, asr_model=studio.asr_model,
                        modalities=MODALITIES[member], pool_lang=lang, primary=member, selected=member)
     rep["variant_scores"] = {m: v for m, v in (res.get("variants") or {}).items() if m == member}
-    for key in ("duration_sec", "segments", "timeline", "representative_segment", "transcript_en", "chunks"):
+    for key in ("duration_sec", "segments", "timeline", "representative_segment", "chunks"):
         if res.get(key) is not None:
             rep[key] = res[key]
     rep["scores_std_across_segments"] = res.get("scores_std")
 
     # ---- BS Profiler 3.x analyses
-    rep["analyses"] = run_extra_analyses(studio, {**res, "input": str(local)}, lang, job, progress=step,
+    rep["analyses"] = run_extra_analyses(studio, {**res, "input": str(local)}, lang, progress=step,
                                          should_stop=studio.stop_event.is_set)
 
     # ---- explanations (AMLAI 1.0 only, representative segment)

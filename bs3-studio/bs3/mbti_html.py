@@ -289,7 +289,7 @@ def strip_html(mb: dict | None) -> str:
 
 def read_html(mb: dict | None = None) -> str:
     """«Как читать тип MBTI»: the correspondence table (5.5) and the caveats READ_CAVEATS; the same for any job
-    (`mb` is accepted for the callers of 3.0)."""
+    (`mb` is accepted and not read: the page passes the section to every MBTI block)."""
     cfg = load_config()
     corr = cfg.get("correspondence") or {}
     rows = []

@@ -1,6 +1,6 @@
-"""Serve the BS Profiler 3.0 page with an already finished job pre-rendered (for UI checks without the GPU analysis).
+"""Serve the BS Profiler 3.1 page with an already finished job pre-rendered (for UI checks without the GPU analysis).
 Usage: ui_preview.py [JOB_DIR] [PORT]     default: newest job in ~/bs3_data/web_jobs, port 7882
-JOB_DIR must lie in ~/bs3_data/web_jobs: the page and the PDF button write into the job folder, and 3.0 never writes
+JOB_DIR must lie in ~/bs3_data/web_jobs: the page and the PDF button write into the job folder, and 3.1 never writes
 into the 2.0 work dir (design 13.3). A 2.0 job is copied there first with scripts/import_job.py.
 """
 import os

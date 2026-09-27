@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start (or restart) the BS Profiler 3.0 UI preview server on :7882 with a finished job (default: the newest one).
+# Start (or restart) the BS Profiler 3.1 UI preview server on :7882 with a finished job (default: the newest one).
 # Usage: run_preview.sh [JOB_DIR] [PORT]      Stop: pkill -f "ui_previe[w]"
 pkill -f "ui_previe[w].py" 2>/dev/null; sleep 2
 PORT="${2:-7882}"

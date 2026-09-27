@@ -4,6 +4,7 @@ no agreement)."""
 from __future__ import annotations
 
 import copy
+import inspect
 import itertools
 import json
 import math
@@ -36,8 +37,8 @@ def test_document_example_raw():
     assert _conf(r) == [0.44, 0.22, 0.04, 0.10]
     assert [r["axes"][ax]["borderline"] for ax in mbti.AXES] == [False, True, True, True]
     assert r["neuroticism"]["value"] == 0.33
-    for system, lang in (("oceanai", "ru"), ("mm", "ru"), ("oceanai", "en"), ("mm", "en")):
-        m = mbti.mbti_for(system, DOC, lang)
+    for system in ("oceanai", "mm"):
+        m = mbti.mbti_for(system, DOC)
         assert m["type"] == "EXXX" and m["type_strict"] == "ENTJ" and m["type_name"] == "Руководитель"
         assert [m["axes"][ax]["confidence"] for ax in mbti.AXES] == [0.44, 0.22, 0.04, 0.10]
         assert [m["axes"][ax]["value"] for ax in mbti.AXES] == [0.72, 0.61, 0.48, 0.55]
@@ -89,17 +90,17 @@ def test_degenerate_inputs():
     assert empty["type"] == "XXXX" and empty["type_strict"] == "XXXX" and empty["alternatives"] == []
     assert empty["neuroticism"] is None and empty["type_name"] is None
     assert mbti.bigfive_to_mbti({k: v for k, v in DOC.items() if k != "emotional_stability"})["neuroticism"] is None
-    m = mbti.mbti_for("oceanai", {"extraversion": None}, "ru")
+    m = mbti.mbti_for("oceanai", {"extraversion": None})
     assert m["type_strict"] == "XXXX" and m["neuroticism"] is None and m["axes"]["EI"]["word"] == "нет данных"
 
 
 # 6
 def test_neuroticism():
     raw = {**DOC, "emotional_stability": 0.30}
-    n = mbti.mbti_for("oceanai", raw, "ru")["neuroticism"]
+    n = mbti.mbti_for("oceanai", raw)["neuroticism"]
     assert n["value"] == 0.70 and n["level"] == "выше среднего" and "position" not in n
     b = rep("B")["variant_scores"]["oceanai"]
-    m = mbti.mbti_for("oceanai", b, "ru")
+    m = mbti.mbti_for("oceanai", b)
     assert m["neuroticism"]["value"] == round(1 - b["emotional_stability"], 3)
     mirror = {"high": "low", "above": "below", "mid": "mid", "below": "above", "low": "high"}
     for i in range(101):
@@ -110,19 +111,19 @@ def test_neuroticism():
 
 # 7
 def test_absolute_scale_config():
-    """No reference group: method "raw", thresholds 0.5, the same letters for any system and language."""
+    """No reference group: method "raw", thresholds 0.5, the same letters for any system; the formula takes no speech
+    language."""
     cfg = mbti.load_config()
     assert cfg["method"] == "raw" and cfg["raw_thresholds"] == {"EI": 0.5, "SN": 0.5, "TF": 0.5, "JP": 0.5}
-    for key in ("references", "ru_prov_file", "thresholds"):
+    for key in ("references", "ru_prov_file", "thresholds", "version", "llm_interpretation", "stable_share"):
         assert key not in cfg, key
     assert cfg["borderline"] == 0.15 and mbti.SCHEMA_VERSION == 3 and mbti.METHOD == "raw"
     assert mbti.SOURCE_RU == {"ocean_ai": "OCEAN-AI", "own_model": "AMLAI 1.0"}
     assert not hasattr(mbti, "agreement") and not hasattr(mbti, "agreement_line")
+    assert "lang" not in inspect.signature(mbti.mbti_for).parameters
     b = rep("B")["variant_scores"]
     for system in ("oceanai", "mm"):
-        types = {mbti.mbti_for(system, b[system], lang)["type"] for lang in ("ru", "en")}
-        assert len(types) == 1, system
-        m = mbti.mbti_for(system, b[system], "ru")
+        m = mbti.mbti_for(system, b[system])
         for ax in mbti.AXES:
             a = m["axes"][ax]
             assert a["value"] == scores.shown(b[system][a["trait"]])          # the printed value, two decimals

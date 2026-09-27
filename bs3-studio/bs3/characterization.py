@@ -69,7 +69,6 @@ class Character:
     """The characterization: header and paragraphs [{"key", "lead", "text"}]."""
     header: dict
     paragraphs: list[dict] = field(default_factory=list)
-    lang: str = "ru"
 
     # ---------------------------------------------------------------------------------------------- plain text
     def header_plain(self) -> str:
@@ -157,7 +156,7 @@ def _by_distance(keys, ps: dict, view: dict) -> list:
     return sorted(keys, key=lambda k: (-round(abs(ps[k] - 0.5), 9), -abs(raw[k] - 0.5)))
 
 
-def _header(mb: dict | None, lang: str, T: dict, ps: dict) -> dict:
+def _header(mb: dict | None, T: dict, ps: dict) -> dict:
     H = T["header"]
     labels: list[tuple[str, bool]] = []
     if not mb:
@@ -189,7 +188,7 @@ def _header(mb: dict | None, lang: str, T: dict, ps: dict) -> dict:
     return {"letters": letters, "letters_text": word, "name": name, "labels": labels, "aria": aria}
 
 
-def _p_short(mb, lang, T, lex, ps, view) -> str:
+def _p_short(mb, T, lex, ps, view) -> str:
     S = T["short"]
     out = []
     ranked = _by_distance([k for k in MBTI_TRAITS if ps.get(k) is not None and level(ps[k]) != "mid"], ps, view)[:2]
@@ -225,7 +224,7 @@ def _p_short(mb, lang, T, lex, ps, view) -> str:
     return " ".join(out)
 
 
-def _p_basis(view, mb, lang, T) -> str:
+def _p_basis(view, mb, T) -> str:
     B = T["basis"]
     meta = view.get("view_meta") or {}
     total = int(meta.get("segments_total") or 0)
@@ -239,7 +238,7 @@ def _p_basis(view, mb, lang, T) -> str:
     return B["ru"].format(system=system, where=where) + " " + B["scale"]
 
 
-def _p_trait(k, view, mb, lang, T, lex, ps) -> dict | None:
+def _p_trait(k, view, mb, T, lex, ps) -> dict | None:
     p = ps.get(k)
     if p is None:
         return None
@@ -259,7 +258,7 @@ def _p_trait(k, view, mb, lang, T, lex, ps) -> dict | None:
     return {"key": f"trait:{k}", "lead": lead, "text": text}
 
 
-def _p_stability(view, mb, lang, T, lex, ps) -> dict | None:
+def _p_stability(view, mb, T, lex, ps) -> dict | None:
     p = ps.get("emotional_stability")
     if p is None:
         return None
@@ -380,25 +379,23 @@ def build(view: dict, mb: dict | None) -> Character:
     lex = load_lexicon()
     T = lex["templates"]
     L = T["leads"]
-    meta = view.get("view_meta") or {}
-    lang = meta.get("lang", "ru")
     ps = _scores(view)
-    header = _header(mb, lang, T, ps)
+    header = _header(mb, T, ps)
     if all(v is None for v in ps.values()):
         paragraphs = [{"key": "no_scores", "lead": L["no_scores"], "text": caveats.text("C21")},
                       {"key": "limits", "lead": L["limits"], "text": _p_limits(view)}]
-        return Character(header=header, paragraphs=paragraphs, lang=lang)
+        return Character(header=header, paragraphs=paragraphs)
     from .mbti import load_config
     type_names = load_config().get("type_names_ru") or {}
 
-    paragraphs = [{"key": "short", "lead": L["short"], "text": _p_short(mb, lang, T, lex, ps, view)},
-                  {"key": "basis", "lead": L["basis"], "text": _p_basis(view, mb, lang, T)}]
+    paragraphs = [{"key": "short", "lead": L["short"], "text": _p_short(mb, T, lex, ps, view)},
+                  {"key": "basis", "lead": L["basis"], "text": _p_basis(view, mb, T)}]
     order = _by_distance([k for k in MBTI_TRAITS if ps.get(k) is not None], ps, view)
     for k in order:
-        para = _p_trait(k, view, mb, lang, T, lex, ps)
+        para = _p_trait(k, view, mb, T, lex, ps)
         if para:
             paragraphs.append(para)
-    st = _p_stability(view, mb, lang, T, lex, ps)
+    st = _p_stability(view, mb, T, lex, ps)
     if st:
         paragraphs.append(st)
     if mb:
@@ -407,4 +404,4 @@ def build(view: dict, mb: dict | None) -> Character:
     if beh:
         paragraphs.append({"key": "behavior", "lead": L["behavior"], "text": beh})
     paragraphs.append({"key": "limits", "lead": L["limits"], "text": _p_limits(view)})
-    return Character(header=header, paragraphs=paragraphs, lang=lang)
+    return Character(header=header, paragraphs=paragraphs)

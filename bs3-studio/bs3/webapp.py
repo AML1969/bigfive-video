@@ -18,23 +18,22 @@ import time
 from pathlib import Path
 
 from . import DEFAULT_MODEL, MODEL_TITLES, PRODUCT, PRODUCT_SLUG, caveats, characterization, journal, mbti_html
-from .charts import (EMO_RU, VOICE_RU, fig_emotion_bars, fig_emotions_timeline, fig_face_expr, fig_radar,
-                     fig_speech_timeline, fig_traits_timeline, fig_voice_timeline, plot_html as _plot_html)
+from .charts import (EMO_RU, fig_emotion_bars, fig_emotions_timeline, fig_face_expr, fig_radar, fig_speech_timeline,
+                     fig_traits_timeline, fig_voice_timeline, plot_html as _plot_html)
 from .mbti import fact_card, get_mbti
 from .narrative import NO_EXPLAIN_RU, method_notes
 from .narrative2 import FACTS_LEGEND, card_item, fact_label, fix_counts, key_facts, plural_ru
-from .norms import TRAIT_KEYS
 from .palette import (ACCENT, BUTTON_PRIMARY, BUTTON_PRIMARY_HOVER, BUTTON_STOP, BUTTON_STOP_HOVER, CARD_TINT,
                       FACT_VALUE, HTML as PAL, PAGE_NOTE_OPACITY, SUBDUED_TEXT_LIGHT)
 from .pipeline import Studio, run_analysis
 from .report import fmt_secs, mmss_labels, seg_label
 from .ru_texts import ensure_russian_job, transcript_shown, vocabulary_shown
 from .scores import FACT_STATES, clean_view, data_json
-from .webparts import NOTE, TRAIT_TITLES, _bar_html, _contrib_html, _words_text, model_line, table_html, th_text
+from .webparts import NOTE, _bar_html, _contrib_html, _words_text, model_line, table_html, th_text
 
 log = logging.getLogger("bs3.web")
-# the tab «Данные» of a Russian job whose result.json carries 2.0 fields that 3.x does not use (scores.data_json)
-# the tab «Данные» of an older job (2.0 / 3.0): what scores.data_json left out; a job of 3.1 carries none of it
+# the note of the tab «Данные» when scores.data_json left something out of a Russian job: the percentiles and the
+# stored 2.0 `narrative` of older jobs (imported 2.0, 3.0 and early 3.1 jobs), which the page does not use
 DATA_TRIMMED = ("В result.json ниже не показаны поля прежних версий, которые 3.1 не использует (процентили, сводка "
                 "версии 2.0); файл не изменён.")
 # metric cards: 1 px outline 3:1 on every background, light tint (palette.CARD_TINT, the background check_palette.py
@@ -285,7 +284,7 @@ def _frames_html(rep: dict, expl: dict | None = None, max_side: int = 640) -> st
             + "Щелчок по кадру увеличивает его, повторный щелчок закрывает.</p>")
 
 
-N_PAGE = 27            # values of page_outputs: 22 of 2.0 (index 3 is now the characterization) + 5 new blocks
+N_PAGE = 27            # page_outputs values: 22 blocks kept in the places of the 2.0 page, then 5 added by 3.0
 
 
 def model_text(view: dict, rep: dict, mb: dict | None) -> str:
@@ -318,7 +317,6 @@ def page_outputs(rep: dict) -> tuple:
     view = clean_view(rep)
     mb = get_mbti(rep, view)
     ch = characterization.build(view, mb)
-    lang = (rep.get("model") or {}).get("lang", "ru")
     main = (view.get("view_meta") or {}).get("main_system")
     # explanations exist for AMLAI 1.0 only: an OCEAN-AI job says so once, in the first block of the tab, and the
     # other blocks stay empty (an older job may carry the explanation and the behaviour description of the second
@@ -337,11 +335,11 @@ def page_outputs(rep: dict) -> tuple:
            _segments_table(view), _speech_html(view),
            "\n\n".join(t for t in (note, transcript) if t), _face_html(view), _plot_html(fig_face_expr, view),
            _frames_html(view, expl if own else None), contrib,
-           _words_text(expl, rep, lang, expl_path) if (expl and own) else "",
+           _words_text(expl, rep, expl_path) if (expl and own) else "",
            mmss_labels(rep.get("behavior_description_ru") or "") if own else "", model_text(view, rep, mb),
            json.dumps(data, ensure_ascii=False, indent=2), str(job / "result.json"), str(job),
-           # new in 3.0 (design 10.3, 10.5)
-           mbti_html.method_html(method_notes(view, expl)), mbti_html.emo_intro_html(view),
+           # the five blocks after the first 22 (design 10.3, 10.5)
+           mbti_html.method_html(method_notes(view)), mbti_html.emo_intro_html(view),
            mbti_html.types_html(mb), mbti_html.strip_html(mb), mbti_html.read_html(mb))
     assert len(out) == N_PAGE
     return out

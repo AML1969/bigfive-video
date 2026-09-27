@@ -13,7 +13,6 @@ import torch.nn as nn
 from ..mm.extractors import load_wav_mono
 
 DIMS = ["arousal", "dominance", "valence"]
-DIMS_RU = {"arousal": "возбуждение", "dominance": "уверенность (доминантность)", "valence": "позитивность (валентность)"}
 
 
 class _RegressionHead(nn.Module):

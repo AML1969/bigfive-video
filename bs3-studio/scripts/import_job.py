@@ -1,10 +1,10 @@
-"""Copy a finished job of BS 2.0 into the work dir of BS Profiler 3.0, so 3.0 can show it without re-analysis
+"""Copy a finished job of BS 2.0 into the work dir of BS Profiler 3.1, so 3.1 can show it without re-analysis
 (design 13.3, item 2; task T16).
 
     ~/bs/venv/bin/python bs3-studio/scripts/import_job.py ~/bs2_data/web_jobs/<job id> [...] [--force]
 
 Why a copy: showing a job writes into its folder (Russian texts are added to result.json and explanation.json, the PDF
-export writes charts/ and the PDF), and 3.0 must never write into the 2.0 work dir.
+export writes charts/ and the PDF), and 3.1 must never write into the 2.0 work dir.
 
 What is copied into ~/bs3_data/web_jobs/<job id>/: result.json and explain/ (explanation.json and the key frames).
 Not copied: input.* (the video), segments/, seg*.mp4 (hundreds of MB; the PDF takes `media` from result.json), the

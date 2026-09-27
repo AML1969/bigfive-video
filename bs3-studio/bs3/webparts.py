@@ -14,7 +14,6 @@ import re
 from pathlib import Path
 
 from . import MODEL_TITLES
-from .narrative2 import plural_ru
 from .norms import TRAIT_KEYS
 from .palette import HTML as PAL
 
@@ -31,10 +30,6 @@ TRAIT_TITLES = {
 MEMBER_TITLES = {**MODEL_TITLES, "scene": "SSL-MEPR сцена",
                  "face": "лицо", "audio": "голос (CLAP)", "audio_whisper": "голос (Whisper)", "audio_xlsr": "голос (XLS-R)",
                  "audio_w2v_emo": "голос (wav2vec2)", "text": "речь", "behavior": "описание поведения"}
-# two-line column headers for narrow tables (long Russian words do not wrap by themselves)
-TRAIT_TITLES_2L = {"openness": "Открытость<br>опыту", "conscientiousness": "Добросо-<br>вестность",
-                   "extraversion": "Экстра-<br>версия", "agreeableness": "Доброжела-<br>тельность",
-                   "emotional_stability": "Эмоц.<br>стабильность", "interview": "Собесе-<br>дование"}
 # short row names for tables (the interview title is too long for a first column)
 ROW_TITLES = {**TRAIT_TITLES, "interview": "«Собеседование»"}
 # modality columns of the contribution table: (column title, second line)
@@ -222,14 +217,14 @@ def model_line(view: dict) -> str:
     return f"Модель {model_title(main)}" + (f": {scores}." if scores else ".")
 
 
-def _words_text(expl: dict, rep: dict, lang: str, expl_path: Path | None = None) -> str:
+def _words_text(expl: dict, rep: dict, expl_path: Path | None = None) -> str:
     """Readable word attributions (content words in Russian for any speech language, grouped by direction); computed
     once and stored in explanation.json under "readable_words" so the PDF shows the same lists."""
     from .narrative import words_summary
     from .ru_texts import ensure_words, write_json
     if ensure_words(rep, expl) and expl_path is not None:
         write_json(expl_path, expl)
-    return "\n\n".join(words_summary(expl.get("readable_words") or {}, expl, TRAIT_TITLES, lang))
+    return "\n\n".join(words_summary(expl.get("readable_words") or {}, expl, TRAIT_TITLES))
 
 
 # ---------------------------------------------------------------- modality contributions

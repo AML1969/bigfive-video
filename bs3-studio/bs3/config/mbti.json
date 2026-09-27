@@ -1,5 +1,4 @@
 {
-  "version": 2,
   "axes": {"EI": ["extraversion", "E", "I"], "SN": ["openness", "N", "S"],
            "TF": ["agreeableness", "F", "T"], "JP": ["conscientiousness", "J", "P"]},
   "borderline": 0.15,
@@ -13,7 +12,5 @@
                     "INTJ": "Стратег", "INTP": "Теоретик", "ENTJ": "Руководитель", "ENTP": "Изобретатель"},
   "pole_names_ru": {"E": "экстраверсия", "I": "интроверсия", "S": "сенсорика", "N": "интуиция",
                     "T": "мышление", "F": "чувство", "J": "суждение", "P": "восприятие"},
-  "stable_share": 0.75,
-  "min_segments_for_stability": 4,
-  "llm_interpretation": false
+  "min_segments_for_stability": 4
 }

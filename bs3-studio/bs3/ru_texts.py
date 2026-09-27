@@ -210,14 +210,15 @@ def ensure_words(rep: dict, expl: dict | None) -> bool:
             continue
         if key == "transcript_words":
             # the sense of a word is taken from the English text it comes from; the Russian transcript (lang=ru) gives
-            # the form in which the word was spoken
-            ctx = rep.get("transcript_en") if lang != "en" else (expl.get("transcript") or rep.get("transcript"))
+            # the form in which the word was spoken. Russian speech has no English context: no analyzer returns a
+            # `transcript_en` into result.json, so the context read from there was always None
+            ctx = None if lang != "en" else (expl.get("transcript") or rep.get("transcript"))
             spoken = rep.get("transcript") if lang != "en" else None
         else:
             ctx, spoken = rep.get("behavior_description"), None
         info: dict = {}
         try:
-            new = readable_words(expl, key, lang, transcript_ru=spoken, context_en=ctx, info=info)
+            new = readable_words(expl, key, transcript_ru=spoken, context_en=ctx, info=info)
         except Exception as e:  # noqa: BLE001
             log.warning("readable words failed for %s: %s", key, str(e).splitlines()[0][:120])
             continue
@@ -239,11 +240,6 @@ def ensure_russian(rep: dict, expl: dict | None = None) -> Tuple[bool, bool]:
     for fill in (ensure_behavior, ensure_transcript, ensure_vocabulary):
         rep_changed = fill(rep) or rep_changed
     expl_changed = ensure_words(rep, expl)
-    if expl_changed and rep.get("narrative"):
-        # the stored plain-language paragraph names the attributed words: rebuild it with the Russian ones
-        from .narrative import build_narrative
-        rep["narrative"] = build_narrative(rep, expl)
-        rep_changed = True
     if rep_changed or expl_changed:
         log.info("Russian texts added in %.1f s", time.time() - t0)
     return rep_changed, expl_changed

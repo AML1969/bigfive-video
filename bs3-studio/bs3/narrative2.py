@@ -1,5 +1,5 @@
-"""Plain-language sentences for the BS Profiler 3.0 analyses (emotions, voice, face, speech), appended to the Big Five
-narrative. Deterministic templates over the numbers in result.json."""
+"""Plain-language sentences for the BS Profiler 3.1 analyses (emotions, voice, face, speech) and the «Ключевые факты»
+cards. Deterministic templates over the numbers in result.json."""
 from __future__ import annotations
 
 import re
@@ -7,7 +7,6 @@ from typing import List
 
 from .charts import EMO_RU
 from .report import fmt_secs
-from .ru_texts import vocabulary_shown
 
 
 def plural_ru(n, one: str, few: str, many: str) -> str:
@@ -50,11 +49,11 @@ def _level(v: float, gender: str = "n", low: float = 0.4, high: float = 0.6) -> 
 
 
 def analyses_parts(rep: dict) -> dict:
-    """The sentences about each analysis, by topic: {text_emotion, voice, face, face_note, speech, vocab} ('' when the
-    analysis is missing). The web page joins them into one paragraph (analyses_sentences); the PDF puts each topic
-    into its own section."""
+    """The sentences about each analysis, by topic: {text_emotion, voice, face, speech} ('' when the analysis is
+    missing). The page shows the text emotion and the voice ones in «Эмоции и голос: коротко» (mbti_html.emo_intro_html);
+    the PDF puts the topics into its sections."""
     an = rep.get("analyses") or {}
-    out = dict.fromkeys(("text_emotion", "voice", "face", "face_note", "speech", "vocab"), "")
+    out = dict.fromkeys(("text_emotion", "voice", "face", "speech"), "")
     te = an.get("emotions_text")
     if te and te.get("mean"):
         parts: List[str] = []
@@ -96,18 +95,10 @@ def analyses_parts(rep: dict) -> dict:
         if fa.get("face_share") is not None and fa["face_share"] < 0.9:
             s += f"; лицо видно в {fa['face_share']:.0%} кадров"
         out["face"] = s + "."
-        out["face_note"] = "Распознавание выражений обучено на фотографиях и склонно завышать «грусть» и «страх» у спокойного лица."
     sp = an.get("speech")
     if sp and sp.get("description"):
         out["speech"] = fix_counts(sp["description"])
-        vocab = vocabulary_shown(rep)          # Russian words; for English speech their translations
-        if vocab:
-            out["vocab"] = "Чаще всего звучат слова: " + ", ".join(f"«{w}»" for w, _ in vocab[:6]) + "."
     return out
-
-
-def analyses_sentences(rep: dict) -> str:
-    return " ".join(p for p in analyses_parts(rep).values() if p)
 
 
 # «Ключевые факты»: where the value sits is said twice — by the colour of the value and by this word in the label

@@ -34,7 +34,6 @@ from .scores import level_phrase, plural_ru, shown
 AXES = ("EI", "SN", "TF", "JP")
 AXIS_LABEL = {"EI": "E–I", "SN": "S–N", "TF": "T–F", "JP": "J–P"}
 SOURCE_OF = {"oceanai": "ocean_ai", "mm": "own_model"}
-SYSTEM_OF = {v: k for k, v in SOURCE_OF.items()}
 SOURCE_RU = {SOURCE_OF[k]: v for k, v in MODEL_TITLES.items()}       # "ocean_ai": OCEAN-AI, "own_model": AMLAI 1.0
 WORD_CLEAR, WORD_MODERATE, WORD_BORDER, WORD_MISSING = "отчётливо", "умеренно", "на границе", "нет данных"
 RELIABILITY_BASIS = ("соответствие шкал MBTI и NEO-PI в самоотчётах (McCrae, Costa, 1989); "
@@ -149,10 +148,9 @@ def _r(x, nd):
     return None if x is None else round(x, nd)
 
 
-def mbti_for(system: str, raw_scores: dict, lang: str, cfg: dict | None = None) -> dict:
-    """Type of one model ('oceanai' | 'mm') from its own Big Five scores, in the format of result.json. `lang` is
-    kept for the callers: the formula does not depend on the speech language. The formula works on the printed
-    scores (scores.shown, two decimals)."""
+def mbti_for(system: str, raw_scores: dict, cfg: dict | None = None) -> dict:
+    """Type of one model ('oceanai' | 'mm') from its own Big Five scores, in the format of result.json. The formula
+    does not depend on the speech language and works on the printed scores (scores.shown, two decimals)."""
     cfg = cfg or load_config()
     raw_scores = raw_scores if isinstance(raw_scores, dict) else {}
     scores = {k: shown(raw_scores.get(k)) for k in TRAIT_KEYS}
@@ -201,8 +199,7 @@ def _segment_scores(t: dict, system: str, main: str) -> dict | None:
 def segment_types(view: dict, system: str, cfg: dict | None = None) -> list[dict]:
     """Type of `system` on every segment, with the same thresholds as for the whole video."""
     cfg = cfg or load_config()
-    meta = view.get("view_meta") or {}
-    main, lang = meta.get("main_system"), meta.get("lang", "en")
+    main = (view.get("view_meta") or {}).get("main_system")
     out = []
     for t in view.get("timeline") or []:
         if not isinstance(t, dict):
@@ -212,7 +209,7 @@ def segment_types(view: dict, system: str, cfg: dict | None = None) -> list[dict
         if sc is None:
             e.update({"type": None, "reason": "no_primary" if system == main else "no_data"})
         else:
-            m = mbti_for(system, sc, lang, cfg)
+            m = mbti_for(system, sc, cfg)
             e.update({"type": m["type"], "type_strict": m["type_strict"],
                       "words": {ax: m["axes"][ax]["word"] for ax in AXES}})
         out.append(e)
@@ -262,11 +259,6 @@ def border_text(entries: list[dict]) -> str:
     return ", ".join(parts)
 
 
-def is_stable(item: dict | None, cfg: dict | None = None) -> bool:
-    cfg = cfg or load_config()
-    return bool(item and item.get("of")) and item["same"] / item["of"] >= float(cfg.get("stable_share", 0.75))
-
-
 def _scores_of(view: dict, system: str) -> dict | None:
     if system == (view.get("view_meta") or {}).get("main_system"):
         tr = view.get("traits") or {}
@@ -288,11 +280,11 @@ def build_section(view: dict, *, computed_at: str | None = None, cfg: dict | Non
         from .scores import clean_view
         view = clean_view(view)
         meta = view["view_meta"]
-    main, lang = meta["main_system"], meta["lang"]
+    main = meta["main_system"]
     main_scores = _scores_of(view, main)
     if main_scores is None:
         return None
-    m = mbti_for(main, main_scores, lang, cfg)
+    m = mbti_for(main, main_scores, cfg)
     entries = segment_types(view, main, cfg)
     st, modal = stability(entries, m["type_strict"], cfg)
     timeline = view.get("timeline") or []

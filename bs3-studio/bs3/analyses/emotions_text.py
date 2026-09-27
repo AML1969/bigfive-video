@@ -7,8 +7,6 @@ from typing import Dict, List
 
 import torch
 
-EMOTIONS_RU = {"anger": "злость", "disgust": "отвращение", "fear": "страх", "joy": "радость", "neutral": "нейтрально",
-               "sadness": "грусть", "surprise": "удивление"}
 EMOTION_ORDER = ["joy", "surprise", "neutral", "sadness", "fear", "anger", "disgust"]
 
 

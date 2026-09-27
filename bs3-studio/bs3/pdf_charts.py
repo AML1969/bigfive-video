@@ -1,4 +1,4 @@
-"""PDF charts for BS Profiler 3.0: matplotlib PNGs placed on the A4 pages by pdf_report.py, one print version for every chart
+"""PDF charts for BS Profiler 3.1: matplotlib PNGs placed on the A4 pages by pdf_report.py, one print version for every chart
 of the web page.
 
 Colours come from palette.py (the *_PDF dictionaries, contrast-checked on white by scripts/check_palette.py), never

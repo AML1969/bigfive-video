@@ -1,4 +1,4 @@
-"""BS Profiler 3.0 additional analyses beyond Big Five, all from components already used by the pipeline:
+"""BS Profiler 3.1 additional analyses beyond Big Five, all from components already used by the pipeline:
 
 emotions_text  - 7 emotions from the transcript (EmoRoBERTa classification head, English translation)
 emotions_voice - arousal / dominance / valence of the voice (audeering wav2vec2 regression head)

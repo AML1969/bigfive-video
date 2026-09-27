@@ -1,4 +1,4 @@
-"""Write the `mbti` section (design 7.1) into result.json of an old job that lies in the 3.0 work dir (design 7.2;
+"""Write the `mbti` section (design 7.1) into result.json of an old job that lies in the 3.1 work dir (design 7.2;
 task T28, optional).
 
     ~/bs/venv/bin/python bs3-studio/scripts/add_mbti.py ~/bs3_data/web_jobs/<job id> [...] [--force]

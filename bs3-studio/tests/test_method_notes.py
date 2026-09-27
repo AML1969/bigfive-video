@@ -2,8 +2,6 @@
 reference group, Russian bars show the score only)."""
 from __future__ import annotations
 
-import re
-
 from samples import english, rep
 
 from bs3 import narrative, scores, webparts
@@ -18,7 +16,7 @@ SECOND = ("второе мнение", "своя модель", "своей мо
 
 def test_method_notes_sample_b():
     v = scores.clean_view(rep("B"))
-    t = narrative.method_notes(v, None)
+    t = narrative.method_notes(v)
     assert t.startswith("Оценки дала система OCEAN-AI на весах MuPTA, обученных на русскоязычных участниках. "
                         "Уровни черт и буквы MBTI считаются по самой оценке модели на шкале от 0 до 1 с серединой 0.5.")
     assert "По ходу ролика (26 отрезков с оценкой OCEAN-AI) оценки устойчивы: разброс не больше ±0.02." in t
@@ -67,20 +65,6 @@ def test_method_notes_own_model_and_old_english_job():
     assert "В 3 отрезках из 33 модель AMLAI 1.0 не дала оценки" in own and "OCEAN-AI" not in own
 
 
-def test_build_narrative_names_one_model():
-    """The stored 2.0-style summary of a new job names the model that ran and no second opinion."""
-    r = rep("B")
-    r["model"].update({"selected": "oceanai"})
-    t = narrative.build_narrative(r, None)
-    assert t.startswith("Оценки дала система OCEAN-AI на весах MuPTA")
-    for w in SECOND + ("MM-PSYCHE", "разница шкал"):
-        assert w not in t.lower() and w not in t, w
-    r["model"].update({"selected": "mm", "primary": "mm"})
-    r["interview"] = {"score": 0.41}
-    t = narrative.build_narrative(r, None)
-    assert t.startswith("Оценки дала модель AMLAI 1.0") and "по модели AMLAI 1.0: 0.41" in t
-
-
 def test_bars_on_clean_view_ru():
     r = rep("B")
     for k in r["traits"]:              # an older job: percentiles against the pool of processed videos
@@ -126,9 +110,6 @@ def test_no_second_opinion_block():
 def test_pct_phrases_fiv2_only():
     for ref in ("ref:ru_prov_2026-09-25", "пула обработанных русских роликов (N=5)", ""):
         assert webparts._pct_phrase(92.9, ref) == ("", False)
-        assert narrative._pct_phrase({"percentile": 92.9, "percentile_ref": ref}) == ""
     assert webparts._pct_phrase(None, "train FIV2") == ("", False)
     assert webparts._pct_phrase(30, "train FIV2") == ("ниже, чем у 70% людей в FIV2", True)
-    assert narrative._pct_phrase({"percentile": 72, "percentile_ref": "train First Impressions V2 (6000 клипов)"}) == \
-        "выше, чем у 72% людей в First Impressions V2"
     assert webparts._pct_phrase(72, "train FIV2") == ("выше, чем у 72% людей в FIV2", True)

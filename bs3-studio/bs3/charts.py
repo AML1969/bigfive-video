@@ -1,4 +1,4 @@
-"""Web charts for the BS Profiler 3.0 interface (plotly, interactive). All functions take the result.json dict; they never compute
+"""Web charts for the BS Profiler 3.1 interface (plotly, interactive). All functions take the result.json dict; they never compute
 anything new. PDF charts live in pdf_charts.py.
 
 Every figure builder is fig_xxx(rep, theme='dark'|'light') and takes all colours from palette.py. plot_html() builds
@@ -13,7 +13,7 @@ import json
 from typing import List
 
 from .norms import RU_TITLES, TRAIT_KEYS
-from .palette import (BARS_WEB, EMO_ALIAS, EMO_WEB, FONT_FAMILY, RADAR_WEB, SPEECH_WEB, THEME, TRAIT_SYMBOL, TRAIT_WEB,
+from .palette import (BARS_WEB, EMO_ALIAS, FONT_FAMILY, RADAR_WEB, SPEECH_WEB, THEME, TRAIT_SYMBOL, TRAIT_WEB,
                       VOICE_SYMBOL, VOICE_WEB, emo)
 from .report import seg_label
 
@@ -21,11 +21,6 @@ EMO_RU = {"joy": "радость", "surprise": "удивление", "neutral": 
           "anger": "злость", "disgust": "отвращение",
           "happy": "радость", "sad": "грусть", "angry": "злость"}
 VOICE_RU = {"arousal": "возбуждение", "dominance": "уверенность", "valence": "позитивность"}
-
-# flat {key: colour} dictionaries kept for older importers (pdf_charts.py); they are the light web palettes
-TRAIT_COLORS = dict(TRAIT_WEB["light"])
-EMO_COLORS = {**EMO_WEB["light"], **{alias: EMO_WEB["light"][k] for alias, k in EMO_ALIAS.items()}}
-VOICE_COLORS = dict(VOICE_WEB["light"])
 
 # legend names that differ from the shared RU_TITLES (the dotted line style of the interview series is named explicitly)
 _TRAIT_NAME = {**RU_TITLES, "interview": "Пригласить на собеседование (пунктир)"}

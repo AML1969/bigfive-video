@@ -772,7 +772,7 @@ def _profile_section(pdf: Report, report: dict, explanation, charts: dict) -> No
     continues under the row), then the score bars of the one model that ran (3.1)."""
     try:
         from .narrative import method_notes
-        narrative = _hms_text(fix_counts(method_notes(report, explanation)), report.get("duration_sec"))
+        narrative = _hms_text(fix_counts(method_notes(report)), report.get("duration_sec"))
     except Exception:  # noqa: BLE001
         narrative = ""
     radar = charts.get("profile")
@@ -1096,11 +1096,10 @@ def _explain_section(pdf: Report, report: dict, explanation, frames: list, chart
                "на оценку этого ролика: модель, обученная на First Impressions V2, опирается в основном на лицо и голос.")
         pdf.chart_block(charts["modalities"], cap)
     rw_all = (explanation or {}).get("readable_words") or {}
-    lang = (report.get("model") or {}).get("lang", "ru")
     if rw_all:
         try:
             from .narrative import words_summary
-            paras = words_summary(rw_all, explanation, TITLES, lang)
+            paras = words_summary(rw_all, explanation, TITLES)
         except Exception as e:  # noqa: BLE001  (never let the words block break the whole PDF)
             paras = [f"Список слов недоступен: {str(e)[:120]}"]
         if paras:

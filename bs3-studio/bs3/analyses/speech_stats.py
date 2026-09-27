@@ -73,7 +73,7 @@ def stats_for(chunks: List[Tuple[float, float, str]], start: float, end: float, 
     }
 
 
-def describe(st: Dict, lang: str = "ru") -> str:
+def describe(st: Dict) -> str:
     """One readable sentence about the manner of speech."""
     if not st or not st.get("words"):
         return "Речи в этом отрезке почти нет."

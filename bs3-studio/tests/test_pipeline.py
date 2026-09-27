@@ -14,8 +14,6 @@ import threading
 import types
 from pathlib import Path
 
-from samples import rep
-
 import bs3
 from bs3 import pipeline, pool
 from bs3.norms import TRAIT_KEYS
@@ -141,6 +139,12 @@ def test_signatures_one_member_russian_only():
     sig = inspect.signature(pipeline.run_analysis)
     assert "member" in sig.parameters and "lang" not in sig.parameters
     assert sig.parameters["member"].default == "mm" == bs3.DEFAULT_MODEL      # a run without a model: AMLAI 1.0
+    # everything after the video is passed by keyword (the page and the tests do; a positional call cannot slip a
+    # language or a flag into the member)
+    params = list(sig.parameters.values())
+    first, after = params[:3], params[3:]
+    assert [p.name for p in first] == ["studio", "work_dir", "video_path"]
+    assert after and all(p.kind is inspect.Parameter.KEYWORD_ONLY for p in after), [(p.name, p.kind) for p in after]
     assert "members" not in inspect.signature(pipeline.Studio.__init__).parameters
     assert bs3.LANG == "ru" and pipeline.Studio().lang == "ru"
     for bad in ("en", "ensemble", "scene", ""):
