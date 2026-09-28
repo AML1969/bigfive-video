@@ -18,9 +18,10 @@ from pathlib import Path
 from samples import english, rep
 
 import bs3
-from bs3 import (characterization, charts, jobfiles, jobview, journal, mbti, pdf_charts, pdf_report, ru_texts,
-                 scores, webapp, webparts)
+from bs3 import (characterization, charts, jobfiles, jobview, journal, mbti, pdf_report, ru_texts, scores, webapp,
+                 webparts)
 from bs3.norms import TRAIT_KEYS
+from bs3.pdf import charts as pdf_charts          # the print charts; `charts` is the web charts module
 
 # explanation.json of an AMLAI 1.0 job: the modality shares and the readable words, already translated by Ollama, so
 # opening the job translates nothing and writes nothing back

@@ -16,10 +16,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-from bs3 import (charts, facts, frame_captions, labels, narrative, pdf_charts, pdf_mbti, pdf_report, scores,
-                 segments, textfmt, webapp)
+from bs3 import charts, facts, frame_captions, labels, narrative, pdf_report, scores, segments, textfmt, webapp
 from bs3.norms import TRAIT_KEYS
-from bs3.pdf import document, layout
+from bs3.pdf import charts as pdf_charts          # the print charts; `charts` is the web charts module
+from bs3.pdf import document, fmt, layout, mbti_section, widgets
 from bs3.segments import (behavior_by_segment, dominant_emotion, emotion_shares, empty_text, odd_segments,
                           representative, scored, seg_words, segment_rows)
 
@@ -270,23 +270,34 @@ def test_odd_segments():
 # ---------------------------------------------------------------- the PDF core
 def test_report_lives_in_pdf_document():
     from bs3.pdf.document import NOTE_GREY, TEXT_W_MM, Report
-    assert pdf_report.Report is Report and pdf_mbti.Report is Report
+    assert pdf_report.Report is Report and mbti_section.Report is Report
     assert (layout.MARGIN_MM, layout.TEXT_W_MM, layout.RADAR_W_MM, layout.ROW_GAP_MM, layout.NOTE_GREY) == \
         (10, 190, 80, 4, 85)
     assert (TEXT_W_MM, NOTE_GREY) == (layout.TEXT_W_MM, layout.NOTE_GREY)
-    assert pdf_charts.TEXT_W_MM == pdf_mbti.TEXT_W_MM == document.TEXT_W_MM == 190
+    assert pdf_charts.TEXT_W_MM == mbti_section.TEXT_W_MM == document.TEXT_W_MM == 190
     assert set(document.__all__) >= {"Report", "MARGIN_MM", "TEXT_W_MM", "RADAR_W_MM", "ROW_GAP_MM", "NOTE_GREY",
                                       "FONT_CANDIDATES"}
     assert document.FONT_CANDIDATES is layout.FONT_CANDIDATES and len(layout.FONT_CANDIDATES) == 3
     pdf = Report(file_label="clip.mp4", total_pages=2)
     pdf.add_page()
     assert (pdf.l_margin, pdf.t_margin, pdf.r_margin) == (10, 10, 10) and abs(pdf.epw - 190) < 0.01   # A4: 210.0016
+    # the card grid and the score bars are the mixins of pdf/widgets.py, in front of FPDF (stage 15); Report keeps
+    # no copy of their methods
+    assert Report.__mro__[1:3] == (widgets.CardsMixin, widgets.ScoreBarsMixin)
+    mixed = {widgets.CardsMixin: ("_card_layout", "cards_height", "cards"),
+             widgets.ScoreBarsMixin: ("BAR_W", "BAR_H", "_bar_rows", "_bars_legend", "_legend_lines", "_bars_note",
+                                      "score_bars_height", "score_bars", "_draw_bars_legend")}
+    for mixin, names in mixed.items():
+        for name in names:
+            assert name in vars(mixin) and name not in vars(Report), name
+    assert (Report.BAR_W, Report.BAR_H) == (52, 3.6)
 
 
 def test_the_copies_are_gone():
     gone = {pdf_report: ("_empty_text", "_seg_words", "_scored", "_rep_segment", "_segment_rows", "MARGIN_MM",
-                         "TEXT_W_MM", "NOTE_GREY", "FONT_CANDIDATES", "FPDF", "_rgb", "_group_name"),
-            pdf_charts: ("_num", "_segments", "_empty_text", "_seg_words"), charts: ("_segments",)}
+                         "TEXT_W_MM", "NOTE_GREY", "FONT_CANDIDATES", "FPDF", "_rgb", "_group_name", "CODEC_NAMES"),
+            pdf_charts: ("_num", "_segments", "_empty_text", "_seg_words"), charts: ("_segments",),
+            document: ("_group_name", "card_item", "fact_label", "pct_phrase", "fiv2_ref_ru")}
     for mod, names in gone.items():
         for name in names:
             assert not hasattr(mod, name), f"{mod.__name__}.{name}"
@@ -301,40 +312,52 @@ def test_the_copies_are_gone():
     assert pdf_charts.HEAT_ROWS is labels.HEAT_ROWS and segments.SEC_LABEL is textfmt.SEC_LABEL
     assert math.isnan(segments.as_float(None)) and math.isnan(segments.as_float("x"))
     assert segments.as_float("0.5") == 0.5 and segments.as_float(True) == 1.0
+    # the text helpers of the report are the objects of pdf/fmt.py (stage 15), not copies in pdf_report
+    for name in ("SEG_HEAD", "MODALITY_TITLES", "MEDIA_TAGS", "TRAINED_ON", "_when", "_codec", "_encoder", "_asr_ru",
+                 "_version_ru", "_seg", "_hms_text", "_dash", "_one_line"):
+        assert getattr(pdf_report, name) is getattr(fmt, name), name
+    assert widgets._group_name is fmt._group_name and document._rgb is widgets._rgb
 
 
 def _imports(mod) -> tuple[set, set]:
-    """({bs3 modules imported at module level}, {… inside functions}) of one module, relative names resolved."""
-    tree = ast.parse(Path(mod.__file__).read_text(encoding="utf-8"))
+    """({bs3 modules imported at module level}, {… inside functions}) of one module, relative names resolved against
+    the package: «from .layout import …» in bs3/pdf/charts.py is pdf.layout, «from ..segments import …» is segments."""
+    path = Path(mod.__file__).resolve()
+    pkg = list(path.relative_to(ROOT / "bs3").parent.parts)          # [] for bs3/x.py, ["pdf"] for bs3/pdf/x.py
+    tree = ast.parse(path.read_text(encoding="utf-8"))
     top, inner = set(), set()
 
     def visit(node, in_func):
         for child in ast.iter_child_nodes(node):
-            if isinstance(child, ast.ImportFrom) and child.level == 1:
+            if isinstance(child, ast.ImportFrom) and 1 <= child.level <= len(pkg) + 1:
+                base = pkg[:len(pkg) - (child.level - 1)]
                 names = [child.module] if child.module else [a.name for a in child.names]
-                (inner if in_func else top).update(names)
+                (inner if in_func else top).update(".".join(base + [n]) for n in names)
             visit(child, in_func or isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)))
     visit(tree, False)
     return top, inner
 
 
 def test_the_pdf_modules_import_each_other_once():
-    """pdf_report imports pdf_charts and pdf_mbti at module level; those two take the page from pdf.document or
-    pdf.layout and the segment data from segments, never pdf_report or the web charts; no import among the three is
-    left inside a function."""
-    three = {"pdf_report", "pdf_charts", "pdf_mbti"}
+    """pdf_report imports the print charts (pdf.charts) and the MBTI section (pdf.mbti_section) at module level;
+    those two take the page from pdf.document or pdf.layout and the segment data from segments, never pdf_report or
+    the web modules; no import among the three is left inside a function."""
+    three = {"pdf_report", "pdf.charts", "pdf.mbti_section"}
     top, inner = _imports(pdf_report)
-    assert {"pdf_charts", "pdf_mbti", "pdf.document", "segments"} <= top and not inner & three
-    for mod, page in ((pdf_charts, "pdf.layout"), (pdf_mbti, "pdf.document")):
+    assert {"pdf.charts", "pdf.mbti_section", "pdf.document", "pdf.fmt", "segments"} <= top and not inner & three
+    for mod, page in ((pdf_charts, "pdf.layout"), (mbti_section, "pdf.document")):
         top, inner = _imports(mod)
         assert page in top and not (top | inner) & {"pdf_report", "charts", "webparts", "webapp"}, mod.__name__
         assert not inner & three, mod.__name__
-    assert "segments" in _imports(pdf_charts)[0]
+    assert {"segments", "labels", "scores"} <= _imports(pdf_charts)[0]
+    assert {"caveats", "mbti", "labels"} <= _imports(mbti_section)[0]
+    # the widgets draw the page, they do not import it (document imports them)
+    assert _imports(widgets)[0] >= {"pdf.fmt", "pdf.layout", "facts"} and "pdf.document" not in _imports(widgets)[0]
 
 
 def test_the_data_modules_stay_light():
     """segments loads no numpy until odd_segments runs; the PDF modules load no matplotlib, plotly or torch on
-    import (pdf_report now imports pdf_charts at module level, which draws with matplotlib only when asked)."""
+    import (pdf_report imports pdf/charts.py at module level, which draws with matplotlib only when asked)."""
     code = ("import sys\n"
             "import bs3.segments\n"
             "print(sorted(m for m in ('numpy', 'matplotlib', 'fpdf') if m in sys.modules))\n"

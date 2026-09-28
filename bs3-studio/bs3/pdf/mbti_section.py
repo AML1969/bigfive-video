@@ -18,11 +18,11 @@ from __future__ import annotations
 
 import math
 
-from . import caveats
-from .labels import mbti_model_title
-from .mbti import AXES, AXIS_LABEL, TABLE_NOTE, TABLE_ROWS, corr_cell, load_config, source_title, summary_line
-from .pdf.document import NOTE_GREY, TEXT_W_MM, Report
-from .textfmt import clock
+from .. import caveats
+from ..labels import mbti_model_title
+from ..mbti import AXES, AXIS_LABEL, TABLE_NOTE, TABLE_ROWS, corr_cell, load_config, source_title, summary_line
+from ..textfmt import clock
+from .document import NOTE_GREY, TEXT_W_MM, Report
 
 FRAME_GREY = 130                 # dashed frames and rules, as the #808080 outline of the page
 NO_SCORE_FILL = 232              # light grey behind «—» (no score in the segment)

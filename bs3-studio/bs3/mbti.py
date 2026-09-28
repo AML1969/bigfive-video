@@ -370,7 +370,7 @@ def journal_lines(mb: dict | None) -> list[str]:
 
 
 # ------------------------------------------------------------------ texts of the tab «Тип MBTI» and of the PDF ---
-# both the page (mbti_html) and section 2 of the PDF (pdf_mbti) print them, so they live here and not in either
+# both the page (mbti_html) and section 2 of the PDF (pdf/mbti_section) print them, so they live here and not in either
 
 # 5.5: axis, Big Five scale, direction, correspondence of the scales (r from config/mbti.json)
 TABLE_ROWS = (("EI", "Экстраверсия", "выше → E"), ("SN", "Открытость опыту", "выше → N"),

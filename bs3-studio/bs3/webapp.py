@@ -330,7 +330,7 @@ def page_values(jv: jobview.JobView) -> tuple:
 
 
 def export_pdf(job_dir: str | Path) -> str:
-    from .pdf_charts import save_pdf_charts
+    from .pdf.charts import save_pdf_charts
     from .media import probe_media
     from .pdf_report import build_pdf
     job = Path(job_dir)

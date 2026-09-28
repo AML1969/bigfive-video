@@ -85,7 +85,8 @@ def test_moved_data_root():
         assert jobfiles.key_frame_paths(job, loaded) == [job / "explain" / f for f in FRAMES]
         outs = webapp.page_outputs(loaded)
         # export_pdf reads the same folder: the key frames and the video handed to the PDF are the ones in it
-        from bs3 import media, pdf_charts
+        from bs3 import media
+        from bs3.pdf import charts as pdf_charts
         got = {}
 
         def build(view, out, **kw):

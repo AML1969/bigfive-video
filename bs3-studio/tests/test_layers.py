@@ -34,14 +34,14 @@ LAYERS = {
     DATA: ("scores", "mbti", "report", "segments"),
     TEXT: ("caveats", "characterization", "narrative", "facts", "analyses_text", "ru_texts", "translate", "words",
            "frame_captions"),
-    RENDER: ("charts", "webparts", "mbti_html", "webapp", "pdf_report", "pdf_charts", "pdf_mbti", "journal", "jobview",
-             "web", "web.*", "pdf", "pdf.*"),
+    RENDER: ("charts", "webparts", "mbti_html", "webapp", "pdf_report", "journal", "jobview", "web", "web.*", "pdf",
+             "pdf.*"),
     ANALYSIS: ("pipeline", "longvideo", "backend_*", "analyses", "analyses.*", "mm", "mm.*"),
     TOP: ("cli",),
 }
 APP = ("webapp", "web.app")                              # the Gradio app module, before and after the web split
 PDF_BUILD = ("pdf_report", "pdf", "pdf.build")           # builds the PDF: build_pdf, export_pdf
-PDF_MODULES = ("pdf_report", "pdf_charts", "pdf_mbti", "pdf", "pdf.*")
+PDF_MODULES = ("pdf_report", "pdf", "pdf.*")
 WEB_MODULES = ("webapp", "charts", "webparts", "mbti_html", "web", "web.*")
 HEAVY = ("torch", "cv2", "transformers", "pandas", "librosa")
 # modules whose docstring promises no bs3 import at all (palette is loaded standalone by scripts/check_palette.py)

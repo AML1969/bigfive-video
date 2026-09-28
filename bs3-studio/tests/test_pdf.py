@@ -16,10 +16,11 @@ from pathlib import Path
 
 from samples import english, rep
 
-from bs3 import caveats, characterization, mbti, pdf_mbti, pdf_report, scores
+from bs3 import caveats, characterization, mbti, pdf_report, scores
 from bs3.facts import card_item, fact_cards
 from bs3.narrative import NO_EXPLAIN_RU
 from bs3.norms import TRAIT_KEYS
+from bs3.pdf import mbti_section
 from bs3.pdf.document import TEXT_W_MM, Report
 
 # words of 3.0 that no report of 3.1 may carry (outside the transcript, which the fixtures do not have)
@@ -56,7 +57,7 @@ def _own(name: str = "B") -> dict:
     return r
 
 
-# the shape of explanation.json that the PDF reads: modality shares per trait (pdf_charts draws no chart here,
+# the shape of explanation.json that the PDF reads: modality shares per trait (pdf/charts draws no chart here,
 # build_pdf gets no chart files) and the readable words
 EXPL = {"modalities": {"input_x_gradient": {k: {"face": {"share": 0.6}, "audio": {"share": 0.38},
                                                 "text": {"share": 0.01}, "behavior": {"share": 0.01}}
@@ -100,9 +101,9 @@ def test_plan_explain_section_for_own_model_only():
 
 
 def test_strip_geometry():
-    assert pdf_mbti._strip_geometry(33) == (2, 17, 6.0, 4.8)       # 17 + 16, not 30 + 3
-    assert pdf_mbti._strip_geometry(18)[:3] == (1, 18, 6.0)
-    blocks, per, cell, row_h = pdf_mbti._strip_geometry(90)
+    assert mbti_section._strip_geometry(33) == (2, 17, 6.0, 4.8)       # 17 + 16, not 30 + 3
+    assert mbti_section._strip_geometry(18)[:3] == (1, 18, 6.0)
+    blocks, per, cell, row_h = mbti_section._strip_geometry(90)
     assert (blocks, per) == (3, 30) and abs(cell - (TEXT_W_MM - 18) / 30) < 1e-9 and row_h <= cell
 
 
@@ -121,7 +122,7 @@ def test_facts_start_with_type_card():
 
 def test_segment_types_by_start():
     _, mb, _ = _parts(rep("B"))
-    t = pdf_mbti.segment_types_by_start(mb)
+    t = mbti_section.segment_types_by_start(mb)
     assert len(t) == 33
     assert sum(1 for v in t.values() if v is None) == 7                 # the segments without OCEAN-AI
     assert {v for v in t.values() if v} == {"ENFJ"}

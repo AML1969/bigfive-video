@@ -21,10 +21,11 @@ from pathlib import Path
 
 from samples import english, rep
 
-from bs3 import (analyses_text, bands, caveats, characterization, facts, frame_captions, mbti, mbti_html, pdf_mbti,
-                 pdf_report, scores, webapp)
+from bs3 import (analyses_text, bands, caveats, characterization, facts, frame_captions, mbti, mbti_html, pdf_report,
+                 scores, webapp)
 from bs3.analyses import speech_stats
 from bs3.facts import FER_NOTE, card_item, fact_cards, head_motion_word, speech_cards
+from bs3.pdf import mbti_section
 
 ROOT = Path(__file__).resolve().parents[1]
 TYPE = {"type": "ENFJ", "type_strict": "ENFJ", "type_name": "Наставник", "x_count": 0, "model": "mm",
@@ -316,10 +317,10 @@ def test_analyses_parts_moved_to_analyses_text():
 def test_the_mbti_texts_of_the_page_and_the_pdf_live_in_mbti():
     for name in ("TABLE_ROWS", "TABLE_NOTE", "corr_cell", "summary_line"):
         assert getattr(mbti_html, name) is getattr(mbti, name), name
-        assert getattr(pdf_mbti, name) is getattr(mbti, name), name
+        assert getattr(mbti_section, name) is getattr(mbti, name), name
     for name in ("CORR_WORD", "_seg_word"):
         assert not hasattr(mbti_html, name) and hasattr(mbti, name), name
-    tree = ast.parse((ROOT / "bs3" / "pdf_mbti.py").read_text(encoding="utf-8"))
+    tree = ast.parse((ROOT / "bs3" / "pdf" / "mbti_section.py").read_text(encoding="utf-8"))
     imported = {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
     assert "mbti_html" not in imported and "mbti" in imported
     assert mbti.corr_cell({"label": "высокая", "r": 0.74}) == "высокое, r ≈ 0.74"
@@ -333,7 +334,7 @@ def test_the_caveat_lists_equal_the_old_tuples():
         assert set(codes) <= set(caveats.CODES)
     assert "for c in caveats.PAGE_FOOTER)" in inspect.getsource(webapp.build_app)
     assert "for c in caveats.PDF_HOW_TO_READ if " in inspect.getsource(pdf_report._how_to_read)
-    assert "for c in caveats.MBTI_READ]" in inspect.getsource(pdf_mbti.mbti_section)
+    assert "for c in caveats.MBTI_READ]" in inspect.getsource(mbti_section.mbti_section)
     assert "for c in caveats.MBTI_READ]" in inspect.getsource(mbti_html.read_html)
 
 

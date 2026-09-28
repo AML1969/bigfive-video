@@ -10,8 +10,11 @@ import sys
 from pathlib import Path
 
 from bs3 import (MODEL_TITLES, analyses_text, characterization, charts, facts, journal, labels, mbti, mbti_html,
-                 pdf_charts, pdf_mbti, pdf_report, scores, segments, webapp, webparts)
+                 pdf_report, scores, segments, webapp, webparts)
+from bs3.pdf import charts as pdf_charts
 from bs3.pdf import document as pdf_document
+from bs3.pdf import mbti_section as pdf_mbti
+from bs3.pdf import widgets as pdf_widgets
 from bs3.palette import HTML
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -106,7 +109,7 @@ def test_the_copies_are_gone():
               "SOURCE_RU": labels.SOURCE_RU, "source_title": labels.source_title,
               "AXES": mbti.AXES, "AXIS_LABEL": mbti.AXIS_LABEL, "num": scores.num, "HEAT_ROWS": labels.HEAT_ROWS}
     for mod in (analyses_text, characterization, charts, facts, journal, mbti, mbti_html, pdf_charts, pdf_document,
-                pdf_mbti, pdf_report, scores, segments, webapp, webparts):
+                pdf_mbti, pdf_report, pdf_widgets, scores, segments, webapp, webparts):
         for name, obj in shared.items():
             assert getattr(mod, name, obj) is obj, f"{mod.__name__}.{name} is a copy"
     gone = {charts: ("_RADAR_LABEL", "_EMO_BAR_ORDER"), pdf_charts: ("MOD_ROWS",),

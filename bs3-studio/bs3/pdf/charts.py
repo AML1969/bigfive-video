@@ -18,15 +18,15 @@ import math
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from .labels import EMO_RU, EMOTION_ORDER, HEAT_ROWS, RADAR_LABEL, ROW_TITLES, VOICE_RU, model_title
-from .norms import RU_TITLES, TRAIT_KEYS
-from .palette import (BARS_PDF, EMO_ALIAS, EMO_HEAT_L, EMO_HEAT_PDF, MODALITY_PDF, RADAR_PDF, SPEECH_PDF, THEME,
-                      TRAIT_MARKER_PDF, TRAIT_PDF, VOICE_MARKER_PDF, VOICE_PDF, emo_heat_pdf, emo_heat_step,
-                      emo_heat_text_pdf, emo_pdf)
-from .pdf.layout import TEXT_W_MM
-from .scores import shown_model
-from .segments import as_float, dominant_emotion, emotion_shares, representative, scored, seg_words
-from .textfmt import clock
+from ..labels import EMO_RU, EMOTION_ORDER, HEAT_ROWS, RADAR_LABEL, ROW_TITLES, VOICE_RU, model_title
+from ..norms import RU_TITLES, TRAIT_KEYS
+from ..palette import (BARS_PDF, EMO_ALIAS, EMO_HEAT_L, EMO_HEAT_PDF, MODALITY_PDF, RADAR_PDF, SPEECH_PDF, THEME,
+                       TRAIT_MARKER_PDF, TRAIT_PDF, VOICE_MARKER_PDF, VOICE_PDF, emo_heat_pdf, emo_heat_step,
+                       emo_heat_text_pdf, emo_pdf)
+from ..scores import shown_model
+from ..segments import as_float, dominant_emotion, emotion_shares, representative, scored, seg_words
+from ..textfmt import clock
+from .layout import TEXT_W_MM
 
 log = logging.getLogger("bs3.pdf")
 

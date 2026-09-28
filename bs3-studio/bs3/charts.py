@@ -1,5 +1,5 @@
 """Web charts for the BS Profiler 3.1 interface (plotly, interactive). All functions take the result.json dict; they never compute
-anything new. PDF charts live in pdf_charts.py.
+anything new. PDF charts live in pdf/charts.py.
 
 Every figure builder is fig_xxx(rep, theme='dark'|'light') and takes all colours from palette.py. plot_html() builds
 both variants and embeds them in one iframe; a small script picks the variant that matches the Gradio theme, waits
