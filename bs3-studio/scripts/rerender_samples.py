@@ -219,7 +219,8 @@ def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path |
     i_lab = facts.find(f">{title}</div>", i_card) if title else -1
     c.ok(0 <= i_card < i_val < i_lab, f"first key fact is «{title}», value «{card and card[1]}» on the first line")
     # a measured value is coloured by where it sits, its label says the same in a word, and one line explains both
-    c.ok(facts.count("class='bs3-fact-") >= 2 and ".dark .bs3-fact-above" in facts,
+    c.ok(facts.count("class='bs3-fact-") >= 2 and re.search(r"[>}]div\.bs3-facts \.bs3-fact-above\{", facts)
+         and ".dark div.bs3-facts .bs3-fact-above{" in facts and facts.count("<div class='bs3-facts' ") == 1,
          "key facts: coloured values with a rule for each theme")
     n_words = sum(facts.count(f" · {w}</div>") for w in FACT_STATE_RU.values())
     c.ok(n_words == facts.count("class='bs3-fact-"),

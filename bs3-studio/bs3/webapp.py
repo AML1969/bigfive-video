@@ -55,15 +55,22 @@ CARD_VALUE = ("font-size:20px;font-weight:600;line-height:1.25;font-variant-nume
 # «Ключевые факты»: one class per state, so the value takes the colour of the theme the page is showing (the block
 # HTML is built once for both themes, Gradio puts `dark` on an ancestor of the container). The rules travel with the
 # block, so the same HTML also reads right outside the app (scripts/rerender_samples.py --html-dir).
-FACTS_CSS = "<style>" + "".join(f".bs3-fact-{s}{{color:{FACT_VALUE['light'][s]}}}"
-                                f".dark .bs3-fact-{s}{{color:{FACT_VALUE['dark'][s]}}}"
+# Gradio 5.8 gives everything inside an HTML block the body text colour with `.gradio-container-5-8-0 .prose *`,
+# specificity (0,2,0). A rule of one class lost to it, and in the light theme every value was the plain text colour;
+# the dark rule, two classes, won only because this <style> comes after Gradio's. So both rules sit under the class of
+# the card grid (_cards): the light one, `div.bs3-facts .bs3-fact-…`, is (0,2,1) and beats Gradio's rule whatever the
+# order of the style sheets, and the dark one, one class more, beats the light one (tests/test_key_facts.py).
+FACTS_SCOPE = "bs3-facts"
+FACTS_CSS = "<style>" + "".join(f"div.{FACTS_SCOPE} .bs3-fact-{s}{{color:{FACT_VALUE['light'][s]}}}"
+                                f".dark div.{FACTS_SCOPE} .bs3-fact-{s}{{color:{FACT_VALUE['dark'][s]}}}"
                                 for s in FACT_STATES) + "</style>"
 
 
 def _cards(items, min_px: int = 180, value_first: bool = False) -> str:
     """(label, value, note[, state]) -> a grid of cards; note may be empty. `value_first`: the card reads value,
-    then label, then note; a value with a state is painted by it (FACTS_CSS) and its label line ends with the word
-    of that state (facts.fact_label), so the card also reads without colour — «Ключевые факты» of 3.1."""
+    then label, then note; a value with a state is painted by it (FACTS_CSS, under the grid's class FACTS_SCOPE) and
+    its label line ends with the word of that state (facts.fact_label), so the card also reads without colour —
+    «Ключевые факты» of 3.1."""
     html = ""
     for item in items:
         lab, val, note, state = card_item(item)
@@ -74,7 +81,8 @@ def _cards(items, min_px: int = 180, value_first: bool = False) -> str:
         rest = f"<div style='{NOTE}'>{note}</div>" if note else ""
         html += f"<div style='{CARD}'>" + (value + label if value_first else label + value) + rest + "</div>"
     grid = CARDS.replace("minmax(180px", f"minmax({int(min_px)}px")
-    return f"<div style='{grid}'>{html}</div>" if html else ""
+    scope = f" class='{FACTS_SCOPE}'" if value_first else ""
+    return f"<div{scope} style='{grid}'>{html}</div>" if html else ""
 
 
 def _facts_html(view: dict, mb: dict | None = None) -> str:

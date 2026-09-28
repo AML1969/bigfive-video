@@ -120,7 +120,7 @@ def test_page_card_reads_value_label_explanation():
     assert _divs(two) == ["11:00", "Длительность ролика"] and "bs3-fact-" not in two
     # the other card grids of the page keep label, value, note
     plain = webapp._cards([("Слов всего", "300", "без повторов")])
-    assert _divs(plain) == ["Слов всего", "300", "без повторов"] and "bs3-fact-" not in plain
+    assert _divs(plain) == ["Слов всего", "300", "без повторов"] and "bs3-fact" not in plain
     # a value longer than the card («возбуждение 0.30» in a 150 px card) wraps instead of painting over the border
     assert "overflow-wrap:anywhere" in webapp.CARD_VALUE
 
@@ -145,13 +145,63 @@ def test_the_state_is_said_in_a_word_as_well_as_in_colour():
 def test_facts_block_carries_the_colours_and_the_line_under_the_grid():
     html = webapp._facts_html(_rep(emotion="joy", arousal=0.20, wpm=200.0))
     for state in scores.FACT_STATES:
-        assert f".bs3-fact-{state}{{color:{palette.FACT_VALUE['light'][state]}}}" in html
-        assert f".dark .bs3-fact-{state}{{color:{palette.FACT_VALUE['dark'][state]}}}" in html
+        assert f"div.bs3-facts .bs3-fact-{state}{{color:{palette.FACT_VALUE['light'][state]}}}" in html
+        assert f".dark div.bs3-facts .bs3-fact-{state}{{color:{palette.FACT_VALUE['dark'][state]}}}" in html
     assert "class='bs3-fact-above'" in html and "class='bs3-fact-below'" in html
+    # the coloured values sit inside the grid the rules are scoped to
+    assert html.index("<div class='bs3-facts' style='display:grid") < html.index("class='bs3-fact-")
+    assert html.count("class='bs3-facts'") == 1
     assert facts.FACTS_LEGEND in html and "зелёный — около нейтрального" in html
     # the line belongs under the grid, not above it
     assert html.index(facts.FACTS_LEGEND) > html.rindex("<div style='padding:10px")
     assert webapp._facts_html({}) == ""
+
+
+# Gradio 5.8 paints everything inside an HTML block with the body text colour by this rule (measured with headless
+# Chrome on the preview page, CSS.getMatchedStylesForNode, 2026-09-28). Before stage 14b the light rule of a key fact
+# was one class, (0,1,0), and lost to it: in the light theme every value was the body text colour. The dark rule,
+# «.dark .bs3-fact-<state>», (0,2,0), won only by coming later in the document.
+GRADIO_TEXT_RULE = ".gradio-container-5-8-0 .prose *"
+OLD_DARK_RULE = ".dark .bs3-fact-neutral"
+
+
+def _specificity(selector: str) -> tuple:
+    """(ids, classes, types) of a selector of compound selectors joined by spaces or «>», with no attribute
+    selectors or pseudo-classes (the test checks that FACTS_CSS has none)."""
+    ids = classes = types = 0
+    for part in re.split(r"[\s>]+", selector.strip()):
+        if not part or part == "*":
+            continue
+        ids += part.count("#")
+        classes += part.count(".")
+        types += bool(re.match(r"[A-Za-z]", part))
+    return ids, classes, types
+
+
+def test_the_light_colour_outranks_gradio_and_the_dark_colour_outranks_the_light():
+    """Stage 14b: in the light theme the key-fact values lost their colour to Gradio's prose rule. The light rule now
+    has at least the specificity of the dark rule that always won (strictly more than Gradio's rule, so the order of
+    the style sheets does not matter), and the dark rule still outranks the light one and comes after it."""
+    assert _specificity(GRADIO_TEXT_RULE) == (0, 2, 0) == _specificity(OLD_DARK_RULE)
+    css = webapp.FACTS_CSS
+    assert css.startswith("<style>") and css.endswith("</style>")
+    rules = re.findall(r"([^{}]+)\{color:([^{}]+)\}", css[len("<style>"):-len("</style>")])
+    assert len(rules) == 2 * len(scores.FACT_STATES)
+    assert not any(c in sel for sel, _ in rules for c in ":[")
+    for state in scores.FACT_STATES:
+        light = [(i, sel) for i, (sel, col) in enumerate(rules)
+                 if col == palette.FACT_VALUE["light"][state] and sel.endswith(f".bs3-fact-{state}")]
+        dark = [(i, sel) for i, (sel, col) in enumerate(rules)
+                if col == palette.FACT_VALUE["dark"][state] and sel.endswith(f".bs3-fact-{state}")]
+        assert len(light) == len(dark) == 1, state
+        (i_light, s_light), (i_dark, s_dark) = light[0], dark[0]
+        assert ".dark" not in s_light and s_dark.startswith(".dark "), state
+        assert _specificity(s_light) >= _specificity(OLD_DARK_RULE), (state, s_light)
+        assert _specificity(s_light) > _specificity(GRADIO_TEXT_RULE), (state, s_light)
+        assert _specificity(s_dark) > _specificity(s_light) and i_dark > i_light, (state, s_dark)
+        # both are scoped to the grid of the key facts, which the block HTML carries itself, so the colours also
+        # read right outside the app (scripts/rerender_samples.py --html-dir)
+        assert f".{webapp.FACTS_SCOPE} " in s_light and f".{webapp.FACTS_SCOPE} " in s_dark, state
 
 
 # --------------------------------------------------------------------------------- the PDF
