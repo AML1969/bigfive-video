@@ -50,6 +50,7 @@ def test_tempo_state_edges():
     assert [tempo_state(n) for n in (161, 250)] == [ABOVE, ABOVE]
     assert tempo_state(None) is None
     assert tempo_state(99.6) == NEUTRAL and tempo_state(160.4) == NEUTRAL      # on the whole number the card prints
+    assert [tempo_state(x) for x in (99.4, 99.5, 160.5, 160.6)] == [BELOW, NEUTRAL, NEUTRAL, ABOVE]   # half to even
 
 
 def test_emotion_state_of_every_class_and_of_the_face_labels():

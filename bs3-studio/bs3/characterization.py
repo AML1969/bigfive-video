@@ -25,16 +25,19 @@ from dataclasses import dataclass, field
 from importlib import resources
 
 from . import caveats
-from .bands import PAUSE_WORDS, TEMPO_WORDS
+from .bands import PAUSE_WORDS
 from .mbti import AXES, AXIS_LABEL
 from .norms import TRAIT_KEYS
 from .palette import HTML
-from .scores import level, level_phrase, num, score_text, shown
+from .scores import ABOVE, BELOW, NEUTRAL, level, level_phrase, num, score_text, shown, tempo_state
 from .textfmt import plural_ru
 
 AXIS_OF = {"extraversion": "EI", "openness": "SN", "agreeableness": "TF", "conscientiousness": "JP"}
 MBTI_TRAITS = tuple(k for k in TRAIT_KEYS if k in AXIS_OF)          # O, C, E, A in the order of TRAIT_KEYS
 OUTLINE = HTML["track_outline"]                                      # #808080, 3:1 on both themes
+# the word of the tempo (lexicon behavior.tempo_words) for its state: one tempo band for the colour of the card
+# «Темп речи» and for the words (scores.tempo_state, TEMPO_BAND 100…160; owner, 2026-09-27)
+TEMPO_WORD = {BELOW: "slow", NEUTRAL: "calm", ABOVE: "fast"}
 
 _lex: dict | None = None
 
@@ -313,15 +316,14 @@ def _p_behavior(view, T, ps) -> str:
     out = []
     sp = an.get("speech") or {}
     wpm = num(sp.get("words_per_min_speech"))
-    slow, fast = TEMPO_WORDS
+    tempo = tempo_state(wpm) if wpm else None
     if wpm:
-        tempo = "fast" if wpm > fast else ("calm" if wpm >= slow else "slow")
         n = int(round(wpm))
         pause = num(sp.get("pause_share"))
         few, many = (100 * x for x in PAUSE_WORDS)          # in percent, as the share below: 10 and 25
         pauses = "" if pause is None else Bh["pauses"]["few" if pause * 100 < few else ("some" if pause * 100 < many
                                                                                           else "many")]
-        out.append(Bh["tempo"].format(tempo=Bh["tempo_words"][tempo], wpm=n,
+        out.append(Bh["tempo"].format(tempo=Bh["tempo_words"][TEMPO_WORD[tempo]], wpm=n,
                                       words=plural_ru(n, "слово", "слова", "слов"), pauses=pauses))
     vo = (an.get("voice") or {}).get("mean") or {}
     arousal = num(vo.get("arousal"))
@@ -345,9 +347,9 @@ def _p_behavior(view, T, ps) -> str:
             out.append(Bh["tone_top"].format(emotion=Bh["tone_names"].get(k, k), share=int(round(100 * v))))
     lv = level(ps.get("extraversion"))
     if lv and arousal is not None and wpm:
-        if lv in ("high", "above") and arousal < 0.4 and wpm < slow:
+        if lv in ("high", "above") and arousal < 0.4 and tempo == BELOW:            # «неторопливая речь»
             out.append(Bh["check_high"])
-        elif lv in ("low", "below") and arousal > 0.6 and wpm > fast:
+        elif lv in ("low", "below") and arousal > 0.6 and tempo == ABOVE:         # «быстрая речь»
             out.append(Bh["check_low"])
     if not out:
         return ""

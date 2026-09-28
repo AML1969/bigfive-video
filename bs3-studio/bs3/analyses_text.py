@@ -1,12 +1,16 @@
 """Plain-language sentences for the BS Profiler 3.1 analyses (emotions, voice, face, speech): deterministic templates
 over the numbers in result.json. The page shows the text emotion and the voice ones in «Эмоции и голос: коротко»
-(mbti_html.emo_intro_html); the PDF puts every topic into its section."""
+(mbti_html.emo_intro_html); the PDF puts every topic into its section. The sentence about the manner of speech is
+written at analysis time (analyses/speech_stats.describe, which takes its tempo clause from here) and shown through
+`speech_description`."""
 from __future__ import annotations
 
+import re
 from typing import List
 
 from .facts import head_motion_word
 from .labels import EMO_RU
+from .scores import ABOVE, BELOW, NEUTRAL, num, tempo_state
 from .textfmt import fix_counts, plural_ru
 
 # «уверенность низкая», «возбуждение низкое»: the level agrees with the gender of the voice dimension
@@ -14,6 +18,30 @@ _LEVELS = {"n": ("низкое", "среднее", "высокое"), "f": ("н�
 # emotion names inside sentences: «нейтрально» is an adverb and does not fit after «преобладает» or «как»
 _TEXT_EMO = {"neutral": "нейтральный тон"}
 _FACE_EMO = {"neutral": "нейтральное"}
+# the speech tempo in words, by the one tempo band of the card «Темп речи» of «Ключевые факты» (scores.tempo_state,
+# TEMPO_BAND 100…160 words per minute, on the whole number that is printed; owner, 2026-09-27)
+TEMPO_RU = {BELOW: "медленный", NEUTRAL: "спокойный", ABOVE: "быстрый"}
+# the tempo clause that opens a stored sentence about the manner of speech (speech_stats.describe)
+_TEMPO_CLAUSE = re.compile(r"^Темп речи \S+ \(\d+ слов в минуту\)")
+
+
+def tempo_clause(wpm: float) -> str:
+    """«темп речи медленный (92 слов в минуту)», the first part of the sentence of speech_stats.describe: the word
+    is decided by scores.tempo_state on the whole words per minute the clause prints, like the colour of the card."""
+    return f"темп речи {TEMPO_RU[tempo_state(wpm)]} ({wpm:.0f} слов в минуту)"
+
+
+def speech_description(sp: dict) -> str:
+    """The sentence about the manner of speech as the page («Речь в цифрах») and the PDF (section «Голос и речь») show
+    it: `analyses.speech.description`, written into result.json at analysis time, with the counts in their right
+    form (fix_counts). Its tempo clause is rebuilt from the stored words per minute (tempo_clause), so a job analysed
+    while the tempo words had a band of their own (110…160, before 2026-09-27) says what the colour of its tempo card
+    says; the rest of the sentence stays as it was stored."""
+    text = str(sp.get("description") or "")
+    wpm = num(sp.get("words_per_min_speech"))
+    if wpm:
+        text = _TEMPO_CLAUSE.sub(lambda m: tempo_clause(wpm).capitalize(), text, count=1)
+    return fix_counts(text)
 
 
 def _level(v: float, gender: str = "n", low: float = 0.4, high: float = 0.6) -> str:
@@ -69,5 +97,5 @@ def analyses_parts(rep: dict) -> dict:
         out["face"] = s + "."
     sp = an.get("speech")
     if sp and sp.get("description"):
-        out["speech"] = fix_counts(sp["description"])
+        out["speech"] = speech_description(sp)
     return out

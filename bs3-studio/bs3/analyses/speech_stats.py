@@ -12,7 +12,8 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Tuple
 
-from ..bands import FILLER_WORDS, PAUSE_WORDS, TEMPO_WORDS
+from ..analyses_text import tempo_clause
+from ..bands import FILLER_WORDS, PAUSE_WORDS
 # the words of a transcript are split the same way for the numbers here and for the frequent words the page
 # shows; vocabulary is read from here by the pipeline, which stores it with the other speech numbers
 from ..words import spoken_words, vocabulary  # noqa: F401
@@ -73,15 +74,14 @@ def stats_for(chunks: List[Tuple[float, float, str]], start: float, end: float, 
 
 
 def describe(st: Dict) -> str:
-    """One readable sentence about the manner of speech."""
+    """One readable sentence about the manner of speech. The tempo clause (analyses_text.tempo_clause) takes its word
+    from the one tempo band of the card colour, scores.TEMPO_BAND."""
     if not st or not st.get("words"):
         return "Речи в этом отрезке почти нет."
     parts = []
     wpm = st.get("words_per_min_speech")
     if wpm:
-        slow, fast = TEMPO_WORDS
-        tempo = "быстрый" if wpm > fast else ("спокойный" if wpm >= slow else "медленный")
-        parts.append(f"темп речи {tempo} ({wpm:.0f} слов в минуту)")
+        parts.append(tempo_clause(wpm))
     if st.get("pause_share") is not None:
         p = st["pause_share"] * 100
         few, many = (100 * x for x in PAUSE_WORDS)          # in percent, as p: 10 and 25

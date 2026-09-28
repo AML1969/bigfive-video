@@ -335,7 +335,8 @@ def test_html_and_pdf_forms():
 def test_golden_texts():
     """Verbatim comparison with tests/golden/char_A.txt, char_B.txt (task T25: saved after the proofreading of
     lexicon_version 2, regenerated for lexicon_version 3, 4 (the absolute scale), 5 (printed band edges) and 6 (one
-    model, 3.1) from the same inputs as here). A lexicon or template change must regenerate them on purpose."""
+    model, 3.1) from the same inputs as here; in char_A the tempo of 99.8 words per minute is «спокойный» since the
+    one tempo band of stage 14a). A lexicon or template change must regenerate them on purpose."""
     for name in ("A", "B"):
         path = GOLDEN / f"char_{name}.txt"
         assert path.is_file(), f"missing golden text {path.name}"

@@ -4,9 +4,13 @@ stage 9), and the copies are gone.
 The old outputs of the four clock copies (mbti_html._mmss, pdf_mbti._mmss, journal._mmss, charts._clock), of
 webapp._clock and of the two h:mm:ss copies in pdf_report._seg and the PDF chart axis were recorded over 0…12000 s in
 steps of 0.1 s before the copies were deleted; `clock` reproduced every one of them. The sample points below come from
-that table; OLD keeps the old bodies, and every run compares them with `clock` again from 0 to 12000 s.
+that table; OLD keeps the old bodies, and every run compares them with `clock` again from 0 to 12000 s. The one copy
+that cut the seconds off, webapp._clock of the page's segments table, rounds since stage 14a like the PDF and the
+chart hover (owner, 2026-09-27), so `clock` has no truncating mode any more.
 """
 from __future__ import annotations
+
+import inspect
 
 from bs3 import (analyses_text, caveats, characterization, charts, facts, journal, mbti, mbti_html, narrative,
                  pdf_charts, pdf_mbti, pdf_report, report, scores, segments, textfmt, webapp, webparts)
@@ -20,11 +24,6 @@ def _old_auto(sec) -> str:            # mbti_html._mmss = pdf_mbti._mmss = journ
     return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}" if s >= 3600 else f"{s // 60}:{s % 60:02d}"
 
 
-def _old_webapp(sec, hours: bool) -> str:          # webapp._clock: the segments table of the page
-    s = int(sec)
-    return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}" if hours else f"{s // 60}:{s % 60:02d}"
-
-
 def _old_hours(t) -> str:              # pdf_report._seg from an hour on, and the PDF chart axis from an hour on
     t = int(round(float(t)))
     return f"{t // 3600}:{t % 3600 // 60:02d}:{t % 60:02d}"
@@ -36,8 +35,6 @@ def _old_mmss(v) -> str:               # the PDF chart axis below an hour
 
 OLD = {
     "auto": (_old_auto, lambda v: clock(v)),
-    "page table, h:mm:ss": (lambda v: _old_webapp(v, True), lambda v: clock(v, hours=True, truncate=True)),
-    "page table, m:ss": (lambda v: _old_webapp(v, False), lambda v: clock(v, hours=False, truncate=True)),
     "PDF, h:mm:ss": (_old_hours, lambda v: clock(v, hours=True)),
     "PDF axis, m:ss": (_old_mmss, lambda v: clock(v, hours=False)),
 }
@@ -66,13 +63,15 @@ def test_clock_keeps_every_old_call_pattern():
     for v, want in auto.items():
         assert clock(v) == want, v
     assert clock(None) == "0:00"                                    # the MBTI strip of a segment without a start
-    # the page's segments table cuts the seconds off and keeps one format for the whole column
-    table_mmss = {59.9: "0:59", 651.8: "10:51", 3599.9: "59:59", 3600: "60:00", 7384.6: "123:04"}
+    # the page's segments table keeps one format for the whole column and rounds like the PDF (stage 14a: the end
+    # 651.8 was «10:51» there and «10:52» in the PDF)
+    table_mmss = {59.9: "1:00", 651.8: "10:52", 3599.9: "60:00", 3600: "60:00", 7384.6: "123:05"}
     for v, want in table_mmss.items():
-        assert clock(v, hours=False, truncate=True) == want, v
-    table_hours = {651.8: "0:10:51", 3661.4: "1:01:01", 7384.6: "2:03:04"}
+        assert clock(v, hours=False) == want, v
+    table_hours = {651.8: "0:10:52", 3661.4: "1:01:01", 7384.6: "2:03:05"}
     for v, want in table_hours.items():
-        assert clock(v, hours=True, truncate=True) == want, v
+        assert clock(v, hours=True) == want, v
+    assert "truncate" not in inspect.signature(clock).parameters
     # the PDF from an hour on (segment labels, chart axis) rounds and always writes hours
     for v, want in {59.5: "0:01:00", 651.8: "0:10:52", 3599.5: "1:00:00", 7384.6: "2:03:05"}.items():
         assert clock(v, hours=True) == want, v

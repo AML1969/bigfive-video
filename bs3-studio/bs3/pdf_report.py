@@ -21,8 +21,8 @@ from pathlib import Path
 
 from . import MODALITIES, MODEL_TITLES, PRODUCT, caveats, frame_captions, jobview, segments, settings
 from .analyses_text import analyses_parts
-from .facts import FACTS_LEGEND, FER_NOTE, fact_cards, head_motion_word, speech_cards
-from .labels import EMO_RU, EMOTION_ORDER, VOICE_RU, model_title
+from .facts import FACTS_LEGEND, FER_NOTE, fact_cards, head_motion_word, segment_cells, speech_cards
+from .labels import EMO_RU, VOICE_RU, model_title
 from .narrative import NO_EXPLAIN_RU
 from .norms import RU_SHORT, RU_TITLES, TRAIT_KEYS
 from .pdf.document import RADAR_W_MM, ROW_GAP_MM, Report
@@ -589,17 +589,6 @@ def _analysis_rows(report: dict) -> list:
     return rows
 
 
-def _dominant_text(r: dict | None, source: str) -> str:
-    """«нейтрально 99%» as on the web; «нет речи» / «нет текста» for an empty transcript, «—» without data."""
-    if not r:
-        return "—"
-    if source == "text" and empty_text(r):
-        return "нет речи" if seg_words(r) == 0 else "нет текста"
-    d = dominant_emotion(r, source)
-    # only the seven text emotions are named (the face labels come aliased to them); any other label stays as it is
-    return f"{EMO_RU[d[0]] if d[0] in EMOTION_ORDER else d[0]} {d[1]:.0%}" if d else "—"
-
-
 def _segments_table(pdf: Report, report: dict, mb: dict | None = None) -> None:
     rows_in = segment_rows(report)
     tl_scored = segments.scored(report)
@@ -631,15 +620,9 @@ def _segments_table(pdf: Report, report: dict, mb: dict | None = None) -> None:
             scores = ["—"] * len(keys)
         if mbti_col:
             scores.append(seg_types.get(int(round(float(s)))) or "—")
-        v = (r or {}).get("voice") or {}
-        sp = (r or {}).get("speech") or {}
-        wpm = sp.get("words_per_min_speech")
-        speech = _dominant_text(r, "text")
-        any_no_text = any_no_text or speech == "нет текста"
-        rows.append([label] + scores + [speech, _dominant_text(r, "face")]
-                    + [f"{float(v[d]):.2f}" if v.get(d) is not None else "—" for d in ("arousal", "dominance", "valence")]
-                    + [f"{float(wpm):.0f}" if wpm is not None else "—",
-                       f"{float(sp.get('pause_share') or 0):.0%}" if sp else "—"])
+        cells = segment_cells(r)                   # the cells of the page's table (facts.segment_cells)
+        any_no_text = any_no_text or cells[0] == "нет текста"
+        rows.append([label] + scores + cells)
     # column widths from the content: the widest header line (bold) or cell (regular) of each column plus the margins;
     # the cell margins are narrower than elsewhere (0.6 mm). When 14 columns still do not fit the text width, the
     # whole table goes one step smaller instead of being squeezed: squeezing wraps the titles one line further, and a

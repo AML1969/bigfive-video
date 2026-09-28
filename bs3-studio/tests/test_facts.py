@@ -340,12 +340,12 @@ def test_the_caveat_lists_equal_the_old_tuples():
 # ------------------------------------------------------------------------------------------------ the bands
 
 def test_the_band_constants():
-    assert bands.TEMPO_WORDS == (110, 160)
     assert bands.PAUSE_WORDS == (0.10, 0.25)
     assert bands.FILLER_WORDS == (2, 6)
     assert bands.HEAD_MOTION_WORDS == (0.05, 0.15)
     assert mbti.CLEAR_CONFIDENCE == 0.7
-    assert scores.TEMPO_BAND == (100, 160)                 # the colour of the tempo card: its own band (owner, 14a)
+    # one band of the tempo for the colour of the card and for the words (owner, stage 14a; the words had 110…160)
+    assert scores.TEMPO_BAND == (100, 160) and not hasattr(bands, "TEMPO_WORDS")
     # compared in percent by the callers: the products are exact
     assert [100 * x for x in bands.PAUSE_WORDS] == [10.0, 25.0]
     tree = ast.parse((ROOT / "bs3" / "bands.py").read_text(encoding="utf-8"))
@@ -359,14 +359,16 @@ def _describe(wpm=None, pause=None, fillers=0.0):
 
 
 def test_describe_at_the_band_edges_and_by_the_bands():
-    assert [_describe(wpm=w).split(" (")[0] for w in (109.9, 110, 160, 160.1)] == [
-        "Темп речи медленный", "Темп речи спокойный", "Темп речи спокойный", "Темп речи быстрый"]
+    # the tempo on the whole number the clause prints: 99.5 is «100», 160.5 is «160» (rounded half to even)
+    assert [_describe(wpm=w).split(" (")[0] for w in (99.4, 99.5, 110, 160, 160.5, 160.6)] == [
+        "Темп речи медленный", "Темп речи спокойный", "Темп речи спокойный", "Темп речи спокойный",
+        "Темп речи спокойный", "Темп речи быстрый"]
     assert [_describe(pause=p).split(";")[0] for p in (0.0999, 0.1, 0.2499, 0.25)] == [
         "Пауз мало", "Паузы умеренные (10% времени)", "Паузы умеренные (25% времени)", "Много пауз (25% времени)"]
     assert [_describe(fillers=f).rstrip(".") for f in (1.99, 2, 5.99, 6)] == [
         "Слов-заполнителей почти нет", "Слова-заполнители встречаются (2 на 100 слов)",
         "Слова-заполнители встречаются (6 на 100 слов)", "Много слов-заполнителей (6 на 100 слов)"]
-    with _patched(speech_stats, TEMPO_WORDS=(120, 170), PAUSE_WORDS=(0.2, 0.3), FILLER_WORDS=(3, 7)):
+    with _patched(speech_stats, PAUSE_WORDS=(0.2, 0.3), FILLER_WORDS=(3, 7)), _patched(scores, TEMPO_BAND=(120, 170)):
         assert _describe(wpm=115).startswith("Темп речи медленный")
         assert _describe(wpm=165).startswith("Темп речи спокойный")
         assert _describe(pause=0.15).startswith("Пауз мало")
@@ -382,14 +384,17 @@ def test_the_behaviour_paragraph_by_the_bands():
                              "voice": {"mean": {"arousal": arousal}}}}
         return characterization._p_behavior(view, T, {"extraversion": extraversion})
 
-    assert words["slow"] in text(109.9) and words["calm"] in text(110) and words["calm"] in text(160)
-    assert words["fast"] in text(160.1)
+    assert words["slow"] in text(99.4) and words["calm"] in text(99.5) and words["calm"] in text(160.5)
+    assert words["fast"] in text(160.6)
     few, some = T["behavior"]["pauses"]["few"], T["behavior"]["pauses"]["some"]
     assert few in text(130, 0.0999) and some in text(130, 0.1)
-    check_high = T["behavior"]["check_high"]
-    assert check_high in text(109.9, arousal=0.3, extraversion=0.9) and check_high not in text(110, arousal=0.3,
-                                                                                               extraversion=0.9)
-    with _patched(characterization, TEMPO_WORDS=(120, 170), PAUSE_WORDS=(0.2, 0.3)):
+    # «неторопливая речь» and «быстрая речь» of the two checks are the tempo words too: the same band
+    check_high, check_low = T["behavior"]["check_high"], T["behavior"]["check_low"]
+    assert check_high in text(99.4, arousal=0.3, extraversion=0.9) and check_high not in text(99.5, arousal=0.3,
+                                                                                              extraversion=0.9)
+    assert check_low in text(160.6, arousal=0.7, extraversion=0.1) and check_low not in text(160.5, arousal=0.7,
+                                                                                             extraversion=0.1)
+    with _patched(characterization, PAUSE_WORDS=(0.2, 0.3)), _patched(scores, TEMPO_BAND=(120, 170)):
         assert words["slow"] in text(115) and words["calm"] in text(165) and few in text(130, 0.15)
         assert check_high in text(115, arousal=0.3, extraversion=0.9)
 

@@ -2,10 +2,11 @@
 the manner of speech (analyses/speech_stats.describe, stored in result.json), the paragraph «Что видно в поведении на
 записи» of the characterization, and the words of the head motion on the page and in the PDF (facts.head_motion_word).
 
+The speech tempo has no band here: its words («медленный», «спокойный», «быстрый») and the colour of the tempo card of
+«Ключевые факты» follow one band, scores.TEMPO_BAND (100…160 words per minute), through one classifier,
+scores.tempo_state (owner, 2026-09-27).
+
 Each pair is (lower edge, upper edge) of the middle band:
-- TEMPO_WORDS: words per minute of speech; «медленный» below 110, «спокойный» from 110 to 160, «быстрый» above 160
-  (both edges belong to the middle band). The colour of the tempo card of «Ключевые факты» has its own band,
-  scores.TEMPO_BAND (100…160).
 - PAUSE_WORDS: the share of the time in pauses; «пауз мало» below 0.10, «паузы умеренные» below 0.25, else «много
   пауз» (the lower edge belongs to the middle band, the upper one to the band above it; the callers compare the share
   in percent, 10 and 25).
@@ -18,7 +19,6 @@ imports torch, and the texts must not load it for two numbers.
 """
 from __future__ import annotations
 
-TEMPO_WORDS = (110, 160)
 PAUSE_WORDS = (0.10, 0.25)
 FILLER_WORDS = (2, 6)
 HEAD_MOTION_WORDS = (0.05, 0.15)

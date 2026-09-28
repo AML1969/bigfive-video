@@ -58,7 +58,8 @@ READ_FALLBACK = "oceanai"
 # «средний уровень» in one place and paints it «выше» in another; the speech tempo has a band of its own.
 NEUTRAL, BELOW, ABOVE = "neutral", "below", "above"
 FACT_STATES = (NEUTRAL, BELOW, ABOVE)
-TEMPO_BAND = (100, 160)        # words per minute: the usual range of conversational Russian speech, ends included
+TEMPO_BAND = (100, 160)        # words per minute: the usual range of conversational Russian speech, ends included;
+                               # the one band of the tempo, for the card colour and for the words (tempo_state)
 # emotions and facial expressions: «нейтрально» is the neutral state, the quiet emotions read as below it and the
 # loud ones as above it (the face labels share palette.EMO_ALIAS with the text emotions)
 EMO_STATE = {"neutral": NEUTRAL, "sadness": BELOW, "fear": BELOW, "disgust": BELOW,
@@ -186,7 +187,9 @@ def scale_state(v) -> str | None:
 
 def tempo_state(wpm) -> str | None:
     """Speech tempo, decided on the whole words per minute the card prints: TEMPO_BAND is neutral, slower is below,
-    faster is above; None when there is no tempo."""
+    faster is above; None when there is no tempo. The one classifier of the tempo (owner, 2026-09-27): the colour of
+    the card «Темп речи» (facts.key_facts) and the words «медленный / спокойный / быстрый» of the sentence about the
+    manner of speech (analyses_text.tempo_clause) and of the characterization all follow it."""
     x = num(wpm)
     if x is None:
         return None

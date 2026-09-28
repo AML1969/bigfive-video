@@ -20,9 +20,11 @@ from pathlib import Path, PurePosixPath
 
 from . import (DEFAULT_MODEL, MODEL_TITLES, PRODUCT, PRODUCT_SLUG, caveats, characterization, jobfiles, jobview,
                journal, mbti_html, settings)
+from .analyses_text import speech_description
 from .charts import (fig_emotion_bars, fig_emotions_timeline, fig_face_expr, fig_radar, fig_speech_timeline,
                      fig_traits_timeline, fig_voice_timeline, plot_html as _plot_html)
-from .facts import FACTS_LEGEND, FER_NOTE, card_item, fact_cards, fact_label, head_motion_word, speech_cards
+from .facts import (FACTS_LEGEND, FER_NOTE, card_item, fact_cards, fact_label, head_motion_word, segment_cells,
+                    speech_cards)
 from .labels import EMO_RU
 from .narrative import NO_EXPLAIN_RU, method_notes
 from .palette import (ACCENT, BUTTON_PRIMARY, BUTTON_PRIMARY_HOVER, BUTTON_STOP, BUTTON_STOP_HOVER, CARD_TINT,
@@ -31,7 +33,7 @@ from .pipeline import Studio, run_analysis
 from .ru_texts import transcript_shown, vocabulary_shown
 from .scores import FACT_STATES, data_json, has_explanations
 from .segments import representative
-from .textfmt import clock, fix_counts, fmt_secs, mmss_labels, plural_ru, seg_label
+from .textfmt import clock, fmt_secs, mmss_labels, plural_ru, seg_label
 from .webparts import NOTE, _bar_html, _contrib_html, _words_text, model_line, table_html, th_text
 
 log = logging.getLogger("bs3.web")
@@ -88,40 +90,19 @@ def _facts_html(view: dict, mb: dict | None = None) -> str:
     return FACTS_CSS + grid + legend
 
 
-def _dominant(dist: dict) -> str:
-    """«нейтрально 91%»: the dominant label with its share, so a weak and a clear dominance read differently."""
-    if not dist:
-        return "—"
-    k, v = max(dist.items(), key=lambda kv: kv[1])
-    return f"{EMO_RU.get(k, k)} {float(v):.0%}"
-
-
 def _segments_table(rep: dict) -> str:
     per = (rep.get("analyses") or {}).get("per_segment") or []
     if not per:
         return ""
-    t_max = max(float(r["end"]) for r in per)
-    # one time format for the whole column («0:00–0:20 … 10:00–10:12»), the same as on the chart time axes
-    if t_max >= 60:
-        hours = t_max >= 3600
-        seg_head = th_text("Отрезок", "ч:мин:с" if hours else "мин:с")
-        when = [f"{clock(r['start'], hours, truncate=True)}–{clock(r['end'], hours, truncate=True)}"
-                for r in per]
-    else:
-        seg_head = th_text("Отрезок", "мин:с")
-        when = [seg_label(r["start"], r["end"]) for r in per]
-    head = [seg_head, th_text("Эмоция", "по тексту речи"), th_text("Выражение", "лица"),
-            th_text("Возбуждение", "голос, 0…1"), th_text("Уверенность", "голос, 0…1"), th_text("Позитивность", "голос, 0…1"),
-            th_text("Темп", "слов в минуту"), th_text("Доля пауз", "в отрезке")]
-    rows = []
-    for r, w in zip(per, when):
-        vo = r.get("voice") or {}
-        sp = r.get("speech") or {}
-        rows.append([w, _dominant(r.get("emotions_text") or {}),
-                     _dominant((r.get("face") or {}).get("expressions") or {}),
-                     *(f"{vo[d]:.2f}" if vo.get(d) is not None else "—" for d in ("arousal", "dominance", "valence")),
-                     f"{sp.get('words_per_min_speech') or 0:.0f}" if sp else "—",
-                     f"{sp.get('pause_share', 0):.0%}" if sp else "—"])
+    # one time format for the whole column («0:00–0:20 … 10:00–10:12»), the same as on the chart time axes; the
+    # seconds are rounded as in the PDF and in the chart hover (640.0–651.8 is «10:40–10:52»)
+    hours = max(float(r["end"]) for r in per) >= 3600
+    head = [th_text("Отрезок", "ч:мин:с" if hours else "мин:с"), th_text("Эмоция", "по тексту речи"),
+            th_text("Выражение", "лица"), th_text("Возбуждение", "голос, 0…1"), th_text("Уверенность", "голос, 0…1"),
+            th_text("Позитивность", "голос, 0…1"), th_text("Темп", "слов в минуту"), th_text("Доля пауз", "в отрезке")]
+    # the cells of the PDF appendix «Значения по отрезкам» (facts.segment_cells): «нет речи» / «нет текста» for a
+    # segment with an empty transcript, «—» for one without a tempo
+    rows = [[f"{clock(r['start'], hours)}–{clock(r['end'], hours)}", *segment_cells(r)] for r in per]
     return (f"<div style='{NOTE};margin-bottom:8px'>Для каждого отрезка: преобладающая эмоция по тексту речи и по лицу "
             "(с долей), три характеристики голоса от 0 до 1, темп речи и доля пауз. Шапка таблицы остаётся на месте "
             "при прокрутке.</div>" + table_html(head, rows, max_height=480))
@@ -134,7 +115,7 @@ def _speech_html(rep: dict) -> str:
     items = speech_cards(sp, small_rate_words=False)             # the cards of the PDF; the page says «0 на 100 слов»
     vocab = ", ".join(f"{w} ({n})" for w, n in vocabulary_shown(rep)[:15])       # in Russian for any speech language
     return (_cards(items) + "<p style='font-size:15px;line-height:1.5;margin:12px 0 6px'>"
-            f"{fix_counts(sp.get('description', ''))}</p>"
+            f"{speech_description(sp)}</p>"
             + (f"<p style='font-size:14px;line-height:1.5;margin:0'><b>Частые слова</b> "
                f"<span style='opacity:.75'>(в скобках — сколько раз)</span>: {vocab}</p>" if vocab else ""))
 

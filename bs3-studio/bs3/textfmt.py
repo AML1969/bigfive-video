@@ -37,14 +37,14 @@ def fix_counts(text: str) -> str:
     return re.sub(r"(\b\w+\s)?(\d+)\s(слов|сегментов|отрезков)\b", repl, text or "")
 
 
-def clock(sec, hours=None, truncate: bool = False) -> str:
+def clock(sec, hours=None) -> str:
     """A moment of the video: m:ss («10:52»), or h:mm:ss («1:00:00») from an hour on.
 
     `hours`: None chooses the format by the value itself; True or False forces one format, so a column or an axis
-    never mixes two («0:10:40» next to «1:05:00»). The seconds are rounded; `truncate` cuts the fraction off instead,
-    as the segments table of the page does (651.8 -> «10:51», rounded «10:52»). None counts as 0."""
+    never mixes two («0:10:40» next to «1:05:00»). The seconds are rounded, the same everywhere: the end 651.8 is
+    «10:52» in the segments table of the page, in the PDF and in the chart hover. None counts as 0."""
     x = float(sec or 0)
-    s = int(x) if truncate else int(round(x))
+    s = int(round(x))
     if hours is None:
         hours = s >= 3600
     return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}" if hours else f"{s // 60}:{s % 60:02d}"

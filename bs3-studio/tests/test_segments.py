@@ -16,8 +16,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from bs3 import (charts, frame_captions, labels, narrative, pdf_charts, pdf_mbti, pdf_report, scores, segments,
-                 textfmt, webapp)
+from bs3 import (charts, facts, frame_captions, labels, narrative, pdf_charts, pdf_mbti, pdf_report, scores,
+                 segments, textfmt, webapp)
 from bs3.norms import TRAIT_KEYS
 from bs3.pdf import document, layout
 from bs3.segments import (behavior_by_segment, dominant_emotion, emotion_shares, empty_text, odd_segments,
@@ -212,8 +212,8 @@ def test_dominant_emotion():
     assert dominant_emotion(ROWS["tie"], "face") == ("anger", 0.4)            # the first of equal values
     assert dominant_emotion(ROWS["zero"], "text") == ("joy", 0.0)
     assert dominant_emotion(ROWS["zero"], "face") is None
-    # the appendix names it as before
-    assert [pdf_report._dominant_text(ROWS[k], "text") for k in ("spoken", "silent", "no_text", "unknown")] == [
+    # the appendix names it as before (the cell of the page and of the PDF since stage 14a)
+    assert [facts.segment_emotion(ROWS[k], "text") for k in ("spoken", "silent", "no_text", "unknown")] == [
         "радость 70%", "нет речи", "нет текста", "contempt 90%"]
 
 
@@ -290,7 +290,7 @@ def test_the_copies_are_gone():
     for mod, names in gone.items():
         for name in names:
             assert not hasattr(mod, name), f"{mod.__name__}.{name}"
-    for mod in (charts, pdf_charts, pdf_report, narrative, frame_captions, webapp):
+    for mod in (charts, pdf_charts, pdf_report, narrative, frame_captions, webapp, facts):
         for name in ("scored", "representative", "empty_text", "seg_words", "emotion_shares", "dominant_emotion",
                      "segment_rows", "behavior_by_segment", "odd_segments", "as_float", "HEAT_ROWS"):
             obj = getattr(segments, name)

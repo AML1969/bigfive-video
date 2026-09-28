@@ -84,16 +84,17 @@ def test_orders_equal_the_orders_the_charts_used():
 
 def test_the_pdf_names_only_the_seven_text_emotions():
     """pdf_report._dominant_text named the dominant emotion by EMO_NAMES (the seven text emotions): a face label comes
-    aliased to them, any other label stays as it is."""
+    aliased to them, any other label stays as it is. Since stage 14a it is facts.segment_emotion, the cell of the page
+    and of the PDF."""
     seg = {"text_en": "we spoke", "emotions_text": {"neutral": 0.2, "joy": 0.7, "fear": 0.1},
            "face": {"expressions": {"happy": 0.3, "sad": 0.6, "neutral": 0.1}}}
-    assert pdf_report._dominant_text(seg, "text") == "радость 70%"
-    assert pdf_report._dominant_text(seg, "face") == "грусть 60%"
+    assert facts.segment_emotion(seg, "text") == "радость 70%"
+    assert facts.segment_emotion(seg, "face") == "грусть 60%"
     for k, ru in OLD_EMO_NAMES.items():
-        assert pdf_report._dominant_text({"emotions_text": {k: 0.9}}, "text") == f"{ru} 90%"
-    assert pdf_report._dominant_text({"face": {"expressions": {"contempt": 0.8, "neutral": 0.2}}}, "face") == \
+        assert facts.segment_emotion({"emotions_text": {k: 0.9}}, "text") == f"{ru} 90%"
+    assert facts.segment_emotion({"face": {"expressions": {"contempt": 0.8, "neutral": 0.2}}}, "face") == \
         "contempt 80%"
-    assert pdf_report._dominant_text(None, "text") == "—"
+    assert facts.segment_emotion(None, "text") == "—"
 
 
 def test_the_copies_are_gone():

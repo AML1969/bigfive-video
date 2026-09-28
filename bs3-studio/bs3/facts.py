@@ -1,7 +1,9 @@
 """What the page and the PDF of BS Profiler 3.1 both show, built once, so the two never say it two ways: the cards of
-«Ключевые факты» (`fact_cards`, `key_facts`), the nine cards of «Речь в цифрах» (`speech_cards`), the word for the head
-motion (`head_motion_word`) and the note about the model of facial expressions (FER_NOTE). Deterministic templates over
-the numbers in result.json; where the page and the PDF deliberately differ, the difference is a parameter.
+«Ключевые факты» (`fact_cards`, `key_facts`), the nine cards of «Речь в цифрах» (`speech_cards`), the cells of one
+segment in the page's table «Эмоции, голос и темп по отрезкам» and the PDF's appendix «Значения по отрезкам»
+(`segment_cells`), the word for the head motion (`head_motion_word`) and the note about the model of facial
+expressions (FER_NOTE). Deterministic templates over the numbers in result.json; where the page and the PDF
+deliberately differ, the difference is a parameter.
 
 The sentences about each analysis are analyses_text.analyses_parts; the thresholds behind the words are in bands."""
 from __future__ import annotations
@@ -9,8 +11,10 @@ from __future__ import annotations
 from typing import List
 
 from .bands import HEAD_MOTION_WORDS
-from .labels import EMO_RU
+from .labels import EMO_RU, EMOTION_ORDER
 from .mbti import fact_card
+from .scores import num
+from .segments import dominant_emotion, empty_text, seg_words
 from .textfmt import fmt_secs, plural_ru
 
 
@@ -132,6 +136,34 @@ def speech_cards(sp: dict, small_rate_words: bool) -> list:
             ("Слов во фразе", whole(sp.get("mean_sentence")), "в среднем"),
             ("Разнообразие словаря", f"{float(sp['ttr']):.0%}" if sp.get("ttr") is not None else "—",
              "доля разных слов среди всех; зависит от длины текста")]
+
+
+def segment_emotion(r: dict | None, source: str) -> str:
+    """The dominant emotion of one segment with its share, «нейтрально 99%», by speech (`source` "text") or by the
+    face ("face"); only the seven text emotions are named, a face label comes aliased to them and any other label
+    stays as it is. A segment whose own transcript came out empty (segments.empty_text) has no emotion by speech:
+    «нет речи» when it has no words at all, «нет текста» when the transcript of the whole video still has words in
+    it, never the model's «нейтрально 100%». «—» without data."""
+    if not r:
+        return "—"
+    if source == "text" and empty_text(r):
+        return "нет речи" if seg_words(r) == 0 else "нет текста"
+    d = dominant_emotion(r, source)
+    return f"{EMO_RU[d[0]] if d[0] in EMOTION_ORDER else d[0]} {d[1]:.0%}" if d else "—"
+
+
+def segment_cells(r: dict | None) -> list:
+    """The cells of one segment (a per_segment entry of the analyses) that the page's table «Эмоции, голос и темп по
+    отрезкам» and the PDF's appendix «Значения по отрезкам» both print, in this order: the dominant emotion by speech
+    and by the face (segment_emotion), arousal, dominance and valence of the voice, the tempo in words per minute and
+    the share of pauses. A missing value is «—»; so is the tempo of a segment that has none (less than 3 s of
+    speech, the stored tempo missing or 0), not «0» (owner, 2026-09-27)."""
+    r = r or {}
+    vo, sp = r.get("voice") or {}, r.get("speech") or {}
+    wpm = num(sp.get("words_per_min_speech"))
+    return ([segment_emotion(r, "text"), segment_emotion(r, "face")]
+            + [f"{float(vo[d]):.2f}" if vo.get(d) is not None else "—" for d in ("arousal", "dominance", "valence")]
+            + [f"{wpm:.0f}" if wpm else "—", f"{float(sp.get('pause_share') or 0):.0%}" if sp else "—"])
 
 
 # the head motion (analyses.face.head_motion, the shift between frames as a share of the face width) in words, weak,
