@@ -207,7 +207,7 @@ bs3/journal.py     текстовый журнал веб-сервиса: кто
 
 ```
 training/          обучение и оценка на First Impressions V2 вне пакета: mm_data, mm_extract, mm_train, evaluate, eval_fiv2 (запуск python -m training.eval_fiv2)
-scripts/           run_web3.sh, run_preview.sh, ui_preview.py, import_job.py, rerender_samples.py, check_job.py, add_mbti.py, clean_jobs.py, compare_baseline.py, check_palette.py, selftest.py
+scripts/           run_web3.sh, run_preview.sh, ui_preview.py, import_job.py, rerender_samples.py, check_job.py, add_mbti.py, clean_jobs.py, compare_baseline.py, check_palette.py, check_behavior_translation.py, selftest.py
 tests/             run.py и тесты (изоляция, оценки, MBTI, страница и PDF, ошибки, …)
 deploy/            bs3-web.service — шаблон службы systemd (не установлен)
 docs/              result_json.md (устройство задания) и config.md (настройки)

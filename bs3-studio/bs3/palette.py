@@ -29,7 +29,7 @@ ACCENT = {"dark": "#f97316", "light": "#c2410c"}
 PAGE_NOTE_OPACITY = 0.7
 
 # ---------------------------------------------------------------- web chart chrome (text, axes, grid, hover)
-# The light text, muted, axis and band colours are also the chrome of the PDF charts (pdf_charts.py reads them).
+# The light text, muted, axis and band colours are also the chrome of the PDF charts (bs3/pdf/charts.py reads them).
 THEME = {
     "dark": dict(text="#e4e4e7", muted="#d4d4d8", grid="#3f3f46", axis="#808080", hover_bg="#18181b",
                  hover_border="#808080", hover_text="#f4f4f5", sep="#18181b", band="rgba(228,228,231,0.10)",
@@ -38,7 +38,7 @@ THEME = {
                   hover_border="#6b7280", hover_text="#18181b", sep="#ffffff", band="rgba(31,41,55,0.08)",
                   band_border="#4b5563", nodata="rgba(185,28,28,0.10)", nodata_border="#b91c1c"),
 }
-# the Gradio Default theme font (Google Fonts, has Cyrillic); the chart iframes load it themselves (charts.FONT_CSS)
+# the Gradio Default theme font (Google Fonts, has Cyrillic); the chart iframes load it themselves (bs3/web/plotframe.py FONT_CSS)
 FONT_FAMILY = "'Source Sans Pro', ui-sans-serif, system-ui, sans-serif"
 
 # ---------------------------------------------------------------- web series colours (>= 3:1 on both backgrounds of a theme)
@@ -90,7 +90,7 @@ HTML = dict(
     # by the user (status_stopped) or broken off by a failure (status_error)
     status_running="#ea580c", status_done="#2e8b57", status_stopped="#dc2626", status_error="#dc2626",
 )
-# the metric cards (webapp.CARD) are this grey tint over the block, so their text and their 1 px border sit on the
+# the metric cards (bs3/web/page.py CARD) are this grey tint over the block, so their text and their 1 px border sit on the
 # tinted colour and not on the bare block: tint() below composites it, scripts/check_palette.py measures them there
 CARD_TINT = 0.06
 
