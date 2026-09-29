@@ -14,6 +14,7 @@ import json
 import os
 import re
 import tempfile
+import time
 from datetime import timedelta
 from pathlib import Path
 
@@ -342,6 +343,33 @@ def test_pdf_for_download():
         finally:
             route_utils.datetime = real_datetime
         assert pdf.exists()                                                     # the job folder is not Gradio's
+
+
+def test_sweep_empty_downloads_removes_only_old_empty_token_folders():
+    """_sweep_empty_downloads clears the empty folders pdf_for_download leaves once Gradio's delete_cache has removed
+    the copied PDF, and only those: it takes a folder only when the name is 32 hex characters, the folder is empty, and
+    it has not been touched for over an hour. So a fresh folder a click may still be filling, a folder that still holds
+    its PDF, and any folder not named like ours are all kept. test_pdf_for_download only ever exercises the no-op path
+    (the folder of the first click still holds its fresh PDF on the second), so without this the removal itself, the
+    one-hour cutoff and the name filter are unverified: dropping the cutoff would sweep an in-flight download's folder,
+    and turning the rmdir into a recursive delete would take a folder that still holds its PDF."""
+    with tempfile.TemporaryDirectory() as d:
+        folder = Path(d)
+        old = time.time() - 2 * 3600                          # comfortably past the one-hour cutoff
+        old_empty = folder / ("a" * 32)                       # 32-hex, empty, old: the only one to remove
+        fresh_empty = folder / ("b" * 32)                     # 32-hex, empty, but too new — a click may be filling it
+        old_full = folder / ("c" * 32)                        # 32-hex, old, but still holds its PDF
+        old_nonhex = folder / "not_a_download_folder"         # old and empty, but not one of ours by name
+        for p in (old_empty, fresh_empty, old_full, old_nonhex):
+            p.mkdir()
+        (old_full / "report.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
+        for p in (old_empty, old_full, old_nonhex):           # set the mtime AFTER writing into old_full
+            os.utime(p, (old, old))
+        app._sweep_empty_downloads(folder)
+        survivors = sorted(p.name for p in folder.iterdir())
+        assert not old_empty.exists()                         # empty + old + a token name -> removed
+        assert survivors == sorted([fresh_empty.name, old_full.name, old_nonhex.name])
+        assert (old_full / "report.pdf").read_bytes() == b"%PDF-1.4\n%%EOF\n"    # its PDF is untouched
 
 
 @contextlib.contextmanager
