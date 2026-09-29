@@ -345,6 +345,18 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, *, member: str
         except Exception as e:  # noqa: BLE001
             log.warning("mbti section failed: %s", str(e).splitlines()[0][:160] if str(e) else type(e).__name__)
         jobfiles.write_json(job / jobfiles.RESULT, rep)
+        # a finished job keeps its source video (input.*) and its result; the segment clips were cut from input.* and
+        # nothing reads them once result.json exists, so they are removed to keep the folder small (BS3_KEEP_SEGMENTS=1
+        # keeps them for debugging). result.json is already written, so a cleanup failure must never fail the analysis:
+        # it is logged and swallowed here. The outer except removes the whole folder only when result.json is absent,
+        # so it would not clean up after a failure here — hence this inner guard.
+        if not settings.KEEP_SEGMENTS:
+            seg_dir = job / jobfiles.SEGMENTS_DIR
+            try:
+                if seg_dir.is_dir():
+                    shutil.rmtree(seg_dir)
+            except Exception as e:  # noqa: BLE001
+                log.warning("could not remove the segments of %s: %s", job.name, str(e)[:120])
         return rep
     except BaseException:
         # a run that did not write result.json leaves no folder behind (unless BS3_KEEP_FAILED_JOBS); only the folder

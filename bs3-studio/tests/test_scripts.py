@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]            # bs3-studio/
 SCRIPTS = ROOT / "scripts"
-HELP = ("import_job", "add_mbti", "rerender_samples", "check_job", "compare_baseline")
+HELP = ("import_job", "add_mbti", "rerender_samples", "check_job", "compare_baseline", "clean_jobs")
 
 
 def test_every_script_compiles():

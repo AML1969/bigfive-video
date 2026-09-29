@@ -5,8 +5,9 @@ one function that changes something (the environment of the web server process).
 
 Environment variables: BS3_DATA_DIR (the data folder, default ~/bs3_data), BS3_JOURNAL (the journal file, default
 <data folder>/logs/journal.txt), BS3_OLLAMA_URL (the Ollama server, e.g. http://127.0.0.1:11434; default: found
-by bs3.ollama.url on localhost, then on the WSL default gateway) and BS3_KEEP_FAILED_JOBS (keep the folder of a run
-that failed, for debugging; normally a failed run leaves nothing behind).
+by bs3.ollama.url on localhost, then on the WSL default gateway), BS3_KEEP_FAILED_JOBS (keep the folder of a run
+that failed, for debugging; normally a failed run leaves nothing behind) and BS3_KEEP_SEGMENTS (keep the segment
+clips of a finished job; normally they are removed once result.json is written).
 
 Domain constants stay next to their logic, not here: config/mbti.json, the score bands, the palette, the caveats, the
 lexicon, the prompt limits of the frame phrase (PHRASE_* in frame_phrase), the frame counts of MMConfig, the
@@ -69,6 +70,10 @@ MIN_TAIL_SEC = 6.0                # a shorter last segment is merged into the on
 # ---------------------------------------------------------------- job folders (pipeline.run_analysis)
 KEEP_FAILED_JOBS = os.environ.get("BS3_KEEP_FAILED_JOBS") == "1"   # keep the folder of a run that failed (for
                                                                   # debugging); normally a failed run leaves nothing
+KEEP_SEGMENTS = os.environ.get("BS3_KEEP_SEGMENTS") == "1"        # keep the segment clips of a finished job (for
+                                                                 # debugging); normally they are removed once
+                                                                 # result.json is written (scripts/clean_jobs.py cleans
+                                                                 # up jobs that already exist)
 
 
 def apply_process_env() -> None:

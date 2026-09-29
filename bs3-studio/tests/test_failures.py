@@ -490,6 +490,45 @@ def test_a_failed_run_leaves_no_folder_unless_kept():
         assert len(kept) == 1 and not (kept[0] / "result.json").exists()  # BS3_KEEP_FAILED_JOBS keeps the failed folder
 
 
+# --- stage 22a: a finished job keeps input.* and the result; its segment clips are removed ---
+
+class _SegAnalyzer(_FakeAnalyzer):
+    """Like _FakeAnalyzer, but writes the segment clips and timeline.json into the segments dir it is given, as the
+    real LongVideoAnalyzer does, so a test can see whether run_analysis removes them afterwards."""
+
+    def analyze(self, video, work_dir, progress=None, should_stop=None):
+        seg = Path(work_dir)
+        seg.mkdir(parents=True, exist_ok=True)
+        (seg / "seg01_0-20s.mp4").write_bytes(b"segment clip")
+        (seg / "timeline.json").write_text("[]", encoding="utf-8")
+        return super().analyze(video, work_dir, progress=progress, should_stop=should_stop)
+
+
+class _SegStudio(_FakeStudio):
+    def analyzer(self, member):
+        return self._an.setdefault(member, _SegAnalyzer(member))
+
+
+def test_a_finished_job_keeps_input_but_loses_its_segments():
+    """Owner decision of 2026-09-27: a finished analysis keeps its source video (input.*) and result.json, and the
+    segment clips (segments/, cut from input.*) are removed once result.json is written. BS3_KEEP_SEGMENTS=1 keeps
+    them for debugging."""
+    with tempfile.TemporaryDirectory() as d:
+        work = Path(d) / "jobs"
+        with _no_preflight(), _quiet("bs3.pipeline"):
+            rep = pipeline.run_analysis(_SegStudio(), work, str(_clip(d)), member="oceanai", explain=False)
+        job = Path(rep["job_dir"])
+        assert (job / "result.json").exists() and (job / "input.mp4").is_file()   # the result and the source stay
+        assert not (job / "segments").exists()                                    # the segment clips are gone
+    with tempfile.TemporaryDirectory() as d:
+        work = Path(d) / "jobs"
+        with _no_preflight(), _quiet("bs3.pipeline"), _swap(settings, KEEP_SEGMENTS=True):
+            rep = pipeline.run_analysis(_SegStudio(), work, str(_clip(d)), member="oceanai", explain=False)
+        job = Path(rep["job_dir"])
+        assert (job / "segments" / "seg01_0-20s.mp4").is_file()                   # kept for debugging
+        assert (job / "input.mp4").is_file()
+
+
 # --- a failure of one optional step does not kill an otherwise finished analysis ---
 
 def test_a_translation_failure_keeps_the_rest_of_the_run():
