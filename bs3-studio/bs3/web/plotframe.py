@@ -170,7 +170,7 @@ ready.then(start, start);
 def plot_html(builder, rep: dict | None = None, extra_height: int = 24, fill: bool = False) -> str:
     """builder(rep, theme) -> figure. Both theme variants go into one <iframe srcdoc>; the chart title is rendered as
     HTML above the iframe (gr.HTML shows no label), so it uses the page text colour of the current Gradio theme.
-    fill=True: for a chart in one of two windows side by side. The iframe may grow (flex, see webapp.APP_CSS) to the
+    fill=True: for a chart in one of two windows side by side. The iframe may grow (flex, see style.APP_CSS) to the
     height of the neighbouring window and the figure grows with it instead of leaving an empty band under the chart;
     a radar grows only while its circle can grow, then the page centres it."""
     import plotly.io as pio

@@ -62,8 +62,10 @@ def _is_cuda_fault(text: str) -> bool:
 
 
 def is_fatal(e: BaseException) -> bool:
-    """The server must be restarted after this failure (stage 22 stops taking new analyses). True for a broken Ollama
-    connection (connection refused or HTTP 404) and for a CUDA fault other than out of memory. A timeout is not fatal."""
+    """Whether the whole run must stop at once instead of trying the remaining segments or members: the failure will not
+    clear within this run, and the user's message asks them to restart the server (a CUDA fault) or Ollama. True for a
+    broken Ollama connection (connection refused or HTTP 404) and for a CUDA fault other than out of memory. A timeout
+    is not fatal."""
     if isinstance(e, OllamaUnavailable):
         blob = f"{e} {e.__cause__ or ''}".lower()
         if "timed out" in blob or "timeout" in blob:

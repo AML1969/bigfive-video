@@ -11,8 +11,8 @@ Inside the work dir (default: settings.JOBS_DIR, one folder per analysis of the 
   (b) a whole folder without result.json whose newest file is older than 24 hours: a run that never finished. The
       24-hour floor means a running analysis is never touched.
 It never touches input.*, result.json, explain/, charts/ or the PDF of a finished job, and it works only inside the
-work dir: it stays with the direct subfolders, never follows a symlink (a symlink is reported and skipped, so a link
-pointing outside the work dir can never be followed), and refuses a path that resolves outside the work dir. Existing
+work dir: it stays with the direct subfolders, never follows a symlink (a symlink is skipped, so a link pointing
+outside the work dir can never be followed), and refuses a path that resolves outside the work dir. Existing
 jobs keep opening; this only frees disk space.
 """
 from __future__ import annotations

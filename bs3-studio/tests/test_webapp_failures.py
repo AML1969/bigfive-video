@@ -292,7 +292,13 @@ def test_preview_fills_the_page_and_shows_the_model():
     assert len(char) == 1 and char[0].value == page_outs[3] and char[0].value       # the page arrives filled
     assert [c.value for c in comps if isinstance(c, gr.Radio)] == ["mm"]             # the model of the previewed job
     btn = next(c for c in comps if isinstance(c, gr.DownloadButton))
-    assert btn.interactive is True and str(job) in [c.value for c in comps if isinstance(c, gr.State)]
+    assert btn.interactive is True
+    # the job's server path is kept out of the page config (a preview binds to 0.0.0.0); the PDF button still reads the
+    # folder because make_pdf falls back to the preview job
+    assert [c.value for c in comps if isinstance(c, gr.State)] == [""]
+    make_pdf = _handlers(demo)["make_pdf"]
+    with _patched(app, pdf_for_download=lambda job_dir: str(job_dir)):
+        assert make_pdf("") == str(job)
 
 
 def test_stop_stops_only_own_session():

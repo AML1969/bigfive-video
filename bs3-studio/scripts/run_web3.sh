@@ -17,8 +17,10 @@ for i in $(seq 1 10); do
   sleep 2
 done
 pgrep -f "bin/bs3 we[b]" >/dev/null && { echo "old server still shutting down; try again"; exit 1; }
-# uploads and rendered files of earlier runs: drop the ones older than a day
+# uploads and rendered files of earlier runs: drop the ones older than a day, then the empty PDF-download folders left
+# behind (Gradio removes the file it served but not the folder pdf_for_download put it in)
 find "$GRADIO_TEMP_DIR" -type f -mtime +0 -delete 2>/dev/null
+find "$GRADIO_TEMP_DIR" -mindepth 1 -type d -empty -delete 2>/dev/null
 echo "=== $(date '+%Y-%m-%d %H:%M:%S') bs3 web start on :$PORT ===" >> "$HOME/bs3_data/logs/web.log"
 setsid nohup "$HOME/bs/venv/bin/bs3" web --port "$PORT" >> "$HOME/bs3_data/logs/web.log" 2>&1 < /dev/null &
 for i in $(seq 1 30); do

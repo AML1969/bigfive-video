@@ -5,7 +5,7 @@ clean view (scores.clean_view), the MBTI section (mbti.get_mbti: the saved one, 
 and the characterization (characterization.build). Each of the three is built exactly once per JobView:
 
   load_job(job_dir)  a job folder on disk (pdf.export_pdf, the preview of build_app)
-  for_page(rep)      a result in memory (webapp.page_outputs; the app hands the same JobView to the journal entry of
+  for_page(rep)      a result in memory (web.page.page_outputs; the app hands the same JobView to the journal entry of
                      the analysis, journal.result(jv=…))
   from_report(rep)   a report in memory as it is: no file read or written and no Russian text added (the fallback of
                      pdf.build.build_pdf, journal.result_lines)

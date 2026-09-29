@@ -298,7 +298,12 @@ def test_the_preview_opens_the_job_once():
     char = [c for c in comps if isinstance(c, gr.HTML) and getattr(c, "label", None) == "Характеристика личности"]
     assert len(char) == 1 and char[0].value == page_outs[3]
     assert [c.value for c in comps if isinstance(c, gr.Radio)] == ["mm"]
-    assert str(job) in [c.value for c in comps if isinstance(c, gr.State)]
+    # the job's server path is kept out of the page config (a preview binds to 0.0.0.0); the PDF button still reads the
+    # folder because make_pdf falls back to the preview job
+    assert [c.value for c in comps if isinstance(c, gr.State)] == [""]
+    mk = next(f.fn for f in demo.fns.values() if getattr(getattr(f, "fn", None), "__name__", "") == "make_pdf")
+    with _patched(app, pdf_for_download=lambda job_dir: str(job_dir)):
+        assert mk("") == str(job)
 
 
 # ---------------------------------------------------------------- the words of «Объяснения» are only read

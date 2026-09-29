@@ -1,6 +1,7 @@
 """HTML helpers for the BS Profiler 3.1 web UI: score bars of the one model that ran, the modality table of AMLAI 1.0
-and the shared table style used by webapp.py. Forked from bs 1.0 (the unused 1.0 page, engine and run_analysis were
-removed; the page is webapp.py); the second-opinion block of 3.0 is gone with the second model (3.1).
+and the shared table style used by the page (bs3/web/page.py). Forked from bs 1.0 (the unused 1.0 page, engine and
+run_analysis were removed; the page is bs3/web/app.py); the second-opinion block of 3.0 is gone with the second
+model (3.1).
 
 Colours: bars, outlines and rules come from palette.HTML (>= 3:1 on the dark and the light Gradio theme). Text colours
 are never hard-coded: Gradio's `.prose *` rule gives the body text colour of the current theme, secondary text is the

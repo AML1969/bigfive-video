@@ -79,7 +79,7 @@ CODES = tuple(f"C{i}" for i in range(1, 23) if i != 18)      # C18 (the second s
 
 # The lists of caveats printed as one block, in their order (design 11). «Как читать результаты» at the foot of the
 # page: the footer is built once, before any analysis, so it carries only what holds for both models; C2 (the label
-# «собеседование» of AMLAI 1.0) stands under the score bars of a job that shows that label (webparts._bar_html)
+# «собеседование» of AMLAI 1.0) stands under the score bars of a job that shows that label (web.parts._bar_html)
 PAGE_FOOTER = ("C1", "C10", "C3")
 # «Как читать результаты» of the PDF; C2 is printed only when the report carries the label «собеседование»
 PDF_HOW_TO_READ = ("C1", "C2", "C10", "C11", "C14", "C15")

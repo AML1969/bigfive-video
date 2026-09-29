@@ -29,13 +29,36 @@ from .style import APP_CSS, COPYRIGHT, VIDEO_H, _theme, force_russian_gradio
 log = logging.getLogger("bs3.web")
 
 
+def _sweep_empty_downloads(folder: Path) -> None:
+    """Remove the empty token folders earlier downloads left behind: Gradio's delete_cache removes the copied PDF file
+    but not the random folder pdf_for_download put it in, so without this each PDF click would leave one empty folder
+    for good. Only a folder that is one of ours (a 32-hex name), empty, and untouched for over an hour is removed, so a
+    folder another click is filling right now is never taken."""
+    cutoff = time.time() - 3600
+    try:
+        children = list(folder.iterdir())
+    except OSError:
+        return
+    for d in children:
+        if not d.is_dir() or d.is_symlink() or not re.fullmatch(r"[0-9a-f]{32}", d.name):
+            continue
+        try:
+            if next(d.iterdir(), None) is None and d.stat().st_mtime < cutoff:
+                d.rmdir()
+        except OSError:
+            pass
+
+
 def pdf_for_download(job_dir: str | Path) -> str:
     """The PDF button: the PDF of export_pdf (it stays in the job folder) copied into a new folder with a random name
     in Gradio's upload folder. Gradio serves its own folder without allowed_paths, from any start directory, and
-    deletes the copy with its other temp files (delete_cache in build_app). The download keeps the PDF file name."""
+    deletes the copy with its other temp files (delete_cache in build_app); the empty folder it leaves is swept on the
+    next click (_sweep_empty_downloads). The download keeps the PDF file name."""
     pdf = Path(export_pdf(job_dir))
     from gradio.utils import get_upload_folder
-    d = Path(get_upload_folder()) / secrets.token_hex(16)
+    folder = Path(get_upload_folder())
+    _sweep_empty_downloads(folder)
+    d = folder / secrets.token_hex(16)
     d.mkdir(parents=True)
     out = d / pdf.name
     shutil.copy2(pdf, out)
@@ -208,6 +231,9 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
     stop.__annotations__["request"] = gr.Request     # see the note under analyze(): hand Gradio the class itself
 
     def make_pdf(job_dir):
+        # the preview fills the page but keeps job_state empty (the job's server path is not put into the page config,
+        # unlike an analysis, whose gr.State Gradio holds server-side); fall back to the preview job folder here
+        job_dir = job_dir or preview_job
         if not job_dir:
             raise gr.Error("Сначала проанализируйте видео", title=ERROR_TITLE)
         try:
@@ -336,6 +362,8 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
             jv = jobview.load_job(preview_job)
             filled = (_status_html(1.0, "предпросмотр готового результата", state="done"),) + page_values(jv)
             for comp, value in zip(outputs, filled):
+                if comp is job_state:
+                    continue          # keep the job's server path out of the page config; make_pdf falls back to preview_job
                 comp.value = value
             pdf_btn.interactive = True
             # the radio shows the model the previewed job was processed with (an imported 2.0 job: OCEAN-AI)
