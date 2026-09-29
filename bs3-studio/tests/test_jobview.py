@@ -22,6 +22,8 @@ from bs3 import (characterization, charts, jobfiles, jobview, journal, mbti, pdf
                  webparts)
 from bs3.norms import TRAIT_KEYS
 from bs3.pdf import charts as pdf_charts          # the print charts; `charts` is the web charts module
+from bs3.pdf import frames as pdf_frames
+from bs3.pdf import sections as pdf_sections
 
 # explanation.json of an AMLAI 1.0 job: the modality shares and the readable words, already translated by Ollama, so
 # opening the job translates nothing and writes nothing back
@@ -371,7 +373,9 @@ def test_the_places_ask_shown_model():
     """The page, the charts, the PDF and the journal take the model from scores (shown_model, has_explanations); no
     module keeps an expression of its own, and pdf_report._main_model is gone."""
     assert charts.shown_model is pdf_charts.shown_model is pdf_report.shown_model is scores.shown_model
-    assert webapp.has_explanations is pdf_report.has_explanations is scores.has_explanations
+    assert pdf_sections.shown_model is scores.shown_model
+    assert webapp.has_explanations is pdf_report.has_explanations is pdf_sections.has_explanations \
+        is scores.has_explanations
     assert not hasattr(pdf_report, "_main_model")
     src = inspect.getsource
     assert "model_title(shown_model(rep))" in src(charts.fig_radar)
@@ -379,7 +383,11 @@ def test_the_places_ask_shown_model():
     assert "if not has_explanations(rep):" in src(webapp._frames_html)
     assert "own = has_explanations(view)" in src(webapp.page_values)
     assert "model_title(shown_model(view))" in src(journal)
-    assert src(pdf_report).count("has_explanations(report)") == 3 and src(pdf_report).count("shown_model(report)") == 3
+    # has_explanations: _plan twice (pdf_report), _no_explain_note (pdf/sections.py); shown_model: _analysis_rows and
+    # _segments_table (pdf_report), _passport (pdf/sections.py)
+    parts = [src(m) for m in (pdf_report, pdf_sections, pdf_frames)]
+    assert [s.count("has_explanations(report)") for s in parts] == [2, 1, 0]
+    assert [s.count("shown_model(report)") for s in parts] == [2, 1, 0]
     for p in sorted(Path(bs3.__file__).parent.rglob("*.py")):
         text = p.read_text(encoding="utf-8")
         assert not re.search(r"""get\("main_system"\)\s*or\b""", text) or p.name == "scores.py", p

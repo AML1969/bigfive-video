@@ -25,7 +25,9 @@ from bs3 import (analyses_text, bands, caveats, characterization, facts, frame_c
                  scores, webapp)
 from bs3.analyses import speech_stats
 from bs3.facts import FER_NOTE, card_item, fact_cards, head_motion_word, speech_cards
+from bs3.pdf import frames as pdf_frames
 from bs3.pdf import mbti_section
+from bs3.pdf import sections as pdf_sections
 
 ROOT = Path(__file__).resolve().parents[1]
 TYPE = {"type": "ENFJ", "type_strict": "ENFJ", "type_name": "Наставник", "x_count": 0, "model": "mm",
@@ -45,7 +47,7 @@ def _patched(module, **names):
 
 
 class _Page:
-    """Stands in for the PDF page in one section function of pdf_report: records every call and its arguments."""
+    """Stands in for the PDF page in one section function of pdf/sections.py: records every call and its arguments."""
 
     def __init__(self, plan: dict):
         self.plan, self.appx, self.calls = plan, {}, []
@@ -201,10 +203,11 @@ def test_the_page_and_the_pdf_take_the_key_facts_from_fact_cards():
     assert ">42</div>" in html and "Маркер · выше" in html and facts.FACTS_LEGEND in html
     with _patched(webapp, fact_cards=lambda view, mb, **k: ([marker], False)):
         assert facts.FACTS_LEGEND not in webapp._facts_html(r, TYPE)
-    assert "только время, когда человек говорит" not in inspect.getsource(pdf_report)
+    for mod in (pdf_report, pdf_sections):
+        assert "только время, когда человек говорит" not in inspect.getsource(mod), mod.__name__
+        for name in ("_pdf_facts", "_speech_cards", "HOW_TO_READ"):
+            assert not hasattr(mod, name), (mod.__name__, name)
     assert "fact_cards(report, mb, speech_cards_follow=" in inspect.getsource(pdf_report._render)
-    for name in ("_pdf_facts", "_speech_cards", "HOW_TO_READ"):
-        assert not hasattr(pdf_report, name), name
     assert not hasattr(webapp, "FOOTER_CAVEATS") and not hasattr(mbti_html, "READ_CAVEATS")
 
 
@@ -233,7 +236,7 @@ def test_the_page_and_the_pdf_print_their_own_wording_of_the_speech_cards():
     html = webapp._speech_html(r)
     assert "0 на 100 слов" in html and "меньше 1" not in html
     pdf = _Page({"voice_speech": 4})
-    pdf_report._voice_speech_section(pdf, r, {})
+    pdf_sections._voice_speech_section(pdf, r, {})
     assert pdf.args("cards") == [(speech_cards(r["analyses"]["speech"], small_rate_words=True),)]
 
 
@@ -255,7 +258,7 @@ def test_every_text_of_the_head_motion_takes_the_shared_word():
         r = _rep(hm=hm)
         r["analyses"]["per_segment"] = [{"face": {"frames": 12}}, {"face": {"frames": 10}}]
         pdf = _Page({"emotions": 3})
-        pdf_report._emotions_section(pdf, r, {"face_expr": "face.png"})
+        pdf_sections._emotions_section(pdf, r, {"face_expr": "face.png"})
         caption = next(cap for path, cap in pdf.args("chart_block") if path == "face.png")
         return analyses_text.analyses_parts(r)["face"], webapp._face_html(r), caption
 
@@ -270,13 +273,13 @@ def test_every_text_of_the_head_motion_takes_the_shared_word():
 
 def test_fer_note_with_the_page_pointer_and_without():
     assert FER_NOTE.format(where=" (вкладка «Таймлайн»)") == OLD_FER_PAGE and FER_NOTE.format(where="") == OLD_FER_PDF
-    assert webapp.FER_NOTE is FER_NOTE and pdf_report.FER_NOTE is FER_NOTE
+    assert webapp.FER_NOTE is FER_NOTE and pdf_sections.FER_NOTE is FER_NOTE
     r = _rep(hm=0.1)
     assert OLD_FER_PAGE in webapp._face_html(r)
     pdf = _Page({"emotions": 3})
-    pdf_report._emotions_section(pdf, r, {"face_expr": "face.png"})
+    pdf_sections._emotions_section(pdf, r, {"face_expr": "face.png"})
     assert pdf.args("chart_block")[-1][1].endswith(" " + OLD_FER_PDF)
-    for mod in (webapp, pdf_report):
+    for mod in (webapp, pdf_report, pdf_sections, pdf_frames):
         assert "FER-2013" not in inspect.getsource(mod), mod.__name__
 
 
@@ -295,11 +298,11 @@ def test_note_what_gives_the_two_wordings():
         pass
     else:
         raise AssertionError("an unknown medium is refused")
-    for mod in (webapp, pdf_report):
+    for mod in (webapp, pdf_report, pdf_sections, pdf_frames):
         assert "момент ролика" not in inspect.getsource(mod), mod.__name__
     # each takes its own wording (the notes of the real jobs are compared byte for byte by compare_baseline)
     assert 'frame_captions.note_what(entries, tenths, "page")' in inspect.getsource(webapp._frames_html)
-    assert 'frame_captions.note_what(entries.values(), tenths, "pdf")' in inspect.getsource(pdf_report._explain_section)
+    assert 'frame_captions.note_what(entries.values(), tenths, "pdf")' in inspect.getsource(pdf_frames._explain_section)
 
 
 # ------------------------------------------------------------------------------------------------ moved names
@@ -307,7 +310,7 @@ def test_note_what_gives_the_two_wordings():
 def test_analyses_parts_moved_to_analyses_text():
     assert importlib.util.find_spec("bs3.narrative2") is None
     assert not hasattr(facts, "analyses_parts") and not hasattr(facts, "_level")
-    assert pdf_report.analyses_parts is analyses_text.analyses_parts
+    assert pdf_sections.analyses_parts is analyses_text.analyses_parts
     assert "from .analyses_text import analyses_parts" in inspect.getsource(mbti_html.emo_intro_html)
     parts = analyses_text.analyses_parts(_rep(hm=0.2))
     assert set(parts) == {"text_emotion", "voice", "face", "speech"}
@@ -333,7 +336,7 @@ def test_the_caveat_lists_equal_the_old_tuples():
     for codes in (caveats.PAGE_FOOTER, caveats.PDF_HOW_TO_READ, caveats.MBTI_READ):
         assert set(codes) <= set(caveats.CODES)
     assert "for c in caveats.PAGE_FOOTER)" in inspect.getsource(webapp.build_app)
-    assert "for c in caveats.PDF_HOW_TO_READ if " in inspect.getsource(pdf_report._how_to_read)
+    assert "for c in caveats.PDF_HOW_TO_READ if " in inspect.getsource(pdf_sections._how_to_read)
     assert "for c in caveats.MBTI_READ]" in inspect.getsource(mbti_section.mbti_section)
     assert "for c in caveats.MBTI_READ]" in inspect.getsource(mbti_html.read_html)
 

@@ -167,8 +167,8 @@ def test_values_are_written_only_in_settings():
 
 
 def test_segment_lengths_match_the_texts():
-    texts = ("pdf_report: «по ~20 с» (twice) and «Ролик короче 30 с оценивается целиком»; webapp: «до ~20 с» (the stop "
-             "button); caveats C8 and C19")
+    texts = ("pdf_report and pdf/sections.py: «по ~20 с» (once each); pdf_report: «Ролик короче 30 с оценивается "
+             "целиком»; webapp: «до ~20 с» (the stop button); caveats C8 and C19")
     assert settings.SEGMENT_SEC == 20, f"SEGMENT_SEC changed: reword {texts}"
     assert settings.SINGLE_CLIP_MAX_SEC == 30, f"SINGLE_CLIP_MAX_SEC changed: reword {texts}"
 

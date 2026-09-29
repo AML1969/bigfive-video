@@ -19,11 +19,14 @@ from pathlib import Path
 from bs3 import charts, facts, frame_captions, labels, narrative, pdf_report, scores, segments, textfmt, webapp
 from bs3.norms import TRAIT_KEYS
 from bs3.pdf import charts as pdf_charts          # the print charts; `charts` is the web charts module
-from bs3.pdf import document, fmt, layout, mbti_section, widgets
+from bs3.pdf import document, fmt, frames, layout, mbti_section, sections, widgets
 from bs3.segments import (behavior_by_segment, dominant_emotion, emotion_shares, empty_text, odd_segments,
                           representative, scored, seg_words, segment_rows)
 
 ROOT = Path(__file__).resolve().parents[1]
+# the modules of the PDF that were pdf_report.py: the plan, the appendices and the build; the main-part sections;
+# section 5 with the key frames (stage 16)
+PDF_PARTS = (pdf_report, sections, frames)
 
 
 # ---------------------------------------------------------------- the lookups before stage 12
@@ -134,7 +137,9 @@ def test_the_callers_pass_their_rules():
         return inspect.getsource(fn)
     assert "representative(rep)" in src(charts.fig_traits_timeline)
     assert "representative(rep, min_scored=2)" in src(pdf_charts._traits_chart)
-    assert inspect.getsource(pdf_report).count("representative(report, min_scored=2)") == 4
+    # the four places of the PDF: the segments table and the notable segments (pdf_report), the caption of the
+    # timeline (sections) and the intro of the explanations (frames)
+    assert [inspect.getsource(m).count("representative(report, min_scored=2)") for m in PDF_PARTS] == [2, 1, 1]
     assert "representative(rep, among=\"all\")" in src(webapp._frames_html)
     assert "representative(report, among=\"all\")" in src(frame_captions.moments)
     # the same by behaviour: one scored segment is marked on the web chart, not in the PDF appendix
@@ -163,7 +168,7 @@ def test_the_scored_segments_come_from_segments():
     assert "segs = scored(rep)" in inspect.getsource(charts.fig_traits_timeline)
     assert "segs = scored(rep)" in inspect.getsource(pdf_charts._traits_chart)
     assert "tl = scored(view)" in inspect.getsource(narrative.method_notes)
-    assert inspect.getsource(pdf_report).count("segments.scored(report)") == 2
+    assert [inspect.getsource(m).count("segments.scored(report)") for m in PDF_PARTS] == [2, 0, 0]
     view = {"view_meta": {"main_system": "mm"}, "scores_std_across_segments": dict.fromkeys(TRAIT_KEYS, 0.01),
             "timeline": [{"segment": 1, "start": 0.0, "end": 20.0, "scores": _scores(0.5)},
                          {"segment": 2, "start": 20.0, "end": 40.0, "scores": {}},
@@ -271,6 +276,7 @@ def test_odd_segments():
 def test_report_lives_in_pdf_document():
     from bs3.pdf.document import NOTE_GREY, TEXT_W_MM, Report
     assert pdf_report.Report is Report and mbti_section.Report is Report
+    assert sections.Report is Report and frames.Report is Report
     assert (layout.MARGIN_MM, layout.TEXT_W_MM, layout.RADAR_W_MM, layout.ROW_GAP_MM, layout.NOTE_GREY) == \
         (10, 190, 80, 4, 85)
     assert (TEXT_W_MM, NOTE_GREY) == (layout.TEXT_W_MM, layout.NOTE_GREY)
@@ -295,28 +301,41 @@ def test_report_lives_in_pdf_document():
 
 def test_the_copies_are_gone():
     gone = {pdf_report: ("_empty_text", "_seg_words", "_scored", "_rep_segment", "_segment_rows", "MARGIN_MM",
-                         "TEXT_W_MM", "NOTE_GREY", "FONT_CANDIDATES", "FPDF", "_rgb", "_group_name", "CODEC_NAMES"),
+                         "TEXT_W_MM", "NOTE_GREY", "FONT_CANDIDATES", "FPDF", "_rgb", "_group_name", "CODEC_NAMES",
+                         "_frame_rows", "FRAME_CAP_SIZE", "FRAME_CAP_SIZE_NARROW", "FRAME_CAP_NARROW", "FRAME_CAP_LINE",
+                         "FRAME_CAP_H", "_clip_words", "_frame_second", "_frame_caption"),
             pdf_charts: ("_num", "_segments", "_empty_text", "_seg_words"), charts: ("_segments",),
             document: ("_group_name", "card_item", "fact_label", "pct_phrase", "fiv2_ref_ru")}
     for mod, names in gone.items():
         for name in names:
             assert not hasattr(mod, name), f"{mod.__name__}.{name}"
-    for mod in (charts, pdf_charts, pdf_report, narrative, frame_captions, webapp, facts):
+    for mod in (charts, pdf_charts, pdf_report, sections, frames, narrative, frame_captions, webapp, facts):
         for name in ("scored", "representative", "empty_text", "seg_words", "emotion_shares", "dominant_emotion",
                      "segment_rows", "behavior_by_segment", "odd_segments", "as_float", "HEAT_ROWS"):
             obj = getattr(segments, name)
-            if mod is pdf_report and name == "scored":
-                obj = scores.scored     # the interview entry with a number; the segments are segments.scored there
+            if mod is sections and name == "scored":
+                obj = scores.scored     # the interview entry with a number; pdf_report takes segments.scored
             assert getattr(mod, name, obj) is obj, f"{mod.__name__}.{name} is a copy"
     assert "segments.scored(report)" in inspect.getsource(pdf_report._segments_table)
     assert pdf_charts.HEAT_ROWS is labels.HEAT_ROWS and segments.SEC_LABEL is textfmt.SEC_LABEL
     assert math.isnan(segments.as_float(None)) and math.isnan(segments.as_float("x"))
     assert segments.as_float("0.5") == 0.5 and segments.as_float(True) == 1.0
-    # the text helpers of the report are the objects of pdf/fmt.py (stage 15), not copies in pdf_report
+    # the text helpers of the report are the objects of pdf/fmt.py (stage 15), not copies in pdf_report or in the
+    # section modules (stage 16); each of them is still used by one of the three
     for name in ("SEG_HEAD", "MODALITY_TITLES", "MEDIA_TAGS", "TRAINED_ON", "_when", "_codec", "_encoder", "_asr_ru",
                  "_version_ru", "_seg", "_hms_text", "_dash", "_one_line"):
-        assert getattr(pdf_report, name) is getattr(fmt, name), name
+        assert any(hasattr(m, name) for m in PDF_PARTS), name
+        for m in PDF_PARTS:
+            assert getattr(m, name, getattr(fmt, name)) is getattr(fmt, name), (m.__name__, name)
     assert widgets._group_name is fmt._group_name and document._rgb is widgets._rgb
+    # the sections of the main part and section 5 are the functions of pdf/sections.py and pdf/frames.py (stage 16):
+    # pdf_report calls them from _render and keeps no copy
+    for mod, names in ((sections, ("_passport", "_profile_section", "_timeline_section", "_emotions_section",
+                                   "_voice_speech_section", "_no_explain_note", "_how_to_read")),
+                       (frames, ("_explain_section",))):
+        for name in names:
+            assert getattr(pdf_report, name) is getattr(mod, name) and getattr(mod, name).__module__ == mod.__name__, \
+                name
 
 
 def _imports(mod) -> tuple[set, set]:
@@ -339,18 +358,25 @@ def _imports(mod) -> tuple[set, set]:
 
 
 def test_the_pdf_modules_import_each_other_once():
-    """pdf_report imports the print charts (pdf.charts) and the MBTI section (pdf.mbti_section) at module level;
-    those two take the page from pdf.document or pdf.layout and the segment data from segments, never pdf_report or
-    the web modules; no import among the three is left inside a function."""
-    three = {"pdf_report", "pdf.charts", "pdf.mbti_section"}
+    """pdf_report imports the print charts (pdf.charts), the MBTI section (pdf.mbti_section), the sections of the main
+    part (pdf.sections) and section 5 with the key frames (pdf.frames) at module level; those take the page from
+    pdf.document or pdf.layout and the segment data from segments, never pdf_report or the web modules; no import
+    among them is left inside a function."""
+    parts = {"pdf_report", "pdf.charts", "pdf.mbti_section", "pdf.sections", "pdf.frames"}
     top, inner = _imports(pdf_report)
-    assert {"pdf.charts", "pdf.mbti_section", "pdf.document", "pdf.fmt", "segments"} <= top and not inner & three
-    for mod, page in ((pdf_charts, "pdf.layout"), (mbti_section, "pdf.document")):
+    assert {"pdf.charts", "pdf.mbti_section", "pdf.sections", "pdf.frames", "pdf.document", "pdf.fmt",
+            "segments"} <= top and not inner & parts
+    for mod, page in ((pdf_charts, "pdf.layout"), (mbti_section, "pdf.document"), (sections, "pdf.document"),
+                      (frames, "pdf.document")):
         top, inner = _imports(mod)
         assert page in top and not (top | inner) & {"pdf_report", "charts", "webparts", "webapp"}, mod.__name__
-        assert not inner & three, mod.__name__
+        assert not inner & parts, mod.__name__
     assert {"segments", "labels", "scores"} <= _imports(pdf_charts)[0]
     assert {"caveats", "mbti", "labels"} <= _imports(mbti_section)[0]
+    # the sections take the text helpers from pdf.fmt; the two section modules do not import each other
+    assert {"pdf.fmt", "pdf.layout", "segments", "scores", "facts", "caveats"} <= _imports(sections)[0]
+    assert {"pdf.fmt", "segments", "frame_captions"} <= _imports(frames)[0]
+    assert "pdf.frames" not in set().union(*_imports(sections)) and "pdf.sections" not in set().union(*_imports(frames))
     # the widgets draw the page, they do not import it (document imports them)
     assert _imports(widgets)[0] >= {"pdf.fmt", "pdf.layout", "facts"} and "pdf.document" not in _imports(widgets)[0]
 

@@ -1,11 +1,11 @@
-"""PDF charts for BS Profiler 3.1: matplotlib PNGs placed on the A4 pages by pdf_report.py, one print version for every chart
-of the web page.
+"""PDF charts for BS Profiler 3.1: matplotlib PNGs placed on the A4 pages by pdf/sections.py and pdf/frames.py, one
+print version for every chart of the web page.
 
 Colours come from palette.py (the *_PDF dictionaries, contrast-checked on white by scripts/check_palette.py), never
 from the web palettes: a colour that reads on the dark Gradio block fails on paper and vice versa.
 
 Sizes: every figure is drawn at its printed size (TEXT_W_MM wide — the page width minus the margins of
-pdf/document.Report — except the radar, which stands beside the plain-language explanation), and pdf_report places it at
+pdf/document.Report — except the radar, which stands beside the plain-language explanation), and the report places it at
 exactly that width, so 1 pt in matplotlib is 1 pt on paper: tick labels, legends and value labels 8 pt, axis titles
 9 pt, chart titles 9.5-10 pt. PNGs are rendered at 300 dpi. Every legend sits OUTSIDE the axes, under them, so the
 plot area keeps the full width and the text never covers data. The time charts share one plot area (PLOT_LEFT_MM /
@@ -579,7 +579,7 @@ def save_modalities_chart(expl: dict | None, out_dir: str | Path) -> Optional[st
 def save_pdf_charts(rep: dict, out_dir: str | Path, expl: dict | None = None) -> Dict[str, str]:
     """PNG files for the PDF: profile (radar), traits timeline, average emotion profile, facial expression, emotions
     over time, voice, speech and — with the explanation — the modality contributions. Returns {name: path}; a chart
-    without data is left out (pdf_report says so in one line), and so is one that fails: the PDF is still built."""
+    without data is left out (pdf/sections.py says so in one line), and so is one that fails: the PDF is still built."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -594,7 +594,7 @@ def save_pdf_charts(rep: dict, out_dir: str | Path, expl: dict | None = None) ->
             ("face_expr", lambda: _face_expr_chart(plt, rep, out_dir))]
     if len(per) >= 2:           # a video scored as one segment has nothing to show over time: the averages say it all
         jobs.append(("emotions", lambda: _emotions_chart(plt, rep, per, out_dir)))
-        # a chart without any data is not drawn: pdf_report says so in one line instead of a blank full-width frame
+        # a chart without any data is not drawn: pdf/sections.py says so in one line instead of a blank full-width frame
         if any(r.get("voice") for r in per):
             jobs.append(("voice", lambda: _voice_chart(plt, rep, per, out_dir)))
         if any(r.get("speech") for r in per):

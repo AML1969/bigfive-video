@@ -17,7 +17,9 @@ from bs3 import (analyses_text, caveats, characterization, charts, facts, journa
 from bs3.pdf import charts as pdf_charts
 from bs3.pdf import document as pdf_document
 from bs3.pdf import fmt as pdf_fmt
+from bs3.pdf import frames as pdf_frames
 from bs3.pdf import mbti_section as pdf_mbti
+from bs3.pdf import sections as pdf_sections
 from bs3.pdf import widgets as pdf_widgets
 from bs3.textfmt import (clean_word, clock, fiv2_ref_ru, fix_counts, fmt_secs, mmss_labels, pct_phrase, plural_ru,
                          seg_label)
@@ -132,8 +134,8 @@ def test_the_copies_are_gone():
               "mmss_labels": mmss_labels, "clean_word": clean_word, "clock": clock, "fiv2_ref_ru": fiv2_ref_ru,
               "pct_phrase": pct_phrase}
     for mod in (analyses_text, caveats, characterization, charts, facts, journal, mbti, mbti_html, narrative,
-                pdf_charts, pdf_document, pdf_fmt, pdf_mbti, pdf_report, pdf_widgets, scores, segments, webapp,
-                webparts):
+                pdf_charts, pdf_document, pdf_fmt, pdf_frames, pdf_mbti, pdf_report, pdf_sections, pdf_widgets, scores,
+                segments, webapp, webparts):
         for name, fn in shared.items():
             assert getattr(mod, name, fn) is fn, f"{mod.__name__}.{name} is a copy"
     old = {caveats: "_plural", characterization: "_plural", mbti_html: "_mmss", pdf_mbti: "_mmss", journal: "_mmss",
@@ -143,6 +145,8 @@ def test_the_copies_are_gone():
     assert not hasattr(webparts, "_pct_phrase") and not hasattr(webparts, "_is_fiv2")
     assert pdf_widgets.pct_phrase is pct_phrase            # the score bars of the PDF (pdf/widgets.py, stage 15)
     assert pdf_fmt.clock is clock and pdf_fmt.seg_label is seg_label       # pdf_report._seg, now pdf/fmt.py
+    # the passport and the sections of the main part (pdf/sections.py, stage 16) take the formatters from textfmt
+    assert (pdf_sections.fmt_secs, pdf_sections.plural_ru, pdf_sections.fix_counts) == (fmt_secs, plural_ru, fix_counts)
     assert segments.SEC_LABEL is textfmt.SEC_LABEL           # behavior_by_segment (from pdf_report, stage 12)
     for name in ("fmt_secs", "seg_label", "mmss_labels", "clean_word", "_SEC_LABEL"):
         assert not hasattr(report, name), f"report.{name}"
