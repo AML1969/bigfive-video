@@ -2,7 +2,7 @@
 report, the footer with the file name and «стр. 3 из 7», headings, paragraphs, charts with their captions, key-value
 tables, the card grid of «Ключевые факты» and «Речь в цифрах», the score bars and the tables whose header repeats on
 every page. The card grid and the score bars are the mixins of pdf/widgets.py. The sections that fill the page are in
-pdf/sections.py, pdf/frames.py, pdf/mbti_section.py and pdf_report.py (the appendices); pdf/charts.py draws the charts.
+pdf/sections.py, pdf/frames.py, pdf/mbti_section.py and pdf/appendix.py (the appendices); pdf/charts.py draws the charts.
 
 The layout constants live in pdf/layout.py and are re-exported here: `from bs3.pdf.document import Report, TEXT_W_MM,
 NOTE_GREY` works.

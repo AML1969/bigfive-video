@@ -125,7 +125,7 @@ def pdf_pages(path: Path) -> int:
 def check_pdf(c: Checks, src: Path, dest: Path, mb: dict | None, exp: dict | None, pdf_dir: Path | None,
               label: str) -> None:
     """Item 4 of design 13.3: build the PDF of the copy and check its text and length."""
-    from bs3.webapp import export_pdf
+    from bs3.pdf import export_pdf
     pdf = Path(export_pdf(dest))
     c.ok(pdf.exists() and pdf.parent == dest, "PDF built inside the copy")
     if not pdf.exists():

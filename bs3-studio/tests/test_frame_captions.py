@@ -256,7 +256,8 @@ def test_page_block_shows_the_caption_and_the_tooltip():
 
 
 def test_old_explanation_without_signs_and_phrases_still_renders():
-    from bs3 import characterization, mbti, pdf_report, scores, webapp
+    from bs3 import characterization, mbti, scores, webapp
+    from bs3.pdf import build as pdf_build
     expl = _expl(signed={18: {"extraversion": 0.9}}, legacy=True)
     with tempfile.TemporaryDirectory() as d:
         r, paths, expl = _job_with_frames(Path(d), expl)
@@ -269,8 +270,8 @@ def test_old_explanation_without_signs_and_phrases_still_renders():
         view = scores.clean_view(r)
         mb = mbti.get_mbti(r, view)
         out = Path(d) / "report.pdf"
-        pdf_report.build_pdf(view, out, explanation=expl, media={"fps": 30.0}, key_frames=paths, mbti=mb,
-                             character=characterization.build(view, mb))
+        pdf_build.build_pdf(view, out, explanation=expl, media={"fps": 30.0}, key_frames=paths, mbti=mb,
+                            character=characterization.build(view, mb))
         assert out.stat().st_size > 1000
 
 
@@ -278,7 +279,8 @@ def _pdf_text(expl: dict, size: tuple) -> str:
     import shutil
     import subprocess
 
-    from bs3 import characterization, mbti, pdf_report, scores
+    from bs3 import characterization, mbti, scores
+    from bs3.pdf import build as pdf_build
     if not shutil.which("pdftotext"):
         raise unittest.SkipTest("pdftotext (poppler-utils) not installed")
     with tempfile.TemporaryDirectory() as d:
@@ -286,8 +288,8 @@ def _pdf_text(expl: dict, size: tuple) -> str:
         view = scores.clean_view(r)
         mb = mbti.get_mbti(r, view)
         out = Path(d) / "report.pdf"
-        pdf_report.build_pdf(view, out, explanation=expl, media={"fps": 30.0}, key_frames=paths, mbti=mb,
-                             character=characterization.build(view, mb))
+        pdf_build.build_pdf(view, out, explanation=expl, media={"fps": 30.0}, key_frames=paths, mbti=mb,
+                            character=characterization.build(view, mb))
         return re.sub(r"\s+", " ", subprocess.run(["pdftotext", "-enc", "UTF-8", str(out), "-"],
                                                   capture_output=True, text=True, check=True).stdout)
 

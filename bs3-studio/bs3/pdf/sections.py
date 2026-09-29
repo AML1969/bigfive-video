@@ -2,7 +2,7 @@
 of the file and the analysis, the Big Five profile (the radar beside «Как получены оценки», then the score bars), the
 Big Five over time, emotions and facial expression, voice and speech with «Речь в цифрах», the one line that stands in
 for the explanations of an OCEAN-AI job, and «Как читать результаты». The section numbers, and whether the optional
-sections are printed at all, come from pdf_report._plan (pdf.plan). The MBTI section is pdf/mbti_section.py; the
+sections are printed at all, come from pdf/build.py (_plan, pdf.plan). The MBTI section is pdf/mbti_section.py; the
 explanations with the key frames are pdf/frames.py.
 """
 from __future__ import annotations

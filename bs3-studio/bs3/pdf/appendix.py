@@ -1,71 +1,27 @@
-"""PDF report for one analysed video (fpdf2).
-
-The main part reads top down (design 10.7; 3.1: one model): a passport of the file and the analysis, «Характеристика
-личности» (its header line and paragraphs, pdf/mbti_section.characterization_block), the key facts with the MBTI type
-card first, the Big Five profile (radar beside «Как получены оценки», the score bars of the one model that ran), «Тип
-MBTI (перевод шкал Big Five)» (pdf/mbti_section.mbti_section), then one numbered section per topic — Big Five over
-time, emotions and facial expression, voice and speech, what drove the score of AMLAI 1.0 (for an OCEAN-AI job one line
-under the voice section says that it builds no explanations) — and «Как читать результаты». The appendices follow: file
-and analysis parameters, the values of every segment (with the MBTI type of the segment), behaviour descriptions of the
-notable segments, the transcript. Every chart of the web page has a print version (pdf/charts.py). The report is built
-from the clean view (scores.clean_view). The original file name of the video is printed exactly as it is, also in the
-footer of every page, so pages of two reports cannot be mixed up. The page itself (class Report) is pdf/document.py,
-its card grid and score bars pdf/widgets.py, the text helpers pdf/fmt.py; the passport and the other sections of the
-main part are pdf/sections.py, the explanations with the key frames pdf/frames.py. This module plans the report,
-prints the appendices and builds the file; the per-segment data come from segments.py.
+"""The lettered appendices of the PDF report of BS Profiler 3.1 (design 10.7): «Файл и параметры анализа», «Значения по
+отрезкам» (with the MBTI type of every segment), «Описание поведения» of the notable segments, and «Транскрипт речи».
+The per-segment data come from segments.py; the cells «по речи … Паузы» are the ones the page shows (facts.segment_cells).
+The plan (which appendices are printed and their letters) and the build are pdf/build.py; the page and its widgets are
+pdf/document.py and pdf/widgets.py, the text helpers pdf/fmt.py.
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
-from . import MODALITIES, MODEL_TITLES, PRODUCT, jobview, segments, settings
-from .facts import FACTS_LEGEND, fact_cards, segment_cells
-from .labels import EMO_RU, model_title
-from .norms import RU_TITLES, TRAIT_KEYS
-from .pdf.charts import save_modalities_chart
-from .pdf.document import Report
-from .pdf.fmt import (MEDIA_TAGS, MODALITY_TITLES, SEG_HEAD, TRAINED_ON, _asr_ru, _codec, _dash, _encoder, _one_line,
-                      _seg, _version_ru, _when)
-from .pdf.frames import _explain_section
-from .pdf.mbti_section import characterization_block, mbti_section, segment_types_by_start
-from .pdf.sections import (_emotions_section, _how_to_read, _no_explain_note, _passport, _profile_section,
-                           _timeline_section, _voice_speech_section)
-from .ru_texts import transcript_shown
-from .scores import has_explanations, shown_model
-from .segments import behavior_by_segment, dominant_emotion, empty_text, odd_segments, representative, segment_rows
-from .textfmt import fmt_secs, plural_ru
+from .. import MODALITIES, MODEL_TITLES, segments
+from ..facts import segment_cells
+from ..labels import EMO_RU, model_title
+from ..norms import RU_TITLES, TRAIT_KEYS
+from ..ru_texts import transcript_shown
+from ..scores import shown_model
+from ..segments import behavior_by_segment, dominant_emotion, empty_text, odd_segments, representative, segment_rows
+from ..textfmt import fmt_secs, plural_ru
+from .document import Report
+from .fmt import (MEDIA_TAGS, MODALITY_TITLES, SEG_HEAD, TRAINED_ON, _asr_ru, _codec, _dash, _encoder, _one_line,
+                  _seg, _version_ru, _when)
+from .mbti_section import segment_types_by_start
 
 BEHAVIOR_MAX = 6                    # appendix «Описание поведения»: at most this many notable segments
-
-
-# ---------------------------------------------------------------- plan: which sections and appendices are printed
-def _plan(pdf: Report, report: dict, explanation, frames, charts: dict, mb: dict | None = None) -> None:
-    an = report.get("analyses") or {}
-    te, fa = an.get("emotions_text") or {}, an.get("face") or {}
-    has = {"profile": True,
-           "mbti": bool(mb),             # right after the Big Five section, when at least the main type is computed
-           "timeline": bool(charts.get("traits")) and len(segments.scored(report)) >= 2,
-           "emotions": bool(te.get("mean") or fa.get("mean") or charts.get("emotions")),
-           "voice_speech": bool(an.get("voice") or an.get("speech") or charts.get("voice") or charts.get("speech")),
-           # explanations exist for AMLAI 1.0 only (3.1): an OCEAN-AI job gets one line under section 4 instead
-           "explain": bool(explanation or frames) and has_explanations(report),
-           "how_to_read": True}          # numbered like the rest: between the sections and the lettered appendices
-    n = 0
-    for key, ok in has.items():
-        if ok:
-            n += 1
-            pdf.plan[key] = n
-    note, transcript = transcript_shown(report)
-    # the behaviour description is written for AMLAI 1.0 (its video-language model); an older OCEAN-AI job that
-    # carries the description of the second model of 3.0 does not print it: one model in the report
-    appx = {"file": True, "segments": len(segment_rows(report)) >= 2,
-            "behavior": bool(report.get("behavior_description_ru")) and has_explanations(report),
-            "transcript": bool(note or transcript)}
-    letters = iter("АБВГДЕ")
-    for key, ok in appx.items():
-        if ok:
-            pdf.appx[key] = next(letters)
 
 
 # ---------------------------------------------------------------- appendices
@@ -202,7 +158,7 @@ def _notable(report: dict, has_expl: bool) -> dict:
     """{start of a segment: [reasons]} of the notable segments, at most BEHAVIOR_MAX, chosen in this order: the segment
     for the explanations, segments with unusual scores (largest deviation first), segments whose dominant speech
     emotion or facial expression differs from the one of the whole video (largest share first)."""
-    from .palette import EMO_ALIAS
+    from ..palette import EMO_ALIAS
     an = report.get("analyses") or {}
     per = an.get("per_segment") or []
     cands: list = []                    # (start, reason) in priority order
@@ -381,77 +337,3 @@ def _appendices(pdf: Report, report: dict, media: dict | None, has_expl: bool, m
             pdf.para(t, size)
             if cut:
                 pdf.caption(CUT_NOTE, 7.5)
-
-
-# ---------------------------------------------------------------- the report
-FACT_COLS = {7: 4, 8: 4}            # the type card makes 7 key facts: 4 + 3 cards in two rows instead of 3 + 3 + 1
-
-
-def _render(report: dict, explanation, media, frames: list, charts: dict, fname: str, total: int | None,
-            mb: dict | None, ch) -> Report:
-    pdf = Report(file_label=fname, total_pages=total)
-    _plan(pdf, report, explanation, frames, charts, mb)
-    has_expl = "explain" in pdf.plan
-    pdf.add_page()
-    pdf.h1(f"{PRODUCT} — отчёт по видео: характеристика личности, Big Five, MBTI, эмоции, голос, речь")
-    _passport(pdf, report, media, fname)
-    if ch is not None:
-        characterization_block(pdf, ch)
-    # the key facts of the page (facts.fact_cards); «Речь в цифрах» of section 4 prints the pauses and the fillers
-    speech_follows = "voice_speech" in pdf.plan and bool((report.get("analyses") or {}).get("speech"))
-    facts, legend = fact_cards(report, mb, speech_cards_follow=speech_follows)
-    if facts:
-        cols = FACT_COLS.get(len(facts), 3)
-        # the legend runs to two lines at this width, so the heading keeps the grid and both of them together
-        pdf.h3("Ключевые факты", keep_mm=pdf.cards_height(facts, cols, value_first=True) + (8 if legend else 0))
-        pdf.cards(facts, cols, value_first=True)
-        if legend:
-            pdf.caption(FACTS_LEGEND)
-    if "timeline" not in pdf.plan:
-        dur = float(report.get("duration_sec") or 0)
-        pdf.para(("Ролик короче 30 с оценивается целиком" if 0 < dur <= settings.SINGLE_CLIP_MAX_SEC
-                  else "Ролик оценён целиком, одним отрезком")
-                 + ", поэтому графиков по ходу ролика нет.", 8)
-    _profile_section(pdf, report, explanation, charts)
-    mbti_section(pdf, report, mb)
-    _timeline_section(pdf, report, charts, has_expl)
-    _emotions_section(pdf, report, charts)
-    _voice_speech_section(pdf, report, charts)
-    _no_explain_note(pdf, report)
-    _explain_section(pdf, report, explanation, frames, charts, media)
-    _how_to_read(pdf, report)
-    _appendices(pdf, report, media, has_expl, mb)
-    return pdf
-
-
-def build_pdf(report: dict, out_path: str | Path, explanation: dict | None = None, media: dict | None = None,
-              key_frames: list[str] | None = None, mbti: dict | None = None, character=None) -> str:
-    """The PDF of a clean view (scores.clean_view; a raw result.json is cleaned here). `mbti` — the section of
-    mbti.get_mbti, `character` — characterization.build; both are computed here when the caller does not pass them
-    (jobview.from_report: the view, its section and its characterization, each built once)."""
-    if mbti is None and character is None:
-        jv = jobview.from_report(report)
-        report, mbti, character = jv.view, jv.mb, jv.character
-    elif not report.get("view_meta"):
-        from .scores import clean_view
-        report = clean_view(report)
-    if character is None:                           # the characterization of the caller's own section
-        from . import characterization
-        character = characterization.build(report, mbti)
-    fname = report.get("original_file_name") or (media or {}).get("file_name") or Path(report.get("input", "")).name
-    frames = [p for p in (key_frames or []) if os.path.exists(p)]
-    charts = dict(report.get("chart_files") or {})
-    if explanation and not charts.get("modalities") and charts:
-        # save_pdf_charts called without the explanation (an older caller): the modality chart is drawn here
-        try:
-            p = save_modalities_chart(explanation, Path(next(iter(charts.values()))).parent)
-            if p:
-                charts["modalities"] = p
-        except Exception:  # noqa: BLE001
-            pass
-    # the page count of the footer («стр. 3 из 7») comes from a first layout pass; the second one is written
-    total = _render(report, explanation, media, frames, charts, fname, None, mbti, character).pages_count
-    pdf = _render(report, explanation, media, frames, charts, fname, total, mbti, character)
-    out_path = Path(out_path)
-    pdf.output(str(out_path))
-    return str(out_path)

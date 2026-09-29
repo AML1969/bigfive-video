@@ -10,7 +10,9 @@ import sys
 from pathlib import Path
 
 from bs3 import (MODEL_TITLES, analyses_text, characterization, charts, facts, journal, labels, mbti, mbti_html,
-                 pdf_report, scores, segments, webapp, webparts)
+                 scores, segments, webapp, webparts)
+from bs3.pdf import appendix as pdf_appendix
+from bs3.pdf import build as pdf_build
 from bs3.pdf import charts as pdf_charts
 from bs3.pdf import document as pdf_document
 from bs3.pdf import frames as pdf_frames
@@ -111,17 +113,19 @@ def test_the_copies_are_gone():
               "SOURCE_RU": labels.SOURCE_RU, "source_title": labels.source_title,
               "AXES": mbti.AXES, "AXIS_LABEL": mbti.AXIS_LABEL, "num": scores.num, "HEAT_ROWS": labels.HEAT_ROWS}
     for mod in (analyses_text, characterization, charts, facts, journal, mbti, mbti_html, pdf_charts, pdf_document,
-                pdf_frames, pdf_mbti, pdf_report, pdf_sections, pdf_widgets, scores, segments, webapp, webparts):
+                pdf_frames, pdf_mbti, pdf_build, pdf_appendix, pdf_sections, pdf_widgets, scores, segments, webapp,
+                webparts):
         for name, obj in shared.items():
             assert getattr(mod, name, obj) is obj, f"{mod.__name__}.{name} is a copy"
     gone = {charts: ("_RADAR_LABEL", "_EMO_BAR_ORDER"), pdf_charts: ("MOD_ROWS",),
-            pdf_report: ("TITLES", "EMO_NAMES"), webparts: ("_pct_phrase", "_is_fiv2"),
+            pdf_build: ("TITLES", "EMO_NAMES"), pdf_appendix: ("TITLES", "EMO_NAMES"),
+            webparts: ("_pct_phrase", "_is_fiv2"),
             mbti_html: ("panel_title",), journal: ("MEMBERS",), characterization: ("_num",), mbti: ("_num",),
             scores: ("_num",)}
     for mod, names in gone.items():
         for name in names:
             assert not hasattr(mod, name), f"{mod.__name__}.{name}"
-    assert pdf_report.model_title is labels.model_title and "num" in scores.__all__
+    assert pdf_appendix.model_title is labels.model_title and "num" in scores.__all__
     assert pdf_sections.model_title is labels.model_title and pdf_sections.VOICE_RU is labels.VOICE_RU
     assert characterization.OUTLINE == HTML["track_outline"] == "#808080"
     # the analysis modules take the orders from labels and define none of the names themselves

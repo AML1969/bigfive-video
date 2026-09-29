@@ -4,11 +4,11 @@ A JobView holds what all three need: result.json with the Russian texts filled i
 clean view (scores.clean_view), the MBTI section (mbti.get_mbti: the saved one, or computed now and never written)
 and the characterization (characterization.build). Each of the three is built exactly once per JobView:
 
-  load_job(job_dir)  a job folder on disk (webapp.export_pdf, the preview of build_app)
+  load_job(job_dir)  a job folder on disk (pdf.export_pdf, the preview of build_app)
   for_page(rep)      a result in memory (webapp.page_outputs; the app hands the same JobView to the journal entry of
                      the analysis, journal.result(jv=…))
   from_report(rep)   a report in memory as it is: no file read or written and no Russian text added (the fallback of
-                     pdf_report.build_pdf, journal.result_lines)
+                     pdf.build.build_pdf, journal.result_lines)
 
 The files are found from the folder being opened (jobfiles), never from the paths result.json stores.
 """

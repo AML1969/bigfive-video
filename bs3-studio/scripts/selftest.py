@@ -16,7 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # bs3-studio/: `import bs3` is this working tree
 from bs3 import DEFAULT_MODEL, MODEL_TITLES  # noqa: E402
 from bs3.pipeline import Studio, run_analysis  # noqa: E402
-from bs3.webapp import export_pdf  # noqa: E402
+from bs3.pdf import export_pdf  # noqa: E402
 
 
 def main(argv=None) -> int:

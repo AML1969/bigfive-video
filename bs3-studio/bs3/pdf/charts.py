@@ -568,7 +568,7 @@ def _modalities_chart(plt, expl: dict | None, out_dir: Path) -> Optional[str]:
 
 
 def save_modalities_chart(expl: dict | None, out_dir: str | Path) -> Optional[str]:
-    """The modality chart alone (pdf_report draws it when save_pdf_charts was called without the explanation)."""
+    """The modality chart alone (pdf.build draws it when save_pdf_charts was called without the explanation)."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt

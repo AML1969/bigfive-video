@@ -19,9 +19,10 @@ from pathlib import Path
 
 from samples import rep
 
-from bs3 import caveats, jobfiles, pdf_report, ru_texts, webapp
+from bs3 import caveats, jobfiles, ru_texts, webapp
 from bs3.narrative import NO_EXPLAIN_RU
 from bs3.norms import TRAIT_KEYS
+from bs3.pdf import build as pdf_build
 
 JOB = "20000101_000000_0f3a9c1e"
 FRAMES = ("key_01_frame10.jpg", "key_02_frame25.jpg", "key_03_frame40.jpg")
@@ -92,13 +93,13 @@ def test_moved_data_root():
         def build(view, out, **kw):
             got.update(kw, out=out)
             return str(out)
-        saved = pdf_report.build_pdf, pdf_charts.save_pdf_charts, media.probe_media
-        pdf_report.build_pdf, pdf_charts.save_pdf_charts = build, lambda *a, **k: {}
+        saved = pdf_build.build_pdf, pdf_charts.save_pdf_charts, media.probe_media
+        pdf_build.build_pdf, pdf_charts.save_pdf_charts = build, lambda *a, **k: {}
         media.probe_media = lambda p: {"probed": Path(p).name}
         try:
             webapp.export_pdf(job)
         finally:
-            pdf_report.build_pdf, pdf_charts.save_pdf_charts, media.probe_media = saved
+            pdf_build.build_pdf, pdf_charts.save_pdf_charts, media.probe_media = saved
         assert (job / "result.json").read_bytes() == stored                 # nothing was written back
     frames, contrib, words = outs[I_FRAMES], outs[I_CONTRIB], outs[I_WORDS]
     assert frames.count("<img src='data:image/jpeg;base64,") == len(FRAMES), frames[:200]
@@ -281,7 +282,7 @@ def test_page_and_pdf_on_null_fields():
                 else:
                     assert NO_EXPLAIN_RU in outs[I_CONTRIB] and webapp.NO_FRAMES_OCEANAI in outs[I_FRAMES], case
             out = Path(d) / f"report_{i}.pdf"
-            assert pdf_report.build_pdf(copy.deepcopy(r), out) == str(out), case
+            assert pdf_build.build_pdf(copy.deepcopy(r), out) == str(out), case
             assert out.stat().st_size > 10_000, case
             if case.startswith("interview"):
                 text = _pdf_text(out)

@@ -18,7 +18,7 @@ import threading
 import time
 from pathlib import Path, PurePosixPath
 
-from . import (DEFAULT_MODEL, MODEL_TITLES, PRODUCT, PRODUCT_SLUG, caveats, characterization, jobfiles, jobview,
+from . import (DEFAULT_MODEL, MODEL_TITLES, PRODUCT, caveats, characterization, jobfiles, jobview,
                journal, mbti_html, settings)
 from .analyses_text import speech_description
 from .charts import (fig_emotion_bars, fig_emotions_timeline, fig_face_expr, fig_radar, fig_speech_timeline,
@@ -29,6 +29,7 @@ from .labels import EMO_RU
 from .narrative import NO_EXPLAIN_RU, method_notes
 from .palette import (ACCENT, BUTTON_PRIMARY, BUTTON_PRIMARY_HOVER, BUTTON_STOP, BUTTON_STOP_HOVER, CARD_TINT,
                       FACT_VALUE, HTML as PAL, PAGE_NOTE_OPACITY, SUBDUED_TEXT_LIGHT)
+from .pdf import export_pdf
 from .pipeline import Studio, run_analysis
 from .ru_texts import transcript_shown, vocabulary_shown
 from .scores import FACT_STATES, data_json, has_explanations
@@ -335,27 +336,6 @@ def page_values(jv: jobview.JobView) -> tuple:
            mbti_html.types_html(mb), mbti_html.strip_html(mb), mbti_html.read_html(mb))
     assert len(out) == N_PAGE
     return out
-
-
-def export_pdf(job_dir: str | Path) -> str:
-    from .pdf.charts import save_pdf_charts
-    from .media import probe_media
-    from .pdf_report import build_pdf
-    job = Path(job_dir)
-    # the files of this folder, whatever paths result.json stores; jobs processed before the Russian texts are
-    # translated once and stored back; the same clean numbers (design 6.1), the saved MBTI section or one computed now
-    # and never written (design 7.2) and the same characterization as the page
-    jv = jobview.load_job(job)
-    view = jv.view
-    view["chart_files"] = save_pdf_charts(view, job / jobfiles.CHARTS_DIR, jv.expl)
-    frames = [str(p) for p in jobfiles.key_frame_paths(job, jv.rep)]
-    media = view.get("media")
-    if not media or "error" in media:
-        inp = jobfiles.input_file(job)
-        media = probe_media(inp) if inp else None
-    stem = re.sub(r"[^A-Za-z0-9А-Яа-яЁё._-]+", "_", Path(view.get("original_file_name") or "video").stem)[:60]
-    return build_pdf(view, job / f"{PRODUCT_SLUG}_report_{stem}.pdf", explanation=jv.expl, media=media,
-                     key_frames=frames, mbti=jv.mb, character=jv.character)
 
 
 def pdf_for_download(job_dir: str | Path) -> str:

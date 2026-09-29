@@ -16,11 +16,11 @@ from pathlib import Path
 
 from samples import english, rep
 
-from bs3 import caveats, characterization, mbti, pdf_report, scores
+from bs3 import caveats, characterization, mbti, scores
 from bs3.facts import card_item, fact_cards
 from bs3.narrative import NO_EXPLAIN_RU
 from bs3.norms import TRAIT_KEYS
-from bs3.pdf import mbti_section
+from bs3.pdf import appendix, build, mbti_section
 from bs3.pdf.document import TEXT_W_MM, Report
 
 # words of 3.0 that no report of 3.1 may carry (outside the transcript, which the fixtures do not have)
@@ -41,7 +41,7 @@ def _parts(r: dict):
 def _build(r: dict, explanation: dict | None = None) -> tuple[Path, dict]:
     view, mb, ch = _parts(r)
     out = Path(tempfile.mkdtemp(dir=_TMP.name)) / "report.pdf"
-    pdf_report.build_pdf(view, out, explanation=explanation, mbti=mb, character=ch)
+    build.build_pdf(view, out, explanation=explanation, mbti=mb, character=ch)
     return out, mb
 
 
@@ -76,12 +76,12 @@ def _text(path: Path) -> str:
 def test_plan_puts_mbti_after_profile():
     view, mb, _ = _parts(rep("B"))
     pdf = Report()
-    pdf_report._plan(pdf, view, None, [], {}, mb)
+    build._plan(pdf, view, None, [], {}, mb)
     keys = list(pdf.plan)
     assert keys[:2] == ["profile", "mbti"], keys
     assert pdf.plan["mbti"] == 2
     pdf2 = Report()
-    pdf_report._plan(pdf2, view, None, [], {}, None)            # no type: no section, numbers close up
+    build._plan(pdf2, view, None, [], {}, None)            # no type: no section, numbers close up
     assert "mbti" not in pdf2.plan and list(pdf2.plan)[1] != "mbti"
 
 
@@ -89,14 +89,14 @@ def test_plan_explain_section_for_own_model_only():
     """Section 5 exists only for a job of AMLAI 1.0 with an explanation or key frames (3.1)."""
     view, mb, _ = _parts(rep("B"))
     pdf = Report()
-    pdf_report._plan(pdf, view, EXPL, ["frame.jpg"], {}, mb)
+    build._plan(pdf, view, EXPL, ["frame.jpg"], {}, mb)
     assert "explain" not in pdf.plan                            # OCEAN-AI: never, whatever the job carries
     own, mb2, _ = _parts(_own("B"))
     pdf = Report()
-    pdf_report._plan(pdf, own, EXPL, [], {}, mb2)
+    build._plan(pdf, own, EXPL, [], {}, mb2)
     assert "explain" in pdf.plan
     pdf = Report()
-    pdf_report._plan(pdf, own, None, [], {}, mb2)
+    build._plan(pdf, own, None, [], {}, mb2)
     assert "explain" not in pdf.plan
 
 
@@ -117,7 +117,7 @@ def test_facts_start_with_type_card():
     trimmed, legend2 = fact_cards(view, mb, speech_cards_follow=True)
     assert [card_item(f)[3] for f in trimmed] == [card_item(f)[3] for f in cards] and legend2 == legend
     # the report prints the cards of facts.fact_cards: _render has no copy of its own
-    assert not hasattr(pdf_report, "_pdf_facts") and not hasattr(pdf_report, "_speech_cards")
+    assert not hasattr(build, "_pdf_facts") and not hasattr(build, "_speech_cards")
 
 
 def test_segment_types_by_start():
@@ -225,12 +225,12 @@ def test_analysis_rows_one_model():
     recorded modalities of a 3.1 job, or those of the shown model when an older job recorded member names instead."""
     view = scores.clean_view(rep("B"))
     view["modalities_used"] = ["oceanai", "mm"]                     # a job of 3.0
-    rows = dict(pdf_report._analysis_rows(view))
+    rows = dict(appendix._analysis_rows(view))
     assert rows["Модель"] == "OCEAN-AI, веса MuPTA" and rows["Модальности"] == "голос, видео, речь"
     assert rows["Обучающие данные"] == "MuPTA (русская речь)" and "Язык речи" not in rows and "Система" not in rows
     view["modalities_used"] = ["audio", "video", "text"]           # a job of 3.1
-    assert dict(pdf_report._analysis_rows(view))["Модальности"] == "голос, видео, речь"
-    own = dict(pdf_report._analysis_rows(scores.clean_view(_own("B"))))    # ["mm"] recorded
+    assert dict(appendix._analysis_rows(view))["Модальности"] == "голос, видео, речь"
+    own = dict(appendix._analysis_rows(scores.clean_view(_own("B"))))    # ["mm"] recorded
     assert own["Модель"] == "AMLAI 1.0" and own["Модальности"] == "лицо, голос, речь, описание поведения"
     assert own["Обучающие данные"] == "First Impressions V2"
     for r in (rows, own):
@@ -251,7 +251,7 @@ def test_interview_label_and_c2_follow_the_model():
     pdf = Report()
     assert pdf._bar_rows(view["traits"], view.get("interview")) == [(k, view["traits"][k]) for k in TRAIT_KEYS]
     out = Path(tempfile.mkdtemp(dir=_TMP.name)) / "oa.pdf"
-    pdf_report.build_pdf(view, out, mbti=mb, character=ch)
+    build.build_pdf(view, out, mbti=mb, character=ch)
     text = _text(out)
     assert "собеседовани" not in text.lower() and "Собе-" not in text and "ChaLearn" not in text
     assert caveats.text("C1")[:40] in text and caveats.text("C10")[:40] in text
@@ -262,7 +262,7 @@ def test_interview_label_and_c2_follow_the_model():
     view, mb, ch = _parts(own)
     assert view["interview"] == {"score": 0.4011, "name_ru": "впечатление «пригласить на собеседование»"}
     out = Path(tempfile.mkdtemp(dir=_TMP.name)) / "mm.pdf"
-    pdf_report.build_pdf(view, out, mbti=mb, character=ch)
+    build.build_pdf(view, out, mbti=mb, character=ch)
     text = _text(out)
     assert "Впечатление «собеседование» 0.40" in text and caveats.text("C2")[:50] in text
     assert "Коричневая полоска — впечатление «собеседование» (метка модели AMLAI 1.0, шкала 0…1)" in text
@@ -281,12 +281,12 @@ def test_short_transcript_stays_with_appendix_a():
     seen = set()
     for y0 in range(60, 280, 2):
         pdf = Report()
-        pdf_report._plan(pdf, view, None, [], {}, None)
+        build._plan(pdf, view, None, [], {}, None)
         assert set(pdf.appx) == {"file", "transcript"}
         pdf.add_page()
         pdf.set_y(y0)
-        lay = pdf_report._appendix_layout(pdf, view, None)
-        pdf_report._appendices(pdf, view, None, False, None)
+        lay = appendix._appendix_layout(pdf, view, None)
+        appendix._appendices(pdf, view, None, False, None)
         kind = "tight" if lay["tight"] else "new_page" if lay["new_page"] else "normal"
         seen.add(kind)
         if kind == "tight":
@@ -298,17 +298,37 @@ def test_short_transcript_stays_with_appendix_a():
     r["transcript"] = " ".join(["Это длинный транскрипт из многих предложений."] * 60)
     view = scores.clean_view(r)
     pdf = Report()
-    pdf_report._plan(pdf, view, None, [], {}, None)
+    build._plan(pdf, view, None, [], {}, None)
     pdf.add_page()
     pdf.set_y(200)
-    assert pdf_report._appendix_layout(pdf, view, None)["tight"] is False
+    assert appendix._appendix_layout(pdf, view, None)["tight"] is False
 
 
 def test_build_pdf_computes_missing_parts():
     """A caller that passes only the raw result gets the same characterization and type."""
     r = rep("B")
     out = Path(tempfile.mkdtemp(dir=_TMP.name)) / "raw.pdf"
-    pdf_report.build_pdf(r, out)
+    build.build_pdf(r, out)
     assert out.exists()
     text = _text(out)
     assert "Характеристика личности" in text and "ENFJ" in text
+
+
+def test_export_pdf_builds_without_media():
+    """export_pdf (this stage owns it) opens a job folder and builds the PDF even when the job stores no media and has
+    no input.* to probe, and when the stored media is an error (T6(3)): the fallback yields no media, the file appendix
+    then names only the file, and the PDF stays in the folder as BS_Profiler_3_report_<stem>.pdf."""
+    from bs3 import jobfiles
+    from bs3.pdf import export_pdf
+    for stored in (None, {"error": "ffprobe failed"}):
+        d = Path(tempfile.mkdtemp(dir=_TMP.name))
+        job = d / "20000101_000000_0f3a9c1e"
+        job.mkdir()
+        r = rep("B")
+        r.pop("media", None)
+        if stored is not None:
+            r["media"] = stored
+        jobfiles.write_json(job / jobfiles.RESULT, r)
+        pdf = Path(export_pdf(job))
+        assert pdf.exists() and pdf.parent == job and pdf.stat().st_size > 10_000, stored
+        assert pdf.name.startswith("BS_Profiler_3_report_") and pdf.suffix == ".pdf", stored

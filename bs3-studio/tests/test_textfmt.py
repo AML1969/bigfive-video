@@ -13,7 +13,9 @@ from __future__ import annotations
 import inspect
 
 from bs3 import (analyses_text, caveats, characterization, charts, facts, journal, mbti, mbti_html, narrative,
-                 pdf_report, report, scores, segments, textfmt, webapp, webparts)
+                 report, scores, segments, textfmt, webapp, webparts)
+from bs3.pdf import appendix as pdf_appendix
+from bs3.pdf import build as pdf_build
 from bs3.pdf import charts as pdf_charts
 from bs3.pdf import document as pdf_document
 from bs3.pdf import fmt as pdf_fmt
@@ -134,12 +136,12 @@ def test_the_copies_are_gone():
               "mmss_labels": mmss_labels, "clean_word": clean_word, "clock": clock, "fiv2_ref_ru": fiv2_ref_ru,
               "pct_phrase": pct_phrase}
     for mod in (analyses_text, caveats, characterization, charts, facts, journal, mbti, mbti_html, narrative,
-                pdf_charts, pdf_document, pdf_fmt, pdf_frames, pdf_mbti, pdf_report, pdf_sections, pdf_widgets, scores,
-                segments, webapp, webparts):
+                pdf_charts, pdf_document, pdf_fmt, pdf_frames, pdf_mbti, pdf_build, pdf_appendix, pdf_sections,
+                pdf_widgets, scores, segments, webapp, webparts):
         for name, fn in shared.items():
             assert getattr(mod, name, fn) is fn, f"{mod.__name__}.{name} is a copy"
     old = {caveats: "_plural", characterization: "_plural", mbti_html: "_mmss", pdf_mbti: "_mmss", journal: "_mmss",
-           charts: "_clock", webapp: "_clock", webparts: "_ref_ru", pdf_report: "_ref_ru"}
+           charts: "_clock", webapp: "_clock", webparts: "_ref_ru", pdf_build: "_ref_ru", pdf_appendix: "_ref_ru"}
     for mod, name in old.items():
         assert not hasattr(mod, name), f"{mod.__name__}.{name}"
     assert not hasattr(webparts, "_pct_phrase") and not hasattr(webparts, "_is_fiv2")

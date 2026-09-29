@@ -273,6 +273,7 @@ def render_job(env: Env, job: Path, want) -> dict:
     the journal is wanted: the app writes the journal entry after the page, from the same result)."""
     from bs3 import characterization, facts, frame_captions, journal, mbti
     from bs3 import webapp
+    from bs3.pdf import export_pdf
     from bs3.scores import clean_view
 
     copy_dir = env.tmp / "jobs" / job.name
@@ -337,7 +338,7 @@ def render_job(env: Env, job: Path, want) -> dict:
         if any(want(b) for b in ("pdf.text", "pdf.meta", "pdf.charts", "frame_captions.pdf")):
             recorded.clear()
             try:
-                pdf = Path(webapp.export_pdf(copy_dir))
+                pdf = Path(export_pdf(copy_dir))
                 text, pages, tool = _pdf_text(pdf)
                 out["pdf.text"] = text
                 out["pdf.meta"] = {"file": pdf.name, "folder": str(pdf.parent), "pages": pages, "text_tool": tool}

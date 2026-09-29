@@ -16,9 +16,10 @@ import inspect
 import re
 from contextlib import contextmanager
 
-from bs3 import analyses_text, characterization, facts, pdf_report, scores, webapp
+from bs3 import analyses_text, characterization, facts, scores, webapp
 from bs3.analyses import speech_stats
 from bs3.facts import segment_cells
+from bs3.pdf import appendix
 from bs3.pdf.document import Report
 from bs3.scores import ABOVE, BELOW, NEUTRAL
 
@@ -78,7 +79,7 @@ def _pdf_rows(rep: dict) -> tuple[list, list]:
     pdf.appx["segments"] = "Б"
     got = {}
     pdf.table = lambda header, rows, *a, **k: got.update(header=header, rows=rows)
-    pdf_report._segments_table(pdf, rep, None)
+    appendix._segments_table(pdf, rep, None)
     return got["header"], got["rows"]
 
 
@@ -105,9 +106,9 @@ def test_the_segment_cells_of_the_page_equal_the_pdf():
 
 def test_both_tables_take_the_cells_from_facts():
     assert "segment_cells(r)" in inspect.getsource(webapp._segments_table)
-    assert "segment_cells(r)" in inspect.getsource(pdf_report._segments_table)
-    assert webapp.segment_cells is pdf_report.segment_cells is facts.segment_cells
-    assert not hasattr(webapp, "_dominant") and not hasattr(pdf_report, "_dominant_text")
+    assert "segment_cells(r)" in inspect.getsource(appendix._segments_table)
+    assert webapp.segment_cells is appendix.segment_cells is facts.segment_cells
+    assert not hasattr(webapp, "_dominant") and not hasattr(appendix, "_dominant_text")
     assert "truncate" not in inspect.getsource(webapp)
     # a short video keeps m:ss, an hour and more writes h:mm:ss in the whole column, rounded
     short = {"analyses": {"per_segment": [_seg(1, 0.0, 19.6), _seg(2, 19.6, 39.5)]}}

@@ -21,10 +21,12 @@ from pathlib import Path
 
 from samples import english, rep
 
-from bs3 import (analyses_text, bands, caveats, characterization, facts, frame_captions, mbti, mbti_html, pdf_report,
+from bs3 import (analyses_text, bands, caveats, characterization, facts, frame_captions, mbti, mbti_html,
                  scores, webapp)
 from bs3.analyses import speech_stats
 from bs3.facts import FER_NOTE, card_item, fact_cards, head_motion_word, speech_cards
+from bs3.pdf import appendix as pdf_appendix
+from bs3.pdf import build as pdf_build
 from bs3.pdf import frames as pdf_frames
 from bs3.pdf import mbti_section
 from bs3.pdf import sections as pdf_sections
@@ -203,11 +205,11 @@ def test_the_page_and_the_pdf_take_the_key_facts_from_fact_cards():
     assert ">42</div>" in html and "Маркер · выше" in html and facts.FACTS_LEGEND in html
     with _patched(webapp, fact_cards=lambda view, mb, **k: ([marker], False)):
         assert facts.FACTS_LEGEND not in webapp._facts_html(r, TYPE)
-    for mod in (pdf_report, pdf_sections):
+    for mod in (pdf_build, pdf_appendix, pdf_sections):
         assert "только время, когда человек говорит" not in inspect.getsource(mod), mod.__name__
         for name in ("_pdf_facts", "_speech_cards", "HOW_TO_READ"):
             assert not hasattr(mod, name), (mod.__name__, name)
-    assert "fact_cards(report, mb, speech_cards_follow=" in inspect.getsource(pdf_report._render)
+    assert "fact_cards(report, mb, speech_cards_follow=" in inspect.getsource(pdf_build._render)
     assert not hasattr(webapp, "FOOTER_CAVEATS") and not hasattr(mbti_html, "READ_CAVEATS")
 
 
@@ -279,7 +281,7 @@ def test_fer_note_with_the_page_pointer_and_without():
     pdf = _Page({"emotions": 3})
     pdf_sections._emotions_section(pdf, r, {"face_expr": "face.png"})
     assert pdf.args("chart_block")[-1][1].endswith(" " + OLD_FER_PDF)
-    for mod in (webapp, pdf_report, pdf_sections, pdf_frames):
+    for mod in (webapp, pdf_build, pdf_appendix, pdf_sections, pdf_frames):
         assert "FER-2013" not in inspect.getsource(mod), mod.__name__
 
 
@@ -298,7 +300,7 @@ def test_note_what_gives_the_two_wordings():
         pass
     else:
         raise AssertionError("an unknown medium is refused")
-    for mod in (webapp, pdf_report, pdf_sections, pdf_frames):
+    for mod in (webapp, pdf_build, pdf_appendix, pdf_sections, pdf_frames):
         assert "момент ролика" not in inspect.getsource(mod), mod.__name__
     # each takes its own wording (the notes of the real jobs are compared byte for byte by compare_baseline)
     assert 'frame_captions.note_what(entries, tenths, "page")' in inspect.getsource(webapp._frames_html)

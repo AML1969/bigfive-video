@@ -18,9 +18,11 @@ from pathlib import Path
 from samples import english, rep
 
 import bs3
-from bs3 import (characterization, charts, jobfiles, jobview, journal, mbti, pdf_report, ru_texts, scores, webapp,
+from bs3 import (characterization, charts, jobfiles, jobview, journal, mbti, ru_texts, scores, webapp,
                  webparts)
 from bs3.norms import TRAIT_KEYS
+from bs3.pdf import appendix as pdf_appendix
+from bs3.pdf import build as pdf_build
 from bs3.pdf import charts as pdf_charts          # the print charts; `charts` is the web charts module
 from bs3.pdf import frames as pdf_frames
 from bs3.pdf import sections as pdf_sections
@@ -225,7 +227,7 @@ def test_export_pdf_opens_the_job_once():
 
     with tempfile.TemporaryDirectory() as d:
         job = _jobs(Path(d))["3.1 mm"]
-        with _patched(pdf_report, build_pdf=build), _patched(pdf_charts, save_pdf_charts=draw), \
+        with _patched(pdf_build, build_pdf=build), _patched(pdf_charts, save_pdf_charts=draw), \
                 _patched(media, probe_media=lambda p: {"probed": Path(p).name}), _counted() as calls:
             webapp.export_pdf(job)
         view = scores.clean_view(jobfiles.load_job(job)[0])
@@ -254,7 +256,7 @@ def test_build_pdf_builds_only_what_the_caller_does_not_pass():
     view = scores.clean_view(raw)
     mb = mbti.get_mbti(raw, view)
     ch = characterization.build(view, mb)
-    with tempfile.TemporaryDirectory() as d, _patched(pdf_report, _render=render):
+    with tempfile.TemporaryDirectory() as d, _patched(pdf_build, _render=render):
         out = Path(d) / "r.pdf"
         for case, given, kw, want in (("raw", raw, {}, BUILT_ONCE),
                                       ("view", view, {}, {"clean_view": 0, "get_mbti": 1, "build": 1}),
@@ -263,7 +265,7 @@ def test_build_pdf_builds_only_what_the_caller_does_not_pass():
                                        {"clean_view": 1, "get_mbti": 0, "build": 0})):
             drawn.clear()
             with _counted() as calls:
-                assert pdf_report.build_pdf(copy.deepcopy(given), out, **kw) == str(out)
+                assert pdf_build.build_pdf(copy.deepcopy(given), out, **kw) == str(out)
             assert calls == want, (case, calls)
             assert len(drawn) == 2 and drawn[0] == drawn[1], case         # the two layout passes
             report, got_mb, got_ch = drawn[1]
@@ -372,22 +374,22 @@ def test_shown_model_is_the_model_each_place_chose():
 def test_the_places_ask_shown_model():
     """The page, the charts, the PDF and the journal take the model from scores (shown_model, has_explanations); no
     module keeps an expression of its own, and pdf_report._main_model is gone."""
-    assert charts.shown_model is pdf_charts.shown_model is pdf_report.shown_model is scores.shown_model
+    assert charts.shown_model is pdf_charts.shown_model is pdf_appendix.shown_model is scores.shown_model
     assert pdf_sections.shown_model is scores.shown_model
-    assert webapp.has_explanations is pdf_report.has_explanations is pdf_sections.has_explanations \
+    assert webapp.has_explanations is pdf_build.has_explanations is pdf_sections.has_explanations \
         is scores.has_explanations
-    assert not hasattr(pdf_report, "_main_model")
+    assert not hasattr(pdf_build, "_main_model") and not hasattr(pdf_appendix, "_main_model")
     src = inspect.getsource
     assert "model_title(shown_model(rep))" in src(charts.fig_radar)
     assert "model_title(shown_model(rep))" in src(pdf_charts._radar_chart)
     assert "if not has_explanations(rep):" in src(webapp._frames_html)
     assert "own = has_explanations(view)" in src(webapp.page_values)
     assert "model_title(shown_model(view))" in src(journal)
-    # has_explanations: _plan twice (pdf_report), _no_explain_note (pdf/sections.py); shown_model: _analysis_rows and
-    # _segments_table (pdf_report), _passport (pdf/sections.py)
-    parts = [src(m) for m in (pdf_report, pdf_sections, pdf_frames)]
-    assert [s.count("has_explanations(report)") for s in parts] == [2, 1, 0]
-    assert [s.count("shown_model(report)") for s in parts] == [2, 1, 0]
+    # has_explanations: _plan twice (pdf/build.py), _no_explain_note (pdf/sections.py); shown_model: _analysis_rows and
+    # _segments_table (pdf/appendix.py), _passport (pdf/sections.py)
+    parts = [src(m) for m in (pdf_build, pdf_appendix, pdf_sections, pdf_frames)]
+    assert [s.count("has_explanations(report)") for s in parts] == [2, 0, 1, 0]
+    assert [s.count("shown_model(report)") for s in parts] == [0, 2, 1, 0]
     for p in sorted(Path(bs3.__file__).parent.rglob("*.py")):
         text = p.read_text(encoding="utf-8")
         assert not re.search(r"""get\("main_system"\)\s*or\b""", text) or p.name == "scores.py", p
