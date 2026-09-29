@@ -18,8 +18,8 @@ from pathlib import Path
 from samples import english, rep
 
 import bs3
-from bs3 import (characterization, charts, jobfiles, jobview, journal, mbti, ru_texts, scores, webapp,
-                 webparts)
+from bs3 import characterization, jobfiles, jobview, journal, mbti, ru_texts, scores, webapp
+from bs3.web import charts, parts as webparts
 from bs3.norms import TRAIT_KEYS
 from bs3.pdf import appendix as pdf_appendix
 from bs3.pdf import build as pdf_build

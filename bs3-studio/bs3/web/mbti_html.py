@@ -18,14 +18,14 @@ from __future__ import annotations
 
 import html as _html
 
-from . import caveats
-from .labels import mbti_model_title
-from .mbti import AXES, AXIS_LABEL, TABLE_NOTE, TABLE_ROWS, corr_cell, load_config, source_title, summary_line
-from .norms import RU_NAMES
-from .palette import HTML as PAL
-from .scores import LEVELS_RU, level_phrase, score_text
-from .textfmt import clock, plural_ru
-from .webparts import NOTE, table_html, th_text
+from .. import caveats
+from ..labels import mbti_model_title
+from ..mbti import AXES, AXIS_LABEL, TABLE_NOTE, TABLE_ROWS, corr_cell, load_config, source_title, summary_line
+from ..norms import RU_NAMES
+from ..palette import HTML as PAL
+from ..scores import LEVELS_RU, level_phrase, score_text
+from ..textfmt import clock, plural_ru
+from .parts import NOTE, table_html, th_text
 
 OUTLINE = PAL["track_outline"]
 HATCH = "repeating-linear-gradient(45deg,rgba(128,128,128,.25) 0 3px,transparent 3px 6px)"
@@ -244,7 +244,7 @@ def read_html(mb: dict | None = None) -> str:
 
 def emo_intro_html(view: dict) -> str:
     """«Эмоции и голос: коротко»: the text-emotion and voice sentences (the same as the PDF intros) in one paragraph."""
-    from .analyses_text import analyses_parts
+    from ..analyses_text import analyses_parts
     parts = analyses_parts(view)
     text = " ".join(p for p in (parts.get("text_emotion"), parts.get("voice")) if p)
     return f"<p style='{TEXT14};margin:0'>{_e(text)}</p>" if text else ""

@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import inspect
 
-from bs3 import (analyses_text, caveats, characterization, charts, facts, journal, mbti, mbti_html, narrative,
-                 report, scores, segments, textfmt, webapp, webparts)
+from bs3 import (analyses_text, caveats, characterization, facts, journal, mbti, narrative, report,
+                 scores, segments, textfmt, webapp)
+from bs3.web import charts, mbti_html, parts as webparts
 from bs3.pdf import appendix as pdf_appendix
 from bs3.pdf import build as pdf_build
 from bs3.pdf import charts as pdf_charts

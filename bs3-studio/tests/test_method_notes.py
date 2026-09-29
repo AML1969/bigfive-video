@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from samples import english, rep
 
-from bs3 import labels, narrative, scores, textfmt, webparts
+from bs3 import labels, narrative, scores, textfmt
+from bs3.web import parts as webparts
 
 RELATIVE = ("опорн", "положени", "русских роликов", "обработанных", "большинства", "предварительн", "типичн",
             "на русской речи её", "на русских роликах", "порядок черт")

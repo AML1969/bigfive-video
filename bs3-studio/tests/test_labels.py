@@ -9,8 +9,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from bs3 import (MODEL_TITLES, analyses_text, characterization, charts, facts, journal, labels, mbti, mbti_html,
-                 scores, segments, webapp, webparts)
+from bs3 import (MODEL_TITLES, analyses_text, characterization, facts, journal, labels, mbti, scores,
+                 segments, webapp)
+from bs3.web import charts, mbti_html, parts as webparts
 from bs3.pdf import appendix as pdf_appendix
 from bs3.pdf import build as pdf_build
 from bs3.pdf import charts as pdf_charts
@@ -143,7 +144,7 @@ def test_web_charts_load_no_analysis_model():
     """The emotion chart used to import analyses/emotions_text and face_expr (torch, transformers, cv2) for two lists;
     the radar imported webparts for the model title. Built in a fresh interpreter, none of them is loaded."""
     code = ("import sys\n"
-            "from bs3 import charts\n"
+            "from bs3.web import charts\n"
             "rep = {'traits': {k: {'score': 0.5} for k in ('openness', 'conscientiousness', 'extraversion',"
             " 'agreeableness', 'emotional_stability')}, 'model': {'selected': 'mm'},"
             " 'analyses': {'per_segment': [{'start': 0, 'end': 20, 'emotions_text': {'joy': 1.0},"
@@ -152,7 +153,7 @@ def test_web_charts_load_no_analysis_model():
             "for f in (charts.fig_emotions_timeline, charts.fig_emotion_bars, charts.fig_radar):\n"
             "    f(rep, 'light')\n"
             "bad = ('torch', 'cv2', 'transformers', 'librosa', 'bs3.analyses.emotions_text', 'bs3.analyses.face_expr',"
-            " 'bs3.webparts')\n"
+            " 'bs3.web.parts')\n"
             "print(sorted(m for m in bad if m in sys.modules))\n")
     r = subprocess.run([sys.executable, "-c", code], cwd=str(ROOT), capture_output=True, text=True, timeout=120)
     assert r.returncode == 0, r.stderr[-2000:]

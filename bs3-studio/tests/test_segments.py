@@ -16,7 +16,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from bs3 import charts, facts, frame_captions, labels, narrative, scores, segments, textfmt, webapp
+from bs3 import facts, frame_captions, labels, narrative, scores, segments, textfmt, webapp
+from bs3.web import charts
 from bs3.norms import TRAIT_KEYS
 from bs3.pdf import charts as pdf_charts          # the print charts; `charts` is the web charts module
 from bs3.pdf import appendix, build, document, fmt, frames, layout, mbti_section, sections, widgets

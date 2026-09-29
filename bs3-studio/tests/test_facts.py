@@ -21,8 +21,9 @@ from pathlib import Path
 
 from samples import english, rep
 
-from bs3 import (analyses_text, bands, caveats, characterization, facts, frame_captions, mbti, mbti_html,
-                 scores, webapp)
+from bs3 import (analyses_text, bands, caveats, characterization, facts, frame_captions, mbti, scores,
+                 webapp)
+from bs3.web import mbti_html
 from bs3.analyses import speech_stats
 from bs3.facts import FER_NOTE, card_item, fact_cards, head_motion_word, speech_cards
 from bs3.pdf import appendix as pdf_appendix
@@ -313,7 +314,7 @@ def test_analyses_parts_moved_to_analyses_text():
     assert importlib.util.find_spec("bs3.narrative2") is None
     assert not hasattr(facts, "analyses_parts") and not hasattr(facts, "_level")
     assert pdf_sections.analyses_parts is analyses_text.analyses_parts
-    assert "from .analyses_text import analyses_parts" in inspect.getsource(mbti_html.emo_intro_html)
+    assert "from ..analyses_text import analyses_parts" in inspect.getsource(mbti_html.emo_intro_html)
     parts = analyses_text.analyses_parts(_rep(hm=0.2))
     assert set(parts) == {"text_emotion", "voice", "face", "speech"}
     assert parts["face"].endswith("; голова двигается активно.")

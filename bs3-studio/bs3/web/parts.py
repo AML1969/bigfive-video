@@ -11,12 +11,12 @@ from __future__ import annotations
 
 import logging
 
-from . import MODEL_TITLES
-from .labels import ROW_TITLES, model_title
-from .norms import TRAIT_KEYS
-from .palette import HTML as PAL
-from .scores import scored
-from .textfmt import fiv2_ref_ru, pct_phrase
+from .. import MODEL_TITLES
+from ..labels import ROW_TITLES, model_title
+from ..norms import TRAIT_KEYS
+from ..palette import HTML as PAL
+from ..scores import scored
+from ..textfmt import fiv2_ref_ru, pct_phrase
 
 log = logging.getLogger("bs3.web")
 
@@ -168,7 +168,7 @@ def _bar_html(traits: dict, interview: dict | None) -> str:
     if any_tick:
         notes.append(TICK_NOTE)
     if interview:                      # C2 explains the label where it is shown (the page footer holds only what
-        from . import caveats          # is true for both models)
+        from .. import caveats          # is true for both models)
         notes.append(caveats.text("C2"))
     return ("<div style='max-width:640px'>" + "".join(rows) + _scale_row() + _legend(legend) +
             f"<div style='{NOTE};margin-top:8px'>{' '.join(notes)}</div></div>")
@@ -189,7 +189,7 @@ def _words_text(expl: dict) -> str:
     lists explanation.json keeps under "readable_words", which the PDF prints too. Reads only: the lists of an older
     job are made and stored before the page is built, with its other Russian texts (jobview,
     ru_texts.ensure_russian_job)."""
-    from .narrative import words_summary
+    from ..narrative import words_summary
     return "\n\n".join(words_summary(expl.get("readable_words") or {}, expl, TRAIT_TITLES))
 
 

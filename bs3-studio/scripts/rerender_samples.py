@@ -177,7 +177,7 @@ def check_pdf(c: Checks, src: Path, dest: Path, mb: dict | None, exp: dict | Non
 def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path | None = None) -> Checks:
     from bs3 import caveats, labels, mbti
     from bs3.facts import FACT_STATE_RU, FACTS_LEGEND
-    from bs3.charts import fig_traits_timeline
+    from bs3.web.charts import fig_traits_timeline
     from bs3.narrative import NO_EXPLAIN_RU
     from bs3.scores import clean_view
     from bs3.webapp import N_PAGE, page_outputs

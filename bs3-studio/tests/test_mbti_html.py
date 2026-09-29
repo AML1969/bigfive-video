@@ -10,7 +10,8 @@ import re
 
 from samples import english, rep
 
-from bs3 import caveats, mbti, mbti_html, scores
+from bs3 import caveats, mbti, scores
+from bs3.web import mbti_html
 
 AN_B = {"voice": {"mean": {"arousal": 0.1536, "dominance": 0.2612, "valence": 0.3717}},
         "emotions_text": {"mean": {"joy": 0.0611, "surprise": 0.0049, "neutral": 0.8604, "sadness": 0.0233,

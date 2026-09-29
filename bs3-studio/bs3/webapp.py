@@ -19,10 +19,8 @@ import time
 from pathlib import Path, PurePosixPath
 
 from . import (DEFAULT_MODEL, MODEL_TITLES, PRODUCT, caveats, characterization, jobfiles, jobview,
-               journal, mbti_html, settings)
+               journal, settings)
 from .analyses_text import speech_description
-from .charts import (fig_emotion_bars, fig_emotions_timeline, fig_face_expr, fig_radar, fig_speech_timeline,
-                     fig_traits_timeline, fig_voice_timeline, plot_html as _plot_html)
 from .facts import (FACTS_LEGEND, FER_NOTE, card_item, fact_cards, fact_label, head_motion_word, segment_cells,
                     speech_cards)
 from .labels import EMO_RU
@@ -35,7 +33,11 @@ from .ru_texts import transcript_shown, vocabulary_shown
 from .scores import FACT_STATES, data_json, has_explanations
 from .segments import representative
 from .textfmt import clock, fmt_secs, mmss_labels, plural_ru, seg_label
-from .webparts import NOTE, _bar_html, _contrib_html, _words_text, model_line, table_html, th_text
+from .web import mbti_html
+from .web.charts import (fig_emotion_bars, fig_emotions_timeline, fig_face_expr, fig_radar, fig_speech_timeline,
+                         fig_traits_timeline, fig_voice_timeline)
+from .web.parts import NOTE, _bar_html, _contrib_html, _words_text, model_line, table_html, th_text
+from .web.plotframe import plot_html as _plot_html
 
 log = logging.getLogger("bs3.web")
 # the note of the tab «Данные» when scores.data_json left something out of a Russian job: the percentiles and the

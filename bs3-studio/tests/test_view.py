@@ -230,7 +230,8 @@ def test_rounded_once():
     """A score is rounded once, to the printed two decimals, and the letter, the borderline flag, the level word and
     the printed number agree everywhere (0.6497 and 0.35049 print as 0.65 and 0.35 and are not on the border;
     0.75499 prints 0.75, not 0.76 through 0.7550; 0.47531 prints 0.48, not 0.47 through 0.475)."""
-    from bs3 import mbti, mbti_html
+    from bs3 import mbti
+    from bs3.web import mbti_html
     sc = {"openness": 0.6497, "conscientiousness": 0.35049, "extraversion": 0.47531, "agreeableness": 0.75499,
           "emotional_stability": 0.5}
     m = mbti.mbti_for("mm", sc)
