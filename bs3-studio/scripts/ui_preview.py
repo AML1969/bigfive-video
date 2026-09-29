@@ -27,11 +27,11 @@ settings.apply_process_env()
 Path(os.environ["GRADIO_TEMP_DIR"]).mkdir(parents=True, exist_ok=True)
 
 from bs3.pipeline import Studio  # noqa: E402
-from bs3.webapp import build_app  # noqa: E402
+from bs3.web.app import build_app  # noqa: E402
 
 print("preview job:", job, "port:", port, flush=True)
 demo = build_app(Studio(), jobs, preview_job=job)
 # no allowed_paths: the page shows no file of the job folder (key frames are data URIs, charts are srcdoc), and the PDF
-# is handed to Gradio from its own temp folder (webapp.pdf_for_download)
+# is handed to Gradio from its own temp folder (web.app.pdf_for_download)
 demo.queue(default_concurrency_limit=settings.QUEUE_CONCURRENCY).launch(server_name=settings.HOST, server_port=port,
                                                                          show_api=False, show_error=True)

@@ -123,10 +123,10 @@ def test_work_dirs_under_bs3_data():
     assert jobs.startswith(base + os.sep), jobs
     assert port == web_port == "7880", (port, web_port)
     assert bs2_mods == "[]", bs2_mods
-    # the work dir of webapp.main defaults to settings.JOBS_DIR (read from the source: importing webapp is slow)
-    web = (ROOT / "bs3" / "webapp.py").read_text(encoding="utf-8")
+    # the work dir of web.app.main defaults to settings.JOBS_DIR (read from the source: importing the app is slow)
+    web = (ROOT / "bs3" / "web" / "app.py").read_text(encoding="utf-8")
     main = next(n for n in ast.parse(web).body if isinstance(n, ast.FunctionDef) and n.name == "main")
-    assert "work_dir or settings.JOBS_DIR" in ast.get_source_segment(web, main), "webapp.main: work dir default"
+    assert "work_dir or settings.JOBS_DIR" in ast.get_source_segment(web, main), "web.app.main: work dir default"
 
 
 def test_product_name_and_version():

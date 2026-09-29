@@ -21,9 +21,8 @@ from pathlib import Path
 
 from samples import english, rep
 
-from bs3 import (analyses_text, bands, caveats, characterization, facts, frame_captions, mbti, scores,
-                 webapp)
-from bs3.web import mbti_html, page
+from bs3 import (analyses_text, bands, caveats, characterization, facts, frame_captions, mbti, scores)
+from bs3.web import app, mbti_html, page
 from bs3.analyses import speech_stats
 from bs3.facts import FER_NOTE, card_item, fact_cards, head_motion_word, speech_cards
 from bs3.pdf import appendix as pdf_appendix
@@ -211,7 +210,7 @@ def test_the_page_and_the_pdf_take_the_key_facts_from_fact_cards():
         for name in ("_pdf_facts", "_speech_cards", "HOW_TO_READ"):
             assert not hasattr(mod, name), (mod.__name__, name)
     assert "fact_cards(report, mb, speech_cards_follow=" in inspect.getsource(pdf_build._render)
-    assert not hasattr(webapp, "FOOTER_CAVEATS") and not hasattr(mbti_html, "READ_CAVEATS")
+    assert not hasattr(app, "FOOTER_CAVEATS") and not hasattr(mbti_html, "READ_CAVEATS")
 
 
 def test_speech_cards_keep_both_wordings():
@@ -338,7 +337,7 @@ def test_the_caveat_lists_equal_the_old_tuples():
     assert caveats.MBTI_READ == ("C3", "C4", "C5", "C6", "C7", "C9", "C16")
     for codes in (caveats.PAGE_FOOTER, caveats.PDF_HOW_TO_READ, caveats.MBTI_READ):
         assert set(codes) <= set(caveats.CODES)
-    assert "for c in caveats.PAGE_FOOTER)" in inspect.getsource(webapp.build_app)
+    assert "for c in caveats.PAGE_FOOTER)" in inspect.getsource(app.build_app)
     assert "for c in caveats.PDF_HOW_TO_READ if " in inspect.getsource(pdf_sections._how_to_read)
     assert "for c in caveats.MBTI_READ]" in inspect.getsource(mbti_section.mbti_section)
     assert "for c in caveats.MBTI_READ]" in inspect.getsource(mbti_html.read_html)

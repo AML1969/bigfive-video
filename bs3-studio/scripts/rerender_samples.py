@@ -23,7 +23,7 @@ For every job:
    получены оценки»; «Краткие выводы» appears nowhere; result.json of the copy gets no `mbti` section; nothing on the
    page mentions a group of processed videos (reference group, position, «типичный», percentiles of Russian speech),
    and the characterization does not compare two systems (changes of 2026-09-26);
-4. webapp.export_pdf runs on the copy: the PDF is built; its text (pdftotext) contains «Характеристика личности»,
+4. bs3.pdf.export_pdf runs on the copy: the PDF is built; its text (pdftotext) contains «Характеристика личности»,
    «Тип MBTI (перевод шкал Big Five)», «Как получены оценки», «Оценки по чертам», «BS Profiler 3.1 · стр.», the one
    model («Модель OCEAN-AI, веса MuPTA»), the type of the model and, in the appendix «Значения по отрезкам», the type
    of every typed segment; for an OCEAN-AI job it has no section 5 and the one-line note instead; it does not contain

@@ -34,21 +34,21 @@ LAYERS = {
     DATA: ("scores", "mbti", "report", "segments"),
     TEXT: ("caveats", "characterization", "narrative", "facts", "analyses_text", "ru_texts", "translate", "words",
            "frame_captions"),
-    RENDER: ("webapp", "journal", "jobview", "web", "web.*", "pdf", "pdf.*"),
+    RENDER: ("journal", "jobview", "web", "web.*", "pdf", "pdf.*"),
     ANALYSIS: ("pipeline", "longvideo", "backend_*", "analyses", "analyses.*", "mm", "mm.*"),
     TOP: ("cli",),
 }
-APP = ("webapp", "web.app")                              # the Gradio app module, before and after the web split
+APP = ("web.app",)                                       # the Gradio app module (web.app since the web split)
 PDF_BUILD = ("pdf", "pdf.build")                         # builds the PDF: build_pdf, export_pdf
 PDF_MODULES = ("pdf", "pdf.*")
-WEB_MODULES = ("webapp", "web", "web.*")
+WEB_MODULES = ("web", "web.*")
 HEAVY = ("torch", "cv2", "transformers", "pandas", "librosa")
 # modules whose docstring promises no bs3 import at all (palette is loaded standalone by scripts/check_palette.py)
 NO_BS3_IMPORTS = ("palette", "settings", "jobfiles", "textfmt", "frame_phrase", "bands")
 
 # (importer, imported, the stage of the refactoring plan that removes the edge)
 ALLOW = {
-    ("webapp", "longvideo", 20),                   # AnalysisCancelled -> errors
+    ("web.app", "longvideo", 20),                  # AnalysisCancelled -> errors
 }
 
 

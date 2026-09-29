@@ -18,8 +18,8 @@ from pathlib import Path
 from samples import english, rep
 
 import bs3
-from bs3 import characterization, jobfiles, jobview, journal, mbti, ru_texts, scores, webapp
-from bs3.web import charts, page, parts as webparts
+from bs3 import characterization, jobfiles, jobview, journal, mbti, ru_texts, scores
+from bs3.web import app, charts, page, parts as webparts
 from bs3.norms import TRAIT_KEYS
 from bs3.pdf import appendix as pdf_appendix
 from bs3.pdf import build as pdf_build
@@ -290,7 +290,7 @@ def test_the_preview_opens_the_job_once():
     with tempfile.TemporaryDirectory() as d:
         job = _jobs(Path(d))["3.1 mm"]
         with _patched(jobfiles, read_json=reading), _counted() as calls:
-            demo = webapp.build_app(Studio(), Path(d), preview_job=str(job))
+            demo = app.build_app(Studio(), Path(d), preview_job=str(job))
         assert reads.count(jobfiles.explanation_path(job)) == 1, reads
         assert calls == BUILT_ONCE, calls
         page_outs = page.page_outputs(jobfiles.load_job(job)[0])

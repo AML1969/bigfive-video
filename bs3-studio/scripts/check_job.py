@@ -15,7 +15,7 @@ For every job folder (it must hold result.json):
    «Объяснения» of an OCEAN-AI job carries the one note (narrative.NO_EXPLAIN_RU), «Ключевые кадры» its own note and
    the words and description boxes are empty; for AMLAI 1.0 the note is absent and, when explanation.json exists, the
    modality table and the words are there, and the key frames are shown when the job has them.
-3. The PDF builds (webapp.export_pdf) and its text (pdftotext) has the passport line «Модель …», the headings of
+3. The PDF builds (bs3.pdf.export_pdf) and its text (pdftotext) has the passport line «Модель …», the headings of
    rerender_samples.PDF_MUST and nothing of PDF_MUST_NOT; an OCEAN-AI job has the one-line note and no section «Что
    повлияло …», an AMLAI 1.0 job with explanation.json has that section and no note.
 Exit code 0 when every check of every job passed. Nothing in the job is changed except what the page itself writes

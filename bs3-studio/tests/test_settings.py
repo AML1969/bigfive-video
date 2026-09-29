@@ -168,7 +168,7 @@ def test_values_are_written_only_in_settings():
 
 def test_segment_lengths_match_the_texts():
     texts = ("pdf/appendix.py and pdf/sections.py: «по ~20 с» (once each); pdf/build.py: «Ролик короче 30 с оценивается "
-             "целиком»; webapp: «до ~20 с» (the stop button); caveats C8 and C19")
+             "целиком»; web.app: «до ~20 с» (the stop button); caveats C8 and C19")
     assert settings.SEGMENT_SEC == 20, f"SEGMENT_SEC changed: reword {texts}"
     assert settings.SINGLE_CLIP_MAX_SEC == 30, f"SINGLE_CLIP_MAX_SEC changed: reword {texts}"
 
@@ -224,7 +224,7 @@ def test_modules_take_their_defaults_from_settings():
     assert call == {"timeout": "settings.OLLAMA_DESCRIBE_TIMEOUT", "attempts": "settings.OLLAMA_DESCRIBE_ATTEMPTS"}
     oa = _ast_defaults("bs3/backend_oceanai.py", "BackendConfig")
     assert (oa["models_dir"], oa["asr_model"]) == ("settings.OCEANAI_MODELS_DIR", "settings.ASR_MODEL"), oa
-    src = (ROOT / "bs3" / "webapp.py").read_text(encoding="utf-8")
+    src = (ROOT / "bs3" / "web" / "app.py").read_text(encoding="utf-8")
     main = next(n for n in ast.parse(src).body if isinstance(n, ast.FunctionDef) and n.name == "main")
     body = ast.get_source_segment(src, main)
     assert "settings.apply_process_env()" in body and "default_concurrency_limit=settings.QUEUE_CONCURRENCY" in body

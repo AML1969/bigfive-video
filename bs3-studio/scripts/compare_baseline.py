@@ -18,7 +18,7 @@ Blocks of a job:
   key_facts             the type card (mbti.fact_card) and facts.key_facts(view): (label, value, note, state)
   frame_captions.page   frame_captions.build as the page calls it while page_outputs runs (recorded, in order)
   frame_captions.pdf    the same while export_pdf runs
-  pdf.text              the PDF of webapp.export_pdf as `pdftotext -layout` (pypdf when poppler is missing)
+  pdf.text              the PDF of bs3.pdf.export_pdf as `pdftotext -layout` (pypdf when poppler is missing)
   pdf.meta              the file name and the page count of that PDF
   pdf.charts            the chart PNGs export_pdf draws for the PDF: file name, size and a hash of the pixels
   render.notes          what the rendering asked for and did not get here (translation, Ollama); empty normally
@@ -448,8 +448,9 @@ def _tree(cfg: dict) -> str:
 
 
 def render_app(env: Env, want) -> dict:
-    from bs3 import journal, webapp
+    from bs3 import journal
     from bs3.pipeline import Studio
+    from bs3.web import app as webapp
 
     mask = Mask([(str(env.tmp), "<TMP>")])
     out: dict = {}

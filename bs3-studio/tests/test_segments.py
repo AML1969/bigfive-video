@@ -374,7 +374,7 @@ def test_the_pdf_modules_import_each_other_once():
     for mod, page in ((pdf_charts, "pdf.layout"), (mbti_section, "pdf.document"), (sections, "pdf.document"),
                       (frames, "pdf.document")):
         top, inner = _imports(mod)
-        assert page in top and not (top | inner) & {"pdf.build", "pdf.appendix", "charts", "webparts", "webapp"}, \
+        assert page in top and not (top | inner) & {"pdf.build", "pdf.appendix", "charts", "webparts", "web.app"}, \
             mod.__name__
         assert not inner & parts, mod.__name__
     assert {"segments", "labels", "scores"} <= _imports(pdf_charts)[0]

@@ -118,7 +118,7 @@ def cmd_explain(a):
 
 def cmd_web(a):
     # the page chooses the model per analysis (OCEAN-AI or AMLAI 1.0), so `web` has no --backend
-    from .webapp import main as web_main
+    from .web.app import main as web_main
     web_main(port=a.port, work_dir=a.work_dir, share=a.share, asr_model=a.asr_model, ollama_model=a.ollama_model,
              mm_ckpt=a.mm_ckpt, host=a.host, models_dir=a.models_dir)
 

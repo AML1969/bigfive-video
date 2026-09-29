@@ -20,10 +20,9 @@ from pathlib import Path
 from samples import rep
 
 import bs3
-from bs3 import webapp
 from bs3.narrative import NO_EXPLAIN_RU
 from bs3.norms import TRAIT_KEYS
-from bs3.web import page
+from bs3.web import app, page, style
 
 
 def _job(r: dict, base: Path, name: str) -> dict:
@@ -101,7 +100,7 @@ def test_page_builds_with_the_model_radio_and_no_checkbox():
     import gradio as gr
     from bs3.pipeline import Studio
     with tempfile.TemporaryDirectory() as d:
-        demo = webapp.build_app(Studio(), Path(d))
+        demo = app.build_app(Studio(), Path(d))
     comps = list(demo.blocks.values())
     radios = [c for c in comps if isinstance(c, gr.Radio)]
     assert len(radios) == 1
@@ -128,17 +127,17 @@ def test_page_builds_with_the_model_radio_and_no_checkbox():
     # the compact window: the block class, the flex rules and the scrolling container in the page CSS
     char = [c for c in comps if isinstance(c, gr.HTML) and getattr(c, "label", None) == "Характеристика личности"]
     assert len(char) == 1 and "bs3-char" in char[0].elem_classes
-    css = webapp.APP_CSS
-    assert f".row.bs3-pair>.column>.bs3-char{{display:flex;flex-direction:column;flex:1 1 0;min-height:{webapp.CHAR_MIN_PX}px}}" in css
+    css = style.APP_CSS
+    assert f".row.bs3-pair>.column>.bs3-char{{display:flex;flex-direction:column;flex:1 1 0;min-height:{style.CHAR_MIN_PX}px}}" in css
     assert ".bs3-char>.html-container{flex:1 1 0;min-height:0;overflow-y:auto;overflow-x:hidden}" in css
-    assert "max-height:none!important" not in css and 300 <= webapp.CHAR_MIN_PX <= 360
+    assert "max-height:none!important" not in css and 300 <= style.CHAR_MIN_PX <= 360
     # the key facts block is not inside the top pair (a row of its own under it)
     facts = [c for c in comps if isinstance(c, gr.HTML) and getattr(c, "label", None) == "Ключевые факты"][0]
     pairs = [c for c in comps if isinstance(c, gr.Row) and "bs3-pair" in (c.elem_classes or [])]
     inside = {id(x) for row in pairs for col in row.children for x in getattr(col, "children", [])}
     assert id(facts) not in inside and id(char[0]) in inside
     # the footer caveats: what holds for both models (C2 stands under the bars of a job that shows the label)
-    assert bs3.caveats.PAGE_FOOTER == ("C1", "C10", "C3") and not hasattr(webapp, "FOOTER_CAVEATS")
+    assert bs3.caveats.PAGE_FOOTER == ("C1", "C10", "C3") and not hasattr(app, "FOOTER_CAVEATS")
 
 
 def test_page_outputs_oceanai_job():
@@ -255,7 +254,7 @@ def test_file_route_serves_no_job_file():
     with tempfile.TemporaryDirectory() as d, _gradio_temp(Path(d)):
         wd = Path(d) / "web_jobs"
         job = _job_folder(wd)
-        demo = webapp.build_app(Studio(), wd)
+        demo = app.build_app(Studio(), wd)
         client = _client(demo)
         files = sorted(p for p in job.rglob("*") if p.is_file())
         assert len(files) == len(JOB_FILES)
@@ -283,19 +282,19 @@ def test_pdf_for_download():
         job = _job_folder(base / "web_jobs")
         pdf = job / JOB_FILES[-1]
         calls = []
-        export_pdf = webapp.export_pdf
-        webapp.export_pdf = lambda job_dir: calls.append(job_dir) or str(pdf)
+        export_pdf = app.export_pdf
+        app.export_pdf = lambda job_dir: calls.append(job_dir) or str(pdf)
         try:
-            a, b = Path(webapp.pdf_for_download(job)), Path(webapp.pdf_for_download(str(job)))
+            a, b = Path(app.pdf_for_download(job)), Path(app.pdf_for_download(str(job)))
         finally:
-            webapp.export_pdf = export_pdf
+            app.export_pdf = export_pdf
         assert calls == [job, str(job)]
         for p in (a, b):
             assert p.parent.parent == Path(get_upload_folder()) == up and re.fullmatch(r"[0-9a-f]{32}", p.parent.name)
             assert p.name == pdf.name and p.read_bytes() == pdf.read_bytes() and job not in p.parents
         assert a.parent != b.parent and pdf.exists()
 
-        demo = webapp.build_app(Studio(), base / "web_jobs")
+        demo = app.build_app(Studio(), base / "web_jobs")
         client = _client(demo)
         r = client.get(f"/gradio_api/file={a}")
         # Gradio 5.8 sends a file of its own folder that is not an image, audio, video, text or json as an attachment
@@ -386,7 +385,7 @@ def test_pdf_button_click():
         base = Path(d)
         job = _job_folder(base / "web_jobs")
         pdf = job / JOB_FILES[-1]
-        demo = webapp.build_app(Studio(), base / "web_jobs")
+        demo = app.build_app(Studio(), base / "web_jobs")
         btn = next(c for c in demo.blocks.values() if isinstance(c, gr.DownloadButton))
         fns = [f for f in demo.fns.values() if [c._id for c in f.outputs] == [btn._id]]
         assert len(fns) == 1 and fns[0].fn.__name__ == "make_pdf", [f.name for f in fns]
@@ -405,10 +404,10 @@ def test_pdf_button_click():
         os.chdir(elsewhere)
         tempfile.tempdir = str(elsewhere)
         try:
-            with _patched(webapp, export_pdf=lambda job_dir: str(pdf)):
+            with _patched(app, export_pdf=lambda job_dir: str(pdf)):
                 out = run()
                 refused = False
-                with _patched(webapp, pdf_for_download=lambda job_dir: webapp.export_pdf(job_dir)):
+                with _patched(app, pdf_for_download=lambda job_dir: app.export_pdf(job_dir)):
                     try:
                         run()
                     except InvalidPathError:
@@ -429,7 +428,7 @@ def test_pdf_button_click():
             try:
                 click.fn(job_dir)
             except gr.Error as e:
-                assert (e.message, e.title) == ("Сначала проанализируйте видео", webapp.ERROR_TITLE)
+                assert (e.message, e.title) == ("Сначала проанализируйте видео", app.ERROR_TITLE)
             else:
                 raise AssertionError("no error without a job")
         records = []
@@ -442,11 +441,11 @@ def test_pdf_button_click():
             raise RuntimeError("poppler is missing")
 
         try:
-            with _patched(webapp, export_pdf=broken):
+            with _patched(app, export_pdf=broken):
                 click.fn(str(job))
         except gr.Error as e:
             assert (e.message, e.title) == ("Не удалось собрать PDF. Подробности записаны в журнал сервера.",
-                                            webapp.ERROR_TITLE)
+                                            app.ERROR_TITLE)
         else:
             raise AssertionError("no error for a failed export")
         finally:
@@ -456,7 +455,7 @@ def test_pdf_button_click():
 
 def test_launch_without_allowed_paths():
     """The web app and the preview start Gradio without allowed_paths (what the two tests above rely on)."""
-    root = Path(webapp.__file__).resolve().parents[1]
-    for f in (root / "bs3" / "webapp.py", root / "scripts" / "ui_preview.py"):
+    root = Path(app.__file__).resolve().parents[2]
+    for f in (root / "bs3" / "web" / "app.py", root / "scripts" / "ui_preview.py"):
         src = f.read_text(encoding="utf-8")
         assert ".launch(" in src and "allowed_paths=" not in src, f.name

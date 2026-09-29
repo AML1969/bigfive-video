@@ -1,6 +1,6 @@
 """The command line of BS Profiler 3.1 (bs3.cli): `web`, `infer` and `explain` with the options that are used (the
 FIV2 evaluation is research code in training/, test_training.py). The speech language is not an option: it is
-bs3.LANG. Nothing loads a model: `webapp.main` and the backend modules are replaced by fakes, `cli._backend` by a
+bs3.LANG. Nothing loads a model: `web.app.main` and the backend modules are replaced by fakes, `cli._backend` by a
 canned one."""
 from __future__ import annotations
 
@@ -67,9 +67,9 @@ def test_web_options():
 
 def test_cmd_web_forwards_every_option():
     seen = []
-    fake = types.ModuleType("bs3.webapp")
+    fake = types.ModuleType("bs3.web.app")
     fake.main = lambda **kw: seen.append(kw)
-    with _modules(**{"bs3.webapp": fake}):
+    with _modules(**{"bs3.web.app": fake}):
         a = cli.parse_args(["web", "--port", "7999", "--host", "127.0.0.1", "--work-dir", "/tmp/jobs", "--share",
                             "--asr-model", "asr-x", "--ollama-model", "qwen-x", "--mm-ckpt", "/tmp/c.pt",
                             "--models-dir", "/tmp/models", "-v"])
@@ -84,13 +84,13 @@ def test_cmd_web_forwards_every_option():
 
 
 def test_web_main_hands_models_dir_to_the_studio():
-    """webapp.main(models_dir=...) -> Studio(models_dir=...) -> BackendConfig (test_pipeline checks the last step);
+    """web.app.main(models_dir=...) -> Studio(models_dir=...) -> BackendConfig (test_pipeline checks the last step);
     None keeps the default of BackendConfig."""
     import inspect
-    from bs3 import webapp
-    assert inspect.signature(webapp.main).parameters["models_dir"].default is None
-    assert "models_dir=models_dir" in inspect.getsource(webapp.main)
-    assert inspect.signature(webapp.Studio).parameters["models_dir"].default is None
+    from bs3.web import app
+    assert inspect.signature(app.main).parameters["models_dir"].default is None
+    assert "models_dir=models_dir" in inspect.getsource(app.main)
+    assert inspect.signature(app.Studio).parameters["models_dir"].default is None
 
 
 def test_infer_and_explain_options():
@@ -162,7 +162,7 @@ for name, cls, cfg in (("bs3.backend_oceanai", "OceanAIBackend", "BackendConfig"
 from bs3 import cli
 for b in ("oceanai", "mm"):
     cli._backend(cli.parse_args(["infer", "a.mp4", "--backend", b]))
-print(sorted(n for n in sys.modules if n in ("bs3.backend_sslmepr", "bs3.backend_ensemble", "bs3.webapp")))
+print(sorted(n for n in sys.modules if n in ("bs3.backend_sslmepr", "bs3.backend_ensemble", "bs3.web.app")))
 print(importlib.util.find_spec("bs3.backend_sslmepr") is None)
 """
     r = subprocess.run([sys.executable, "-c", code], cwd=str(ROOT), capture_output=True, text=True, timeout=120)
