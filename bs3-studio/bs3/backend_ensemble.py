@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import LANG
+from .errors import is_fatal
 from .norms import TRAIT_KEYS
 
 log = logging.getLogger("bs.ensemble")
@@ -77,6 +78,8 @@ class EnsembleBackend:
             else:
                 r = b.predict_video(video, asr=asr, transcript=transcript)
         except Exception as e:  # e.g. OCEAN-AI drops a clip without speech
+            if is_fatal(e):     # a broken Ollama or GPU: fail the whole run now, do not report it as «member failed»
+                raise
             failed[name] = str(e).splitlines()[0][:160]
             log.warning("ensemble member %s failed on %s: %s", name, Path(video).name, failed[name])
         if failed:

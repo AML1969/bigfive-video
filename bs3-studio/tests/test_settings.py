@@ -15,7 +15,7 @@ from bs3 import cli, frame_captions, frame_phrase, journal, longvideo, pipeline,
 
 ROOT = Path(__file__).resolve().parents[1]            # bs3-studio/
 HOME = Path.home()
-ENV_NAMES = ("BS3_DATA_DIR", "BS3_JOURNAL", "BS3_OLLAMA_URL")
+ENV_NAMES = ("BS3_DATA_DIR", "BS3_JOURNAL", "BS3_OLLAMA_URL", "BS3_KEEP_FAILED_JOBS")
 
 # the literals of 3.1 before bs3/settings.py (the table of the refactoring plan, stage 7)
 DEFAULTS = {
@@ -48,6 +48,7 @@ DEFAULTS = {
     "SEGMENT_SEC": 20.0,
     "SINGLE_CLIP_MAX_SEC": 30.0,
     "MIN_TAIL_SEC": 6.0,
+    "KEEP_FAILED_JOBS": False,             # BS3_KEEP_FAILED_JOBS=1 keeps a failed run's folder (stage 22)
 }
 
 # no other module of bs3/ may write these: a default lives in settings.py only

@@ -4,8 +4,9 @@ once, from the environment where a variable is named below, and no folder is cre
 one function that changes something (the environment of the web server process).
 
 Environment variables: BS3_DATA_DIR (the data folder, default ~/bs3_data), BS3_JOURNAL (the journal file, default
-<data folder>/logs/journal.txt) and BS3_OLLAMA_URL (the Ollama server, e.g. http://127.0.0.1:11434; default: found
-by bs3.ollama.url on localhost, then on the WSL default gateway).
+<data folder>/logs/journal.txt), BS3_OLLAMA_URL (the Ollama server, e.g. http://127.0.0.1:11434; default: found
+by bs3.ollama.url on localhost, then on the WSL default gateway) and BS3_KEEP_FAILED_JOBS (keep the folder of a run
+that failed, for debugging; normally a failed run leaves nothing behind).
 
 Domain constants stay next to their logic, not here: config/mbti.json, the score bands, the palette, the caveats, the
 lexicon, the prompt limits of the frame phrase (PHRASE_* in frame_phrase), the frame counts of MMConfig, the
@@ -64,6 +65,10 @@ NO_PROXY = "localhost,127.0.0.1,0.0.0.0"
 SEGMENT_SEC = 20.0                # the models were trained on 15-second clips; the texts say «по ~20 с»
 SINGLE_CLIP_MAX_SEC = 30.0        # a clip up to this long is analysed whole, as one segment («Ролик короче 30 с»)
 MIN_TAIL_SEC = 6.0                # a shorter last segment is merged into the one before it
+
+# ---------------------------------------------------------------- job folders (pipeline.run_analysis)
+KEEP_FAILED_JOBS = os.environ.get("BS3_KEEP_FAILED_JOBS") == "1"   # keep the folder of a run that failed (for
+                                                                  # debugging); normally a failed run leaves nothing
 
 
 def apply_process_env() -> None:

@@ -16,7 +16,7 @@ import types
 from pathlib import Path
 
 import bs3
-from bs3 import cli
+from bs3 import cli, media
 from bs3.errors import UserFacingError
 from bs3.norms import TRAIT_KEYS
 
@@ -182,8 +182,9 @@ def test_cmd_infer_report_shape():
                                predict_video=lambda v, asr=True, transcript=None: {
                                    "scores": dict(scores), "transcript": "привет", "transcript_en": "hello",
                                    "seconds": 1.5})
-    saved = cli._backend
+    saved, saved_cu = cli._backend, media.check_upload
     cli._backend = lambda a, **kw: be
+    media.check_upload = lambda *a, **k: None                  # the byte stub is not a real video; the shape is the point
     try:
         with tempfile.TemporaryDirectory(prefix="bs3_cli_test_") as d:
             clip = Path(d) / "clip.mp4"
@@ -194,7 +195,7 @@ def test_cmd_infer_report_shape():
                 a.fn(a)                                   # main() without its logging set-up
             rep = json.loads(out.read_text(encoding="utf-8"))
     finally:
-        cli._backend = saved
+        cli._backend, media.check_upload = saved, saved_cu
     assert "clip.mp4: openn=0.300" in printed.getvalue() and "interview=0.610" in printed.getvalue()
     assert rep["model"]["backend"] == "mm" and rep["model"]["lang"] == "ru" and rep["model"]["asr_model"] is None
     assert rep["model"]["primary"] is None and rep["model"]["corpus"] == "own checkpoints"
@@ -233,3 +234,30 @@ def test_missing_input_is_a_calm_error_before_any_model():
         assert calls == []
     finally:
         cli._backend = saved
+
+
+def test_a_bad_upload_is_refused_before_any_model():
+    """Stage 22 (owner amendment): the CLI runs media.check_upload on every input before building a model, so `bs3
+    infer`/`explain` refuse an unreadable file or a clip shorter than two seconds with the same calm Russian line the
+    web page shows — one stderr line, exit 1, and _backend is never reached."""
+    calls = []
+    saved_be, saved_cu = cli._backend, media.check_upload
+    cli._backend = lambda a, **kw: calls.append(a)
+
+    def refuse(path, work_dir):
+        raise UserFacingError("Ролик слишком короткий (0,3 с): для оценки нужно хотя бы 2 секунды, "
+                              "лучше — от 15 секунд речи в кадре.")
+    media.check_upload = refuse
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            clip = Path(d) / "clip.mp4"
+            clip.write_bytes(b"\x00" * 64)
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                code = cli.main(["infer", str(clip), "--backend", "oceanai"])
+            assert code == 1 and "слишком коротк" in err.getvalue() and "Traceback" not in err.getvalue()
+            assert calls == []                             # check_upload runs before _backend
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                code = cli.main(["explain", str(clip), "--out", str(Path(d) / "o")])
+            assert code == 1 and "слишком коротк" in err.getvalue() and calls == []
+    finally:
+        cli._backend, media.check_upload = saved_be, saved_cu

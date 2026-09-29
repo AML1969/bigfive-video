@@ -22,6 +22,7 @@ import numpy as np
 import torch
 
 from . import ollama, settings
+from .errors import OllamaUnavailable
 from .mm.extractors import ClapAudioEncoder, ClipFaceEncoder, EmoRobertaTextEncoder, mean_std
 from .mm.faces import get_face_crops, select_uniform_frames
 from .mm.model import ModelConfig, PersonalityFusionModel
@@ -201,7 +202,9 @@ class MMBackend:
                 return ollama.post_json("/api/generate", payload, timeout, base=self.cfg.ollama_url)
             except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as e:
                 if attempt == attempts:
-                    raise
+                    # a broken Ollama is a typed error: errors.is_fatal decides whether to fail the whole run at once
+                    # (connection refused / 404), and errors.user_message turns it into the calm Russian «нет Ollama»
+                    raise OllamaUnavailable(f"Ollama request failed: {str(e).splitlines()[0][:160]}") from e
                 log.warning("Ollama request failed (%s); retry %d/%d in %ds", str(e).splitlines()[0][:80], attempt,
                             attempts, 10 * attempt)
                 time.sleep(10 * attempt)

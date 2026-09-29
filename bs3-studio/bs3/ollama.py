@@ -85,6 +85,23 @@ def post_json(path: str, payload: dict, timeout: float, base: str | None = None)
         return json.loads(r.read().decode("utf-8"))
 
 
+def status(model_name: str | None = None) -> str:
+    """A fresh /api/tags probe for the analysis preflight (bs3.pipeline, AMLAI 1.0 needs Ollama): "ok" when the server
+    answers and lists `model_name` (or its :latest tag), "no_model" when it answers with valid JSON that lists neither,
+    and "down" when it does not answer. `model_name` defaults to model(). Unlike available(), this does not use the
+    TTL cache: the person is about to wait minutes for an analysis, so the check is worth one fresh request."""
+    want = model_name or model()
+    try:
+        with urllib.request.urlopen(f"{url()}/api/tags", timeout=settings.OLLAMA_PROBE_TIMEOUT) as r:
+            if r.status != 200:
+                return "down"
+            data = json.loads(r.read().decode("utf-8"))
+    except Exception:  # noqa: BLE001
+        return "down"
+    names = {m.get("name") or m.get("model") for m in (data.get("models") or []) if isinstance(m, dict)}
+    return "ok" if (want in names or f"{want}:latest" in names) else "no_model"
+
+
 def configure(model: str | None = None) -> None:
     """The Ollama model of this process (pipeline.Studio: the --ollama-model of `bs3 web`); None -> the default."""
     global _model

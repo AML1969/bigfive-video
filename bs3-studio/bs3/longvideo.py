@@ -16,7 +16,7 @@ import numpy as np
 import torch
 
 from . import settings
-from .errors import AnalysisCancelled, NoSegmentsAnalysed
+from .errors import AnalysisCancelled, NoSegmentsAnalysed, is_fatal
 from .norms import TRAIT_KEYS
 from .textfmt import fmt_secs, seg_label
 
@@ -147,6 +147,8 @@ class LongVideoAnalyzer:
             try:
                 r = self.backend.predict_video(seg_path, asr=False, transcript=seg_text, **kw)
             except Exception as ex:  # a segment without a face or speech: skip it, keep the rest
+                if is_fatal(ex):     # a broken Ollama or GPU: stop now, do not try the remaining segments
+                    raise
                 log.warning("segment %d (%.0f-%.0fs) skipped: %s", i, s, e, str(ex).splitlines()[0][:160])
                 timeline.append({"segment": i, "start": round(s, 1), "end": round(e, 1), "scores": None,
                                  "transcript": seg_text, "error": str(ex).splitlines()[0][:160], "file": str(seg_path)})

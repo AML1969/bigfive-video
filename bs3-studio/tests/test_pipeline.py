@@ -5,6 +5,7 @@ with one source), and asks for explanations only from AMLAI 1.0. The heavy backe
 sys.modules for the Studio test; run_analysis gets a fake Studio and a canned analyzer result."""
 from __future__ import annotations
 
+import contextlib
 import inspect
 import json
 import logging
@@ -19,6 +20,21 @@ from bs3 import pipeline
 from bs3.norms import TRAIT_KEYS
 
 MEMBERS = ("oceanai", "mm")
+
+
+@contextlib.contextmanager
+def _no_preflight():
+    """Stage 22: run_analysis refuses an unreadable upload (media.check_upload) and preflights Ollama for AMLAI 1.0
+    before any folder or model. These tests feed byte stubs and a fake Studio, so both preflights are stubbed out here;
+    they have their own coverage in test_failures.py."""
+    from bs3 import media, ollama
+    saved = media.check_upload, ollama.status
+    media.check_upload = lambda *a, **k: None
+    ollama.status = lambda *a, **k: "ok"
+    try:
+        yield
+    finally:
+        media.check_upload, ollama.status = saved
 
 
 # ------------------------------------------------------------------------------------------------- fakes ---
@@ -322,7 +338,9 @@ def _run(member: str, explain: bool, tmp: Path):
     old_level = log.level
     log.setLevel(logging.CRITICAL)            # the fakes fail on purpose; the pipeline logs and goes on
     try:
-        rep_ = pipeline.run_analysis(studio, work, str(video), member=member, explain=explain, progress=lambda f, d: None)
+        with _no_preflight():
+            rep_ = pipeline.run_analysis(studio, work, str(video), member=member, explain=explain,
+                                         progress=lambda f, d: None)
     finally:
         log.setLevel(old_level)
     return studio, rep_, work
@@ -420,8 +438,9 @@ def test_should_stop_cancels_the_run():
         log.setLevel(logging.CRITICAL)
         try:
             try:
-                pipeline.run_analysis(studio, tmp / "jobs", str(video), member="mm", explain=True,
-                                      should_stop=lambda: True)
+                with _no_preflight():
+                    pipeline.run_analysis(studio, tmp / "jobs", str(video), member="mm", explain=True,
+                                          should_stop=lambda: True)
             except AnalysisCancelled:
                 pass
             else:

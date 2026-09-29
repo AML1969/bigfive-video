@@ -178,9 +178,11 @@ def run_extra_analyses(studio: Studio, res: dict, lang: str, progress: Callable 
             if progress:
                 progress(0.75 + 0.15 * (i - 1) / len(tl), f"Эмоции, голос, мимика: отрезок {i}/{len(tl)}")
             row = {"segment": t["segment"], "start": t["start"], "end": t["end"]}
-            text_en = _to_en(t.get("transcript", ""), lang)
-            row["text_en"] = text_en
             try:
+                # the translation (Marian) is inside the try too (FP6b): a translation failure only drops this
+                # segment's text emotions, it does not kill an analysis that is otherwise finished
+                text_en = _to_en(t.get("transcript", ""), lang)
+                row["text_en"] = text_en
                 row["emotions_text"] = studio.text_emotion(text_en)
             except Exception as e:  # noqa: BLE001
                 log.warning("text emotion failed on segment %s: %s", t["segment"], str(e)[:100])
@@ -233,8 +235,9 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, *, member: str
 
     `should_stop`: checked between steps and passed on to the segment loop; when it returns True the run raises
     AnalysisCancelled (the web «Остановить обработку» button, one Event per session)."""
+    from . import errors
     from .longvideo import AnalysisCancelled
-    from .media import probe_media
+    from .media import check_upload, probe_media
     from .ru_texts import ensure_russian
 
     def step(frac, desc=None, **kw):
@@ -245,90 +248,108 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, *, member: str
     lang = LANG
     title = MODEL_TITLES[member]
     t0 = time.time()
+    # refuse before any folder or model is made, so a bad upload leaves nothing behind and the person is told why at once
+    src = Path(video_path)
+    if not src.is_file():
+        raise RuntimeError("Файл загрузки не найден. Загрузите видео заново и дождитесь конца загрузки.")
+    check_upload(src, work_dir)          # unreadable / no sound / < 2 s / no space -> UserFacingError
+    if member == "mm":                   # AMLAI 1.0 needs the Ollama vision model: check it now, not after loading
+        mdl = ollama.model()
+        st = ollama.status(mdl)
+        if st == "down":
+            raise errors.UserFacingError(errors.OLLAMA)
+        if st == "no_model":
+            raise errors.UserFacingError(f"В Ollama нет модели {mdl}, без которой AMLAI 1.0 не работает. "
+                                         "Установите её или выберите модель OCEAN-AI.")
     # the start time and a random suffix: the name of a new job cannot be guessed from the time of the upload, and two
     # analyses started in the same second get two folders (older jobs keep their names without the suffix)
     job = work_dir / f"{time.strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(4)}"
     job.mkdir(parents=True)
-    src = Path(video_path)
-    if not src.is_file():
-        raise RuntimeError("Файл загрузки не найден. Загрузите видео заново и дождитесь конца загрузки.")
-    local = job / ("input" + src.suffix.lower())
-    shutil.copy2(src, local)
-    step(0.03, f"Загрузка модели {title} (первый запуск до минуты)")
-    be = studio.backend(member)
-    an = studio.analyzer(member)
-    if should_stop and should_stop():
-        raise AnalysisCancelled("остановлено пользователем")
-    step(0.10, f"Речь, лицо, голос{', описание поведения' if member == 'mm' else ''} — Big Five ({title})")
-    res = an.analyze(local, job / jobfiles.SEGMENTS_DIR, progress=lambda f, d: step(0.10 + 0.60 * f, d),
-                     should_stop=should_stop)
-    # the corpus of the member itself (MuPTA / the own model's checkpoints), not the ensemble wrapper's descriptor
-    inner = getattr(be, "backends", {}).get(member)
-    corpus = getattr(getattr(inner, "cfg", None), "corpus", None) or be.cfg.corpus
-    rep = build_report(local, res, backend=member, corpus=corpus, lang=lang, asr_model=studio.asr_model,
-                       modalities=MODALITIES[member], primary=member, selected=member)
-    rep["variant_scores"] = {m: v for m, v in (res.get("variants") or {}).items() if m == member}
-    for key in ("duration_sec", "segments", "timeline", "representative_segment", "chunks"):
-        if res.get(key) is not None:
-            rep[key] = res[key]
-    rep["scores_std_across_segments"] = res.get("scores_std")
-
-    # ---- BS Profiler 3.x analyses
-    rep["analyses"] = run_extra_analyses(studio, {**res, "input": str(local)}, lang, progress=step,
-                                         should_stop=should_stop)
-
-    # ---- explanations (AMLAI 1.0 only, representative segment)
-    expl, frames = None, []
-    if should_stop and should_stop():
-        raise AnalysisCancelled("остановлено пользователем")
-    if explain and member == "mm" and studio.mm_backend(member) is not None:
-        step(0.92, "Объяснения: вклад модальностей, ключевые кадры и подписи к ним, слова")
-        mmb = studio.mm_backend(member)
-        if res.get("timeline"):
-            seg = res["timeline"][res["representative_segment"] - 1]
-            x_video, x_text, x_beh = seg["file"], seg["transcript"], seg.get("behavior_description") or None
-        else:
-            x_video, x_text, x_beh = local, res.get("transcript", ""), res.get("behavior_description") or None
-        # the captions under the key frames need the facial-expression model of the report (already loaded by the
-        # per-segment analyses above, so no second model goes on the GPU) and one short vision-model request per
-        # key frame; both are computed once and stored in explanation.json. A caption never breaks the
-        # explanation: when the expression model is not there, the frames keep their phrase alone.
-        try:
-            expr_fn = studio.face_expression.on_crops
-        except Exception as e:  # noqa: BLE001
-            log.warning("face expression model unavailable for the key-frame captions: %s", str(e)[:120])
-            expr_fn = None
-        try:
-            expl = mmb.explain_video(x_video, job / jobfiles.EXPLAIN_DIR, asr=False, transcript=x_text, behavior=x_beh,
-                                     expression_fn=expr_fn)
-            frames = list(expl.get("frames", {}).get("key_frame_files", []))
-        except Exception as e:  # noqa: BLE001
-            log.warning("explanation failed: %s", str(e).splitlines()[0][:160])
-    # ---- texts for people: Russian versions of the English model texts for any speech language (ru_texts.py)
-    if should_stop and should_stop():
-        raise AnalysisCancelled("остановлено пользователем")
-    step(0.97, "Тексты и перевод")
-    ensure_russian(rep, expl)
-    if expl:
-        jobfiles.write_json(jobfiles.explanation_path(job), expl)
     try:
-        rep["media"] = probe_media(local)
-        rep["media"]["file_name"] = src.name
-    except Exception as e:  # noqa: BLE001
-        rep["media"] = {"error": str(e)[:200]}
-    rep["original_file_name"] = src.name
-    rep["key_frames"] = frames
-    rep["timings_sec"]["total_wall"] = round(time.time() - t0, 1)
-    rep["job_dir"] = str(job)
-    # ---- MBTI section (design 7.2; schema 3: one model): computed once from the clean scores; a failure is logged,
-    # the job goes on
-    try:
-        from .mbti import build_section
-        from .scores import clean_view
-        mb = build_section(clean_view(rep))
-        if mb is not None:
-            rep["mbti"] = mb
-    except Exception as e:  # noqa: BLE001
-        log.warning("mbti section failed: %s", str(e).splitlines()[0][:160] if str(e) else type(e).__name__)
-    jobfiles.write_json(job / jobfiles.RESULT, rep)
-    return rep
+        local = job / ("input" + src.suffix.lower())
+        shutil.copy2(src, local)
+        step(0.03, f"Загрузка модели {title} (первый запуск до минуты)")
+        be = studio.backend(member)
+        an = studio.analyzer(member)
+        if should_stop and should_stop():
+            raise AnalysisCancelled("остановлено пользователем")
+        step(0.10, f"Речь, лицо, голос{', описание поведения' if member == 'mm' else ''} — Big Five ({title})")
+        res = an.analyze(local, job / jobfiles.SEGMENTS_DIR, progress=lambda f, d: step(0.10 + 0.60 * f, d),
+                         should_stop=should_stop)
+        # the corpus of the member itself (MuPTA / the own model's checkpoints), not the ensemble wrapper's descriptor
+        inner = getattr(be, "backends", {}).get(member)
+        corpus = getattr(getattr(inner, "cfg", None), "corpus", None) or be.cfg.corpus
+        rep = build_report(local, res, backend=member, corpus=corpus, lang=lang, asr_model=studio.asr_model,
+                           modalities=MODALITIES[member], primary=member, selected=member)
+        rep["variant_scores"] = {m: v for m, v in (res.get("variants") or {}).items() if m == member}
+        for key in ("duration_sec", "segments", "timeline", "representative_segment", "chunks"):
+            if res.get(key) is not None:
+                rep[key] = res[key]
+        rep["scores_std_across_segments"] = res.get("scores_std")
+
+        # ---- BS Profiler 3.x analyses
+        rep["analyses"] = run_extra_analyses(studio, {**res, "input": str(local)}, lang, progress=step,
+                                             should_stop=should_stop)
+
+        # ---- explanations (AMLAI 1.0 only, representative segment)
+        expl, frames = None, []
+        if should_stop and should_stop():
+            raise AnalysisCancelled("остановлено пользователем")
+        if explain and member == "mm" and studio.mm_backend(member) is not None:
+            step(0.92, "Объяснения: вклад модальностей, ключевые кадры и подписи к ним, слова")
+            mmb = studio.mm_backend(member)
+            if res.get("timeline"):
+                seg = res["timeline"][res["representative_segment"] - 1]
+                x_video, x_text, x_beh = seg["file"], seg["transcript"], seg.get("behavior_description") or None
+            else:
+                x_video, x_text, x_beh = local, res.get("transcript", ""), res.get("behavior_description") or None
+            # the captions under the key frames need the facial-expression model of the report (already loaded by the
+            # per-segment analyses above, so no second model goes on the GPU) and one short vision-model request per
+            # key frame; both are computed once and stored in explanation.json. A caption never breaks the
+            # explanation: when the expression model is not there, the frames keep their phrase alone.
+            try:
+                expr_fn = studio.face_expression.on_crops
+            except Exception as e:  # noqa: BLE001
+                log.warning("face expression model unavailable for the key-frame captions: %s", str(e)[:120])
+                expr_fn = None
+            try:
+                expl = mmb.explain_video(x_video, job / jobfiles.EXPLAIN_DIR, asr=False, transcript=x_text,
+                                         behavior=x_beh, expression_fn=expr_fn)
+                frames = list(expl.get("frames", {}).get("key_frame_files", []))
+            except Exception as e:  # noqa: BLE001
+                log.warning("explanation failed: %s", str(e).splitlines()[0][:160])
+        # ---- texts for people: Russian versions of the English model texts for any speech language (ru_texts.py)
+        if should_stop and should_stop():
+            raise AnalysisCancelled("остановлено пользователем")
+        step(0.97, "Тексты и перевод")
+        ensure_russian(rep, expl)
+        if expl:
+            jobfiles.write_json(jobfiles.explanation_path(job), expl)
+        try:
+            rep["media"] = probe_media(local)
+            rep["media"]["file_name"] = src.name
+        except Exception as e:  # noqa: BLE001
+            rep["media"] = {"error": str(e)[:200]}
+        rep["original_file_name"] = src.name
+        rep["key_frames"] = frames
+        rep["timings_sec"]["total_wall"] = round(time.time() - t0, 1)
+        rep["job_dir"] = str(job)
+        # ---- MBTI section (design 7.2; schema 3: one model): computed once from the clean scores; a failure is logged,
+        # the job goes on
+        try:
+            from .mbti import build_section
+            from .scores import clean_view
+            mb = build_section(clean_view(rep))
+            if mb is not None:
+                rep["mbti"] = mb
+        except Exception as e:  # noqa: BLE001
+            log.warning("mbti section failed: %s", str(e).splitlines()[0][:160] if str(e) else type(e).__name__)
+        jobfiles.write_json(job / jobfiles.RESULT, rep)
+        return rep
+    except BaseException:
+        # a run that did not write result.json leaves no folder behind (unless BS3_KEEP_FAILED_JOBS); only the folder
+        # this call just made is touched, never an existing job
+        if not (job / jobfiles.RESULT).exists() and not settings.KEEP_FAILED_JOBS:
+            log.warning("removing the folder of a failed job: %s", job.name)
+            shutil.rmtree(job, ignore_errors=True)
+        raise

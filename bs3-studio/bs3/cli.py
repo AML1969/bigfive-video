@@ -60,9 +60,12 @@ def _backend(a, lang: str = LANG, corpus: str | None = None):
 
 
 def cmd_infer(a):
+    from .media import check_upload
+    work = Path(a.out).parent if a.out else Path.cwd()
     for v in a.video:
         if not Path(v).is_file():
             raise UserFacingError(f"Файл не найден: {v}")
+        check_upload(v, work)                # unreadable / no sound / shorter than 2 s -> a calm refusal, no model built
     be = _backend(a)
     reports = []
     analyzer = None
@@ -103,8 +106,10 @@ def cmd_infer(a):
 
 
 def cmd_explain(a):
+    from .media import check_upload
     if not Path(a.video).is_file():
         raise UserFacingError(f"Файл не найден: {a.video}")
+    check_upload(a.video, Path(a.out))       # same early refusal as infer / the web page (2-second floor included)
     a.backend = "mm"
     be = _backend(a)
     transcript = Path(a.transcript).read_text(encoding="utf-8") if a.transcript else None
