@@ -8,6 +8,7 @@ import argparse
 import contextlib
 import io
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -16,6 +17,7 @@ from pathlib import Path
 
 import bs3
 from bs3 import cli
+from bs3.errors import UserFacingError
 from bs3.norms import TRAIT_KEYS
 
 ROOT = Path(__file__).resolve().parents[1]            # bs3-studio/
@@ -201,3 +203,33 @@ def test_cmd_infer_report_shape():
     assert rep["traits"]["openness"]["score"] == 0.3 and rep["interview"]["score"] == 0.61
     assert rep["timings_sec"] == {"total": 1.5, "model_load": 2.0}
     assert "variant_scores" not in rep
+
+
+def test_missing_input_is_a_calm_error_before_any_model():
+    """A missing input is refused before a model is built (bs3.errors, stage 20): one calm Russian line on stderr, exit
+    code 1, and _backend is never called. With -v the original exception is re-raised for a full traceback."""
+    calls = []
+    saved = cli._backend
+    cli._backend = lambda a, **kw: calls.append(a)
+    missing = "/no/such/файл_нет.mp4"
+    try:
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            code = cli.main(["infer", missing, "--backend", "oceanai"])
+        text = err.getvalue()
+        lines = [ln for ln in text.splitlines() if ln.strip()]
+        assert code == 1 and len(lines) == 1, (code, lines)
+        assert re.search(r"[А-Яа-яЁё]", lines[0]) and "Файл не найден" in lines[0] and "Traceback" not in text
+        assert calls == []                                          # the file check runs before _backend
+        raised = None
+        with contextlib.redirect_stderr(io.StringIO()):
+            try:
+                cli.main(["infer", missing, "--backend", "oceanai", "-v"])
+            except UserFacingError as e:
+                raised = e
+        assert raised is not None and "Файл не найден" in str(raised) and calls == []
+        # explain refuses a missing input too
+        with contextlib.redirect_stderr(io.StringIO()):
+            assert cli.main(["explain", missing, "--out", "d"]) == 1
+        assert calls == []
+    finally:
+        cli._backend = saved

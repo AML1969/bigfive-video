@@ -16,12 +16,12 @@ import numpy as np
 import torch
 
 from . import settings
+from .errors import AnalysisCancelled, NoSegmentsAnalysed
 from .norms import TRAIT_KEYS
 from .textfmt import fmt_secs, seg_label
 
-
-class AnalysisCancelled(RuntimeError):
-    """Raised between steps when the caller asked to stop (see LongVideoAnalyzer.analyze(should_stop=...))."""
+# AnalysisCancelled lives in bs3/errors.py now (a leaf module without torch): building the page imports it there instead
+# of pulling this module, and torch, into the render layer. It is re-exported here for callers (pipeline, tests).
 
 log = logging.getLogger("bs.long")
 
@@ -150,6 +150,8 @@ class LongVideoAnalyzer:
                 log.warning("segment %d (%.0f-%.0fs) skipped: %s", i, s, e, str(ex).splitlines()[0][:160])
                 timeline.append({"segment": i, "start": round(s, 1), "end": round(e, 1), "scores": None,
                                  "transcript": seg_text, "error": str(ex).splitlines()[0][:160], "file": str(seg_path)})
+                if "out of memory" in str(ex).lower():
+                    torch.cuda.empty_cache()      # free the fragment before the next segment so one OOM does not cascade
                 continue
             seg_results.append(r)
             timeline.append({"segment": i, "start": round(s, 1), "end": round(e, 1), "scores": r["scores"],
@@ -161,7 +163,8 @@ class LongVideoAnalyzer:
             log.info("segment %d/%d %.0f-%.0fs: %s", i, len(segs), s, e,
                      {k[:5]: round(v, 3) for k, v in r["scores"].items()})
         if not seg_results:
-            raise RuntimeError("no segment could be analysed (no face or speech found in the whole video)")
+            raise NoSegmentsAnalysed("no segment could be analysed (no face or speech found in the whole video)",
+                                     errors=[t["error"] for t in timeline if t.get("error")])
         ok = [t for t in timeline if t.get("scores")]
         w = np.array([t["end"] - t["start"] for t in ok], dtype=float)
         w /= w.sum()

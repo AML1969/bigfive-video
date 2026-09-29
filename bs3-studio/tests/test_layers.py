@@ -47,9 +47,9 @@ HEAVY = ("torch", "cv2", "transformers", "pandas", "librosa")
 NO_BS3_IMPORTS = ("palette", "settings", "jobfiles", "textfmt", "frame_phrase", "bands")
 
 # (importer, imported, the stage of the refactoring plan that removes the edge)
-ALLOW = {
-    ("web.app", "longvideo", 20),                  # AnalysisCancelled -> errors
-}
+# Empty since stage 20 moved AnalysisCancelled into bs3/errors.py: web.app no longer imports longvideo (and torch) to
+# build the page. Every layer edge is now clean.
+ALLOW: set = set()
 
 
 def _name(path: Path) -> str:

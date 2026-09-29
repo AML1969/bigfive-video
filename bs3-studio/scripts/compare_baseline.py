@@ -448,7 +448,7 @@ def _tree(cfg: dict) -> str:
 
 
 def render_app(env: Env, want) -> dict:
-    from bs3 import journal
+    from bs3 import errors, journal
     from bs3.pipeline import Studio
     from bs3.web import app as webapp
 
@@ -476,7 +476,7 @@ def render_app(env: Env, want) -> dict:
             journal.start(proxied, str(video), member)
         journal.start(local, str(env.tmp / "missing.mov"), "mm")
         journal.failed(proxied, str(video), "остановлено пользователем", stopped=True)
-        journal.failed(local, str(video), webapp.analysis_error_ru(RuntimeError("CUDA out of memory")))
+        journal.failed(local, str(video), errors.user_message(RuntimeError("CUDA out of memory")))
         out["app.journal"] = JOURNAL_TIME.sub("YYYY-MM-DD HH:MM:SS", journal.PATH.read_text(encoding="utf-8"))
     if want("app.status"):
         try:
@@ -488,13 +488,13 @@ def render_app(env: Env, want) -> dict:
                       webapp._status_html(0.0, "текущий отрезок дорабатывается, затем обработка прерывается (до ~20 с)",
                                           state="stopped"),
                       webapp._status_html(0.2, "Не хватило памяти видеокарты.", state="error")]
-            errors = {repr(e): webapp.analysis_error_ru(e) for e in (
+            messages = {repr(e): errors.user_message(e) for e in (
                 RuntimeError("CUDA out of memory. Tried to allocate 2.00 GiB"),
                 RuntimeError("No segment could be analysed"), RuntimeError("no predictions for any file"),
                 RuntimeError("no frames decoded"), RuntimeError("All ensemble members failed: oceanai"),
                 subprocess.CalledProcessError(1, ["ffprobe", "x.mp4"]), RuntimeError("Неизвестная модель «x». Выберите …"),
                 ValueError("unexpected value 3"), KeyError("traits"))}
-            out["app.status"] = {"status_line": status, "analysis_errors": errors}
+            out["app.status"] = {"status_line": status, "analysis_errors": messages}
         except Exception as e:  # noqa: BLE001
             out["app.status"] = _error(e)
     return {k: serialise(mask(v)) for k, v in out.items() if want(k)}

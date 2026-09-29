@@ -18,6 +18,7 @@ import tempfile
 from pathlib import Path
 
 from . import DEFAULT_MODEL, LANG, MODEL_TITLES, PRODUCT, __version__, settings
+from .errors import UserFacingError, user_message
 from .norms import TRAIT_KEYS
 from .report import build_report
 
@@ -59,6 +60,9 @@ def _backend(a, lang: str = LANG, corpus: str | None = None):
 
 
 def cmd_infer(a):
+    for v in a.video:
+        if not Path(v).is_file():
+            raise UserFacingError(f"Файл не найден: {v}")
     be = _backend(a)
     reports = []
     analyzer = None
@@ -99,6 +103,8 @@ def cmd_infer(a):
 
 
 def cmd_explain(a):
+    if not Path(a.video).is_file():
+        raise UserFacingError(f"Файл не найден: {a.video}")
     a.backend = "mm"
     be = _backend(a)
     transcript = Path(a.transcript).read_text(encoding="utf-8") if a.transcript else None
@@ -171,7 +177,17 @@ def main(argv=None):
         logging.getLogger("bs").setLevel(logging.DEBUG)   # keep numba/urllib3 quiet
     for noisy in ("numba", "urllib3", "matplotlib", "PIL"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
-    return a.fn(a)
+    try:
+        return a.fn(a)
+    except KeyboardInterrupt:
+        print("Прервано.", file=sys.stderr)
+        return 130
+    except Exception as e:  # noqa: BLE001  — one calm Russian line; the full traceback only with -v
+        if a.verbose:
+            raise
+        first = (str(e).splitlines() or [""])[0][:120]
+        print(f"Ошибка: {user_message(e)} ({first}; подробности — с ключом -v)", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

@@ -7,15 +7,18 @@ build_app assembles the page; the result blocks are built in bs3/web/page.py and
 """
 from __future__ import annotations
 
+import gc
 import logging
 import re
 import secrets
 import shutil
+import sys
 import threading
 import time
 from pathlib import Path
 
 from .. import DEFAULT_MODEL, MODEL_TITLES, PRODUCT, caveats, characterization, jobview, journal, settings
+from ..errors import AnalysisCancelled, user_message
 from ..palette import HTML as PAL
 from ..pdf import export_pdf
 from ..pipeline import Studio, run_analysis
@@ -37,26 +40,6 @@ def pdf_for_download(job_dir: str | Path) -> str:
     out = d / pdf.name
     shutil.copy2(pdf, out)
     return str(out)
-
-
-def analysis_error_ru(e: BaseException) -> str:
-    """A failed analysis in words for the error dialog: the exceptions of the models are English (and show_error=True
-    would print them as they are); the original goes to the server log."""
-    import subprocess
-    msg = str(e)
-    low = msg.lower()
-    if "out of memory" in low:
-        return "Не хватило памяти видеокарты. Подождите минуту и запустите анализ заново."
-    if "no segment could be analysed" in low or "no predictions for any file" in low or "no frames decoded" in low:
-        return "В ролике не найдено ни лица, ни речи, поэтому оценить его нельзя. Проверьте файл."
-    if "all ensemble members failed" in low:
-        return ("Модель не смогла обработать ролик: чаще всего в кадре не найдено лицо или не слышна речь. "
-                "Проверьте файл.")
-    if isinstance(e, subprocess.CalledProcessError):
-        return "Не удалось прочитать видеофайл: возможно, он повреждён или записан в неподдерживаемом формате."
-    if re.search(r"[А-Яа-яЁё]", msg) and not re.search(r"[A-Za-z]", msg):
-        return msg                                  # messages of this package are already Russian
-    return "Не удалось обработать ролик из-за внутренней ошибки. Подробности записаны в журнал сервера."
 
 
 STATUS_LABELS = {"running": "Идёт обработка", "done": "Готово", "stopped": "Остановлено", "error": "Ошибка"}
@@ -102,7 +85,6 @@ ERROR_TITLE = "Ошибка"          # title of Gradio's error dialog (its defa
 def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
     """preview_job: a finished job folder rendered on page load (UI testing without re-running the analysis)."""
     import gradio as gr
-    from ..longvideo import AnalysisCancelled
 
     N_REST = N_PAGE + 1           # page_outputs + the PDF button (design 10.5: 28)
 
@@ -114,45 +96,69 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
         follow the model (change request 3.1, section 3): always for AMLAI 1.0, never for OCEAN-AI — no checkbox."""
         if not video:
             raise gr.Error("Загрузите видео", title=ERROR_TITLE)
-        member = member if member in MODEL_TITLES else DEFAULT_MODEL
-        journal.start(request, video, member)
-        state = {"frac": 0.0, "desc": "запуск", "t0": time.time()}
+        try:
+            member = member if member in MODEL_TITLES else DEFAULT_MODEL
+            journal.start(request, video, member)
+            state = {"frac": 0.0, "desc": "запуск", "t0": time.time()}
 
-        def cb(frac, desc=None, **kw):
-            state["frac"] = float(frac)
-            state["desc"] = str(desc if desc is not None else kw.get("desc", "")) or state["desc"]
+            def cb(frac, desc=None, **kw):
+                state["frac"] = float(frac)
+                state["desc"] = str(desc if desc is not None else kw.get("desc", "")) or state["desc"]
 
-        result: dict = {}
+            result: dict = {}
 
-        def work():
+            def work():
+                try:
+                    result["r"] = run_analysis(studio, work_dir, video, member=member, explain=(member == "mm"), progress=cb)
+                except BaseException as e:  # noqa: BLE001
+                    result["e"] = e
+
+            th = threading.Thread(target=work, daemon=True)
+            th.start()
+            while th.is_alive():
+                th.join(1.0)
+                yield (_status_html(state["frac"], _live_desc(state)),) + (gr.update(),) * N_REST
+            if "e" in result:
+                e = result["e"]
+                # the bar must not stay on the orange «Идёт обработка» while the error dialog is shown (as in BS 1.0):
+                # the outcome goes to the bar first, and the dialog on top of it explains what to do
+                if isinstance(e, AnalysisCancelled):
+                    journal.failed(request, video, "остановлено пользователем", stopped=True)
+                    yield (_status_html(state["frac"], "по запросу пользователя", state="stopped"),) + (gr.update(),) * N_REST
+                    raise gr.Error("Обработка остановлена. Запустите анализ заново.", title="Остановлено")
+                if "out of memory" in str(e).lower():
+                    gc.collect()                                      # release the failed run before anyone tries again
+                    torch = sys.modules.get("torch")                 # only if it is already loaded — never import it here
+                    if torch is not None:
+                        try:
+                            torch.cuda.empty_cache()
+                        except Exception:  # noqa: BLE001
+                            pass
+                log.error("analysis failed", exc_info=(type(e), e, e.__traceback__))
+                msg = user_message(e, work_dir)
+                journal.failed(request, video, msg)
+                yield (_status_html(state["frac"], msg, state="error"),) + (gr.update(),) * N_REST
+                raise gr.Error(msg, title=ERROR_TITLE)
+            rep = result["r"]
+            # the analysis is done and result.json is written; if the page cannot be built from it, say so calmly and
+            # keep the exception off the page (FP5)
             try:
-                result["r"] = run_analysis(studio, work_dir, video, member=member, explain=(member == "mm"), progress=cb)
-            except BaseException as e:  # noqa: BLE001
-                result["e"] = e
-
-        th = threading.Thread(target=work, daemon=True)
-        th.start()
-        while th.is_alive():
-            th.join(1.0)
-            yield (_status_html(state["frac"], _live_desc(state)),) + (gr.update(),) * N_REST
-        if "e" in result:
-            e = result["e"]
-            # the bar must not stay on the orange «Идёт обработка» while the error dialog is shown (as in BS 1.0):
-            # the outcome goes to the bar first, and the dialog on top of it explains what to do
-            if isinstance(e, AnalysisCancelled):
-                journal.failed(request, video, "остановлено пользователем", stopped=True)
-                yield (_status_html(state["frac"], "по запросу пользователя", state="stopped"),) + (gr.update(),) * N_REST
-                raise gr.Error("Обработка остановлена. Запустите анализ заново.", title="Остановлено")
-            log.error("analysis failed", exc_info=(type(e), e, e.__traceback__))
-            msg = analysis_error_ru(e)
-            journal.failed(request, video, msg)
-            yield (_status_html(state["frac"], msg, state="error"),) + (gr.update(),) * N_REST
-            raise gr.Error(msg, title=ERROR_TITLE)
-        rep = result["r"]
-        jv = jobview.for_page(rep)
-        outs = render(jv)
-        journal.result(request, rep, time.time() - state["t0"], jv=jv)   # the page's view, type and summary
-        yield (_status_html(1.0, f"обработано за {fmt_secs(time.time() - state['t0'])}", state="done"),) + outs
+                jv = jobview.for_page(rep)
+                outs = render(jv)
+            except Exception:  # noqa: BLE001
+                log.exception("page render failed after a finished analysis")
+                msg = ("Анализ завершён и сохранён, но страницу с результатом построить не удалось. "
+                       "Подробности записаны в журнал сервера.")
+                journal.failed(request, video, msg)
+                yield (_status_html(state["frac"], msg, state="error"),) + (gr.update(),) * N_REST
+                raise gr.Error(msg, title=ERROR_TITLE)
+            journal.result(request, rep, time.time() - state["t0"], jv=jv)   # the page's view, type and summary
+            yield (_status_html(1.0, f"обработано за {fmt_secs(time.time() - state['t0'])}", state="done"),) + outs
+        except gr.Error:
+            raise                                                     # the calm dialogs above pass through unchanged
+        except Exception as e:  # noqa: BLE001  — a last net so no raw exception text reaches the page
+            log.exception("unexpected failure in analyze")
+            raise gr.Error(user_message(e), title=ERROR_TITLE)
 
     # `from __future__ import annotations` keeps «gr.Request» as a string, and Gradio resolves it in the module namespace,
     # where gradio is not imported: hand it the class itself, before the handler is registered
