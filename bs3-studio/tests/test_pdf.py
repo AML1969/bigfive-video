@@ -14,7 +14,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from samples import english, rep
+from samples import english, own as _own, rep
 
 from bs3 import caveats, characterization, mbti, scores
 from bs3.facts import card_item, fact_cards
@@ -43,18 +43,6 @@ def _build(r: dict, explanation: dict | None = None) -> tuple[Path, dict]:
     out = Path(tempfile.mkdtemp(dir=_TMP.name)) / "report.pdf"
     build.build_pdf(view, out, explanation=explanation, mbti=mb, character=ch)
     return out, mb
-
-
-def _own(name: str = "B") -> dict:
-    """The numbers of a sample as a 3.1 job of AMLAI 1.0 (one member, the segments carry its scores)."""
-    r = rep(name)
-    r["model"].update({"selected": "mm", "primary": "mm", "selected_title": "AMLAI 1.0", "backend": "mm"})
-    r["modalities_used"] = ["mm"]
-    mm = {k: r["variant_scores"]["mm"][k] for k in TRAIT_KEYS}
-    r["variant_scores"] = {"mm": r["variant_scores"]["mm"]}
-    for t in r["timeline"]:
-        t.update({"members_used": ["mm"], "primary_used": "mm", "variants": {"mm": dict(mm)}, "scores": dict(mm)})
-    return r
 
 
 # the shape of explanation.json that the PDF reads: modality shares per trait (pdf/charts draws no chart here,

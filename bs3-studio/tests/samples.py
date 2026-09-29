@@ -11,6 +11,8 @@ import copy
 import json
 from pathlib import Path
 
+from bs3.norms import TRAIT_KEYS
+
 _DATA = json.loads((Path(__file__).resolve().parent / "fixtures" / "samples.json").read_text(encoding="utf-8"))
 
 
@@ -24,4 +26,30 @@ def english(name: str = "B") -> dict:
     r = rep(name)
     r["model"]["lang"] = "en"
     r["model"]["primary"] = None
+    return r
+
+
+def own(name: str = "B") -> dict:
+    """The numbers of a sample as a 3.1 job of AMLAI 1.0 (one member; every segment carries its scores)."""
+    r = rep(name)
+    r["model"].update({"selected": "mm", "primary": "mm", "selected_title": "AMLAI 1.0", "backend": "mm"})
+    r["modalities_used"] = ["mm"]
+    mm = {k: r["variant_scores"]["mm"][k] for k in TRAIT_KEYS}
+    r["variant_scores"] = {"mm": r["variant_scores"]["mm"]}
+    for t in r["timeline"]:
+        t.update({"members_used": ["mm"], "primary_used": "mm", "variants": {"mm": dict(mm)}, "scores": dict(mm)})
+    return r
+
+
+def oceanai31(name: str = "B") -> dict:
+    """The numbers of a sample as a 3.1 job of OCEAN-AI (one member; every segment carries its scores)."""
+    r = rep(name)
+    r["model"].update({"selected": "oceanai", "primary": "oceanai", "selected_title": "OCEAN-AI, веса MuPTA",
+                       "backend": "oceanai"})
+    r["modalities_used"] = ["audio", "video", "text"]
+    oa = {k: r["variant_scores"]["oceanai"][k] for k in TRAIT_KEYS}
+    r["variant_scores"] = {"oceanai": r["variant_scores"]["oceanai"]}
+    for t in r["timeline"]:
+        t.update({"members_used": ["oceanai"], "primary_used": "oceanai", "variants": {"oceanai": dict(oa)},
+                  "scores": dict(oa)})
     return r

@@ -17,11 +17,10 @@ import tempfile
 from datetime import timedelta
 from pathlib import Path
 
-from samples import rep
+from samples import own, rep
 
 import bs3
 from bs3.narrative import NO_EXPLAIN_RU
-from bs3.norms import TRAIT_KEYS
 from bs3.web import app, page, style
 
 
@@ -31,16 +30,6 @@ def _job(r: dict, base: Path, name: str) -> dict:
     r["job_dir"] = str(job)
     (job / "result.json").write_text(json.dumps(r, ensure_ascii=False), encoding="utf-8")
     return json.loads((job / "result.json").read_text(encoding="utf-8"))
-
-
-def _own(name: str = "B") -> dict:
-    r = rep(name)
-    r["model"].update({"selected": "mm", "primary": "mm", "selected_title": "AMLAI 1.0", "backend": "mm"})
-    mm = {k: r["variant_scores"]["mm"][k] for k in TRAIT_KEYS}
-    r["variant_scores"] = {"mm": r["variant_scores"]["mm"]}
-    for t in r["timeline"]:
-        t.update({"members_used": ["mm"], "primary_used": "mm", "variants": {"mm": dict(mm)}, "scores": dict(mm)})
-    return r
 
 
 def _strip(html: str) -> str:
@@ -183,7 +172,7 @@ def test_page_outputs_oceanai_job():
 def test_page_outputs_own_model_job():
     from bs3 import caveats
     with tempfile.TemporaryDirectory() as d:
-        r = _own("B")
+        r = own("B")
         r["behavior_description_ru"] = "[0–20 с] Человек говорит спокойно."
         r["interview"] = {"score": 0.4011, "name_ru": "впечатление «пригласить на собеседование»"}
         job = Path(d) / "20000102_000000_0f3a9c1e"                     # a job of 3.1: time stamp and random suffix
