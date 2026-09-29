@@ -98,6 +98,16 @@ def test_environment_variables():
     assert got == DEFAULTS
 
 
+def test_every_setting_is_documented():
+    """docs/config.md (stage 27) names every public upper-case setting of bs3.settings and every environment
+    variable, so a new setting is not shipped undocumented."""
+    doc = (ROOT / "docs" / "config.md").read_text(encoding="utf-8")
+    missing = [k for k in vars(settings) if k.isupper() and k not in doc]
+    assert not missing, f"settings missing from docs/config.md: {missing}"
+    missing_env = [e for e in ENV_NAMES if e not in doc]
+    assert not missing_env, f"env vars missing from docs/config.md: {missing_env}"
+
+
 def test_import_loads_nothing_else():
     code = ("import json, sys; before = set(sys.modules); import bs3.settings; "
             "print(json.dumps(sorted(set(sys.modules) - before)))")

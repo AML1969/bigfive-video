@@ -88,6 +88,34 @@ def test_bs2_and_bs_unchanged_since_v3_base():
     assert st.returncode == 0 and st.stdout.strip() == "", "uncommitted changes under bs2-studio/ or bs/:\n" + st.stdout
 
 
+def _is_doc(rel: str) -> bool:
+    """Documentation about the project: README.md and docs/*.md. Like a comment, they may name BS 2.0, its port and
+    its work dir (the 3.1 docs explain the isolation from 2.0 and how old jobs are read); an actual import of bs2
+    stays forbidden there too (HARD). README.md is already skipped in _files(); docs/*.md go through _scan."""
+    return rel == "README.md" or (rel.startswith("docs/") and rel.endswith(".md"))
+
+
+def _scan(rel: str, text: str) -> list[str]:
+    """The forbidden references in one file, as "rel:line: text" strings: HARD everywhere; the 2.0 work dir only
+    outside the offline readers; the 2.0 port and name (SOFT) only in documentation positions (and freely in
+    docs/*.md, treated like README)."""
+    bad: list[str] = []
+    doc = _is_doc(rel)
+    doc_lines = None
+    for i, line in enumerate(text.splitlines(), 1):
+        for rx in HARD:
+            if rx.search(line):
+                bad.append(f"{rel}:{i}: {line.strip()[:120]}")
+        if not doc and BS2_DATA.search(line) and rel not in BS2_DATA_READERS:
+            bad.append(f"{rel}:{i}: {line.strip()[:120]}")
+        if not doc and any(rx.search(line) for rx in SOFT):
+            if rel.endswith(".py") and doc_lines is None:
+                doc_lines = _py_doc_lines(text)
+            if not _soft_ok(rel, text, line, i, doc_lines):
+                bad.append(f"{rel}:{i}: {line.strip()[:120]}")
+    return bad
+
+
 def test_no_bs2_references_in_bs3_studio():
     bad = []
     for p, rel in _files():
@@ -95,19 +123,18 @@ def test_no_bs2_references_in_bs3_studio():
             text = p.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             continue
-        doc_lines = None
-        for i, line in enumerate(text.splitlines(), 1):
-            for rx in HARD:
-                if rx.search(line):
-                    bad.append(f"{rel}:{i}: {line.strip()[:120]}")
-            if BS2_DATA.search(line) and rel not in BS2_DATA_READERS:
-                bad.append(f"{rel}:{i}: {line.strip()[:120]}")
-            if any(rx.search(line) for rx in SOFT):
-                if rel.endswith(".py") and doc_lines is None:
-                    doc_lines = _py_doc_lines(text)
-                if not _soft_ok(rel, text, line, i, doc_lines):
-                    bad.append(f"{rel}:{i}: {line.strip()[:120]}")
+        bad += _scan(rel, text)
     assert not bad, "references to BS 2.0 in bs3-studio:\n" + "\n".join(bad)
+
+
+def test_docs_md_treated_like_readme():
+    """docs/*.md are documentation, like README: a line there may name BS 2.0, port :7870 and the 2.0 work dir; an
+    import of bs2 (HARD) is refused there too, and a code file is still held to the rule (stage 27)."""
+    prose = "BS Profiler 3.1 не зависит от BS 2.0 на :7870; задания 2.0 переносятся из папки 2.0 (bs2_data)."
+    assert _scan("docs/result_json.md", prose) == []
+    assert _scan("docs/config.md", prose) == []
+    assert _scan("docs/config.md", "import bs2") and _scan("docs/config.md", "x = 'BS2_DIR'")   # HARD in docs
+    assert _scan("bs3/x.py", "u = 'http://h:7870'") and _scan("bs3/x.py", "d = 'bs2_data'")     # code unchanged
 
 
 def test_work_dirs_under_bs3_data():
