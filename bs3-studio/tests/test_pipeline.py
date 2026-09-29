@@ -11,7 +11,6 @@ import logging
 import re
 import sys
 import tempfile
-import threading
 import types
 from pathlib import Path
 
@@ -101,7 +100,6 @@ class _FakeStudio:
     asr_model = "fake-asr"
 
     def __init__(self):
-        self.stop_event = threading.Event()
         self.asked = []
         self.explained = []
         self._an = {}
@@ -139,6 +137,7 @@ class _FakeStudio:
 def test_signatures_one_member_russian_only():
     sig = inspect.signature(pipeline.run_analysis)
     assert "member" in sig.parameters and "lang" not in sig.parameters
+    assert "should_stop" in sig.parameters                     # stage 21: the stop button passes one Event per session
     assert sig.parameters["member"].default == "mm" == bs3.DEFAULT_MODEL      # a run without a model: AMLAI 1.0
     # everything after the video is passed by keyword (the page and the tests do; a positional call cannot slip a
     # language or a flag into the member)
@@ -147,7 +146,10 @@ def test_signatures_one_member_russian_only():
     assert [p.name for p in first] == ["studio", "work_dir", "video_path"]
     assert after and all(p.kind is inspect.Parameter.KEYWORD_ONLY for p in after), [(p.name, p.kind) for p in after]
     assert "members" not in inspect.signature(pipeline.Studio.__init__).parameters
-    assert bs3.LANG == "ru" and pipeline.Studio().lang == "ru"
+    st = pipeline.Studio()
+    assert bs3.LANG == "ru" and st.lang == "ru"
+    # stage 21: the process-wide stop_event is gone; a per-session Event drives should_stop, and run_lock serialises runs
+    assert not hasattr(st, "stop_event") and hasattr(st, "run_lock")
     for bad in ("en", "ensemble", "scene", ""):
         try:
             pipeline.check_member(bad)
@@ -401,6 +403,33 @@ def test_run_analysis_oceanai_skips_explanations_even_when_asked():
         assert studio.explained == [] and r["key_frames"] == []
         studio, r, _ = _run("mm", explain=False, tmp=Path(d) / "b")
         assert studio.explained == [] and r["key_frames"] == []
+
+
+def test_should_stop_cancels_the_run():
+    """Stage 21: a should_stop that returns True stops the run with AnalysisCancelled before the analysis runs (the
+    check after studio.analyzer()). The backend and the analyzer are reached, but an.analyze is never called and no
+    explanation is asked for."""
+    from bs3.errors import AnalysisCancelled
+    with tempfile.TemporaryDirectory() as d:
+        studio = _FakeStudio()
+        tmp = Path(d)
+        video = tmp / "clip.mp4"
+        video.write_bytes(b"\x00" * 2048)
+        log = logging.getLogger("bs3.pipeline")
+        old_level = log.level
+        log.setLevel(logging.CRITICAL)
+        try:
+            try:
+                pipeline.run_analysis(studio, tmp / "jobs", str(video), member="mm", explain=True,
+                                      should_stop=lambda: True)
+            except AnalysisCancelled:
+                pass
+            else:
+                raise AssertionError("should_stop=True did not cancel the run")
+        finally:
+            log.setLevel(old_level)
+        assert studio.asked == ["mm"] and studio.explained == []
+        assert studio.analyzer("mm").calls == []          # the segment analysis never started
 
 
 def test_no_pool_of_processed_videos():

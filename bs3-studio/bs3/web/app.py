@@ -87,6 +87,7 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
     import gradio as gr
 
     N_REST = N_PAGE + 1           # page_outputs + the PDF button (design 10.5: 28)
+    stops: dict[str, threading.Event] = {}      # session_hash -> the stop flag of that session's running analysis
 
     def render(jv: jobview.JobView) -> tuple:
         return page_values(jv) + (gr.update(interactive=True),)
@@ -105,13 +106,42 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
                 state["frac"] = float(frac)
                 state["desc"] = str(desc if desc is not None else kw.get("desc", "")) or state["desc"]
 
+            sess = (getattr(request, "session_hash", "") or "")
+            flag = threading.Event()          # this analysis' own stop flag; «Остановить» sets the one of its session
+            stops[sess] = flag
             result: dict = {}
 
             def work():
+                # one analysis at a time (FP1): wait for a previous run to reach its next stop check and let the lock
+                # go, so a run started right after «Остановить» never overlaps the stopped one. The bar shows the wait;
+                # the non-blocking probe tells us we must wait without racing on the message.
+                if not studio.run_lock.acquire(blocking=False):
+                    state["desc"] = "ожидание: завершается предыдущая обработка"
+                    studio.run_lock.acquire()
                 try:
-                    result["r"] = run_analysis(studio, work_dir, video, member=member, explain=(member == "mm"), progress=cb)
+                    result["r"] = run_analysis(studio, work_dir, video, member=member, explain=(member == "mm"),
+                                               progress=cb, should_stop=flag.is_set)
                 except BaseException as e:  # noqa: BLE001
+                    # the worker writes the outcome line itself: if the tab is gone the generator is closed
+                    # (GeneratorExit) before it could, but the run and its journal line still finish here
                     result["e"] = e
+                    if isinstance(e, AnalysisCancelled):
+                        journal.failed(request, video, "остановлено пользователем", stopped=True)
+                    else:
+                        if "out of memory" in str(e).lower():
+                            gc.collect()                          # release the failed run before the next one runs
+                            torch = sys.modules.get("torch")      # only if already loaded — never import it here
+                            if torch is not None:
+                                try:
+                                    torch.cuda.empty_cache()
+                                except Exception:  # noqa: BLE001
+                                    pass
+                        log.error("analysis failed", exc_info=(type(e), e, e.__traceback__))
+                        journal.failed(request, video, user_message(e, work_dir))
+                    result["journaled"] = True
+                finally:
+                    studio.run_lock.release()
+                    stops.pop(sess, None)
 
             th = threading.Thread(target=work, daemon=True)
             th.start()
@@ -120,23 +150,13 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
                 yield (_status_html(state["frac"], _live_desc(state)),) + (gr.update(),) * N_REST
             if "e" in result:
                 e = result["e"]
-                # the bar must not stay on the orange «Идёт обработка» while the error dialog is shown (as in BS 1.0):
-                # the outcome goes to the bar first, and the dialog on top of it explains what to do
+                # work() has already journaled the outcome; here the generator, while it is alive, only puts the
+                # outcome on the bar (never leaving the orange «Идёт обработка» under the dialog, as BS 1.0 did) and
+                # shows the calm dialog on top of it
                 if isinstance(e, AnalysisCancelled):
-                    journal.failed(request, video, "остановлено пользователем", stopped=True)
                     yield (_status_html(state["frac"], "по запросу пользователя", state="stopped"),) + (gr.update(),) * N_REST
                     raise gr.Error("Обработка остановлена. Запустите анализ заново.", title="Остановлено")
-                if "out of memory" in str(e).lower():
-                    gc.collect()                                      # release the failed run before anyone tries again
-                    torch = sys.modules.get("torch")                 # only if it is already loaded — never import it here
-                    if torch is not None:
-                        try:
-                            torch.cuda.empty_cache()
-                        except Exception:  # noqa: BLE001
-                            pass
-                log.error("analysis failed", exc_info=(type(e), e, e.__traceback__))
                 msg = user_message(e, work_dir)
-                journal.failed(request, video, msg)
                 yield (_status_html(state["frac"], msg, state="error"),) + (gr.update(),) * N_REST
                 raise gr.Error(msg, title=ERROR_TITLE)
             rep = result["r"]
@@ -164,9 +184,17 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
     # where gradio is not imported: hand it the class itself, before the handler is registered
     analyze.__annotations__["request"] = gr.Request
 
-    def stop():
-        studio.stop_event.set()
+    def stop(request: gr.Request):
+        """«Остановить обработку»: stop only this session's own run. Setting its flag makes the run cut its current
+        segment, then raise AnalysisCancelled and write the ОСТАНОВЛЕНО line from its own thread; cancels=[run_ev]
+        frees the queue slot and run_lock keeps a waiting run from overlapping the stopped one."""
+        flag = stops.get(getattr(request, "session_hash", "") or "")
+        if flag is None:
+            return _status_html(0.0, "обработка отменена", state="stopped")
+        flag.set()
         return _status_html(0.0, "текущий отрезок дорабатывается, затем обработка прерывается (до ~20 с)", state="stopped")
+
+    stop.__annotations__["request"] = gr.Request     # see the note under analyze(): hand Gradio the class itself
 
     def make_pdf(job_dir):
         if not job_dir:

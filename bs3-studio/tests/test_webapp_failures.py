@@ -2,12 +2,17 @@
 in demo.fns are called with a fake run_analysis, and the journal goes to a temporary file. A failed analysis ends with a
 calm Russian bar, a gr.Error with that message and a journal ОШИБКА line — the model's English exception never reaches
 the page. A cancelled run is «Остановлено». A finished analysis whose page cannot be built is calm too (FP5). The status
-bar and the two PDF-button refusals are pinned. (The stop button and one-analysis-at-a-time are stage 21.)"""
+bar and the two PDF-button refusals are pinned. Stage 21 adds the stop button and one-analysis-at-a-time: «Остановить»
+stops only the caller's own run, the outcome line is written from the worker thread (so it survives the tab closing),
+and run_lock keeps a new run from overlapping a stopped one."""
 from __future__ import annotations
 
 import contextlib
 import logging
+import re
 import tempfile
+import threading
+import time
 from pathlib import Path
 
 from samples import rep
@@ -106,6 +111,51 @@ def _mm_job(base: Path) -> Path:
     return job
 
 
+def _req(sess: str):
+    """A request of its own browser session (the stop button matches the caller's session_hash)."""
+    r = _Req()
+    r.session_hash = sess
+    return r
+
+
+def _kinds(text: str) -> list[str]:
+    """The kind word (ВХОД / СТАРТ / РЕЗУЛЬТАТ / ОШИБКА / ОСТАНОВЛЕНО) of each journal head line, in order."""
+    out = []
+    for line in text.splitlines():
+        m = re.match(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\s+(\S+)", line)
+        if m:
+            out.append(m.group(1))
+    return out
+
+
+class _Gate:
+    """A fake run_analysis the test drives by hand: it registers as active (so an overlap of two runs would show up in
+    `max`), reports when it is running under the lock (`started`), then loops until it is told to finish (`release`) or
+    is stopped through `should_stop` (then it raises AnalysisCancelled, like the real segment loop)."""
+
+    def __init__(self, result_rep=None):
+        self.result_rep = result_rep
+        self.active = self.max = 0
+        self._lock = threading.Lock()
+        self.started = threading.Semaphore(0)
+        self.release = threading.Event()
+
+    def run(self, studio, work_dir, video, *, member, explain, progress=None, should_stop=None):
+        with self._lock:
+            self.active += 1
+            self.max = max(self.max, self.active)
+        self.started.release()
+        try:
+            while not self.release.is_set():
+                if should_stop and should_stop():
+                    raise AnalysisCancelled("остановлено пользователем")
+                time.sleep(0.005)
+            return self.result_rep
+        finally:
+            with self._lock:
+                self.active -= 1
+
+
 def test_analysis_failure_is_calm():
     """A model exception (English) becomes the calm Russian bar and dialog; the journal has СТАРТ and ОШИБКА; nothing
     of the exception text is yielded to the page."""
@@ -133,7 +183,8 @@ def test_analysis_failure_is_calm():
 
 
 def test_cancelled_analysis_is_stopped():
-    """AnalysisCancelled gives the «Остановлено» bar and dialog and an ОСТАНОВЛЕНО journal line (today's flow)."""
+    """AnalysisCancelled gives the «Остановлено» bar and dialog and an ОСТАНОВЛЕНО journal line. Stage 21: the worker
+    thread writes that line itself (it survives the tab closing); the generator only shows the bar and the dialog."""
     import gradio as gr
     with tempfile.TemporaryDirectory() as d, _patched(journal, PATH=Path(d) / "journal.txt"):
         demo = _build(Path(d) / "jobs")
@@ -242,3 +293,59 @@ def test_preview_fills_the_page_and_shows_the_model():
     assert [c.value for c in comps if isinstance(c, gr.Radio)] == ["mm"]             # the model of the previewed job
     btn = next(c for c in comps if isinstance(c, gr.DownloadButton))
     assert btn.interactive is True and str(job) in [c.value for c in comps if isinstance(c, gr.State)]
+
+
+def test_stop_stops_only_own_session():
+    """«Остановить» from another session leaves this analysis running; the caller's own stop ends it with exactly one
+    ОСТАНОВЛЕНО line, and a stop with no own run just says «обработка отменена» (stage 21, FP1 / T7(3))."""
+    from bs3.pipeline import Studio
+    g = _Gate()
+    with tempfile.TemporaryDirectory() as d, _patched(journal, PATH=Path(d) / "journal.txt"):
+        studio = Studio()
+        demo = app.build_app(studio, Path(d) / "jobs")
+        analyze, stop = _handlers(demo)["analyze"], _handlers(demo)["stop"]
+        with _patched(app, run_analysis=g.run):
+            gA = analyze("/uploads/a.mp4", "mm", _req("sessA"))
+            next(gA)                                  # A's worker acquires the lock and starts running
+            assert g.started.acquire(timeout=10)      # A is now inside run_analysis (holds the lock)
+            bar_b = stop(_req("sessB"))               # B has no run of its own: it must not touch A
+            assert "обработка отменена" in bar_b and app.STATUS_LABELS["stopped"] in bar_b
+            assert g.active == 1                       # A is still running
+            bar_a = stop(_req("sessA"))               # A stops its own run
+            assert "дорабатывается" in bar_a and "обработка отменена" not in bar_a
+            gA.close()                                # the tab goes away; A's worker still finishes and journals
+            assert studio.run_lock.acquire(timeout=10)  # wait until A's worker journaled ОСТАНОВЛЕНО and let go
+            studio.run_lock.release()
+        text = journal.PATH.read_text(encoding="utf-8")
+    assert g.max == 1
+    assert _kinds(text) == ["СТАРТ", "ОСТАНОВЛЕНО"]   # one start, one stop — only A; B journaled nothing
+    assert "a.mp4" in text and "b.mp4" not in text
+
+
+def test_cancelled_event_still_journals_and_never_overlaps():
+    """Closing the tab of a stopped run does not lose its ОСТАНОВЛЕНО line (the worker writes it), and a run started
+    afterwards waits on run_lock so at most one analysis is ever active — the journal reads СТАРТ / ОСТАНОВЛЕНО /
+    СТАРТ / outcome (stage 21, FP1)."""
+    from bs3.pipeline import Studio
+    with tempfile.TemporaryDirectory() as d, _patched(journal, PATH=Path(d) / "journal.txt"):
+        job = _mm_job(Path(d))
+        g = _Gate(result_rep=jobfiles.load_job(job)[0])   # the second run finishes with a job that renders
+        studio = Studio()
+        demo = app.build_app(studio, Path(d) / "jobs")
+        analyze, stop = _handlers(demo)["analyze"], _handlers(demo)["stop"]
+        with _patched(app, run_analysis=g.run):
+            g1 = analyze("/uploads/one.mp4", "mm", _req("s1"))
+            next(g1)                                  # g1's worker runs under the lock
+            assert g.started.acquire(timeout=10)
+            stop(_req("s1"))                          # ask g1 to stop
+            g1.close()                                # the tab closes: the generator ends, the worker keeps going
+            assert studio.run_lock.acquire(timeout=10)  # wait until g1's worker journaled ОСТАНОВЛЕНО and released
+            studio.run_lock.release()
+            g.release.set()                           # let a non-stopped run finish
+            with _quiet():
+                outs2, err2 = _drive(analyze("/uploads/two.mp4", "mm", _req("s2")))
+        text = journal.PATH.read_text(encoding="utf-8")
+    assert g.max == 1                                 # run_lock kept the two runs from overlapping
+    assert err2 is None, getattr(err2, "message", err2)
+    assert _kinds(text) == ["СТАРТ", "ОСТАНОВЛЕНО", "СТАРТ", "РЕЗУЛЬТАТ"]
+    assert "one.mp4" in text and "two.mp4" in text

@@ -52,7 +52,9 @@ class Studio:
         self._an: Dict[str, object] = {}          # member -> LongVideoAnalyzer over that backend (at most one)
         self._asr_shared = None                   # the Whisper pipeline of a dropped analyzer, reused by the next one
         self._text_emo = self._voice_emo = self._face_expr = None
-        self.stop_event = threading.Event()
+        # one Big Five analysis at a time: web/app.py holds this while a run works, so a run started after «Остановить»
+        # waits for the stopped one to reach its next should_stop check and let go, instead of overlapping with it
+        self.run_lock = threading.Lock()
 
     def _evict(self, keep: str) -> None:
         """Drop the backend and the analyzer of every member other than `keep` and give their GPU memory back."""
@@ -221,13 +223,16 @@ def run_extra_analyses(studio: Studio, res: dict, lang: str, progress: Callable 
 
 
 def run_analysis(studio: Studio, work_dir: Path, video_path: str, *, member: str = DEFAULT_MODEL, explain: bool = True,
-                 progress: Callable | None = None) -> dict:
+                 progress: Callable | None = None, should_stop: Callable[[], bool] | None = None) -> dict:
     """Whole request: copy the upload, Big Five by the chosen model only (`member`: "oceanai" | "mm", segmented),
     extra analyses, explanations (AMLAI 1.0 only), plain-language texts; writes <job>/result.json and returns it with
     the job path. The speech language is Russian (bs3.LANG). result.json records the model as `model.selected` /
     `model.selected_title` / `model.primary`; `variant_scores` holds that member only, `modalities_used` what that
     model looks at (bs3.MODALITIES). The plain-language summary of 2.0 (`narrative`) is not written any more: 3.x
-    shows «Как получены оценки» (narrative.method_notes), built on display."""
+    shows «Как получены оценки» (narrative.method_notes), built on display.
+
+    `should_stop`: checked between steps and passed on to the segment loop; when it returns True the run raises
+    AnalysisCancelled (the web «Остановить обработку» button, one Event per session)."""
     from .longvideo import AnalysisCancelled
     from .media import probe_media
     from .ru_texts import ensure_russian
@@ -240,7 +245,6 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, *, member: str
     lang = LANG
     title = MODEL_TITLES[member]
     t0 = time.time()
-    studio.stop_event.clear()
     # the start time and a random suffix: the name of a new job cannot be guessed from the time of the upload, and two
     # analyses started in the same second get two folders (older jobs keep their names without the suffix)
     job = work_dir / f"{time.strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(4)}"
@@ -253,9 +257,11 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, *, member: str
     step(0.03, f"Загрузка модели {title} (первый запуск до минуты)")
     be = studio.backend(member)
     an = studio.analyzer(member)
+    if should_stop and should_stop():
+        raise AnalysisCancelled("остановлено пользователем")
     step(0.10, f"Речь, лицо, голос{', описание поведения' if member == 'mm' else ''} — Big Five ({title})")
     res = an.analyze(local, job / jobfiles.SEGMENTS_DIR, progress=lambda f, d: step(0.10 + 0.60 * f, d),
-                     should_stop=studio.stop_event.is_set)
+                     should_stop=should_stop)
     # the corpus of the member itself (MuPTA / the own model's checkpoints), not the ensemble wrapper's descriptor
     inner = getattr(be, "backends", {}).get(member)
     corpus = getattr(getattr(inner, "cfg", None), "corpus", None) or be.cfg.corpus
@@ -269,11 +275,11 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, *, member: str
 
     # ---- BS Profiler 3.x analyses
     rep["analyses"] = run_extra_analyses(studio, {**res, "input": str(local)}, lang, progress=step,
-                                         should_stop=studio.stop_event.is_set)
+                                         should_stop=should_stop)
 
     # ---- explanations (AMLAI 1.0 only, representative segment)
     expl, frames = None, []
-    if studio.stop_event.is_set():
+    if should_stop and should_stop():
         raise AnalysisCancelled("остановлено пользователем")
     if explain and member == "mm" and studio.mm_backend(member) is not None:
         step(0.92, "Объяснения: вклад модальностей, ключевые кадры и подписи к ним, слова")
@@ -299,6 +305,8 @@ def run_analysis(studio: Studio, work_dir: Path, video_path: str, *, member: str
         except Exception as e:  # noqa: BLE001
             log.warning("explanation failed: %s", str(e).splitlines()[0][:160])
     # ---- texts for people: Russian versions of the English model texts for any speech language (ru_texts.py)
+    if should_stop and should_stop():
+        raise AnalysisCancelled("остановлено пользователем")
     step(0.97, "Тексты и перевод")
     ensure_russian(rep, expl)
     if expl:
