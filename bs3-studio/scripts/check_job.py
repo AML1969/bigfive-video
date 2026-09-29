@@ -8,7 +8,7 @@ For every job folder (it must hold result.json):
    agree with it, variant_scores holds that member only, traits are its scores, the speech is Russian without
    percentiles, the mbti section is schema 3 with `model` = that member and no `second` / `agreement`. A job without
    model.selected (3.0 or imported 2.0) skips this item: it is only required to open (items 2-3).
-2. The page builds (webapp.page_outputs, 27 values); none of its blocks says «второе мнение», names or roles of 3.0
+2. The page builds (web.page.page_outputs, 27 values); none of its blocks says «второе мнение», names or roles of 3.0
    (rerender_samples.OLD_NAMES), «MM-PSYCHE» outside the recipe clause, «Краткие выводы» or «сегмент» (the
    transcript, the behaviour description and the raw result.json are the person's data and the file itself and are
    not read); «Модель и время обработки» starts with the model line; the MBTI panel names the model; the tab
@@ -36,11 +36,14 @@ from bs3.labels import model_title  # noqa: E402
 from bs3.narrative import NO_EXPLAIN_RU  # noqa: E402
 from bs3.norms import TRAIT_KEYS  # noqa: E402
 from bs3.pdf import export_pdf  # noqa: E402
-from bs3.webapp import N_PAGE, NO_FRAMES_OCEANAI, page_outputs  # noqa: E402
+from bs3.web.page import N_PAGE, NO_FRAMES_OCEANAI, page_index, page_outputs  # noqa: E402
 
 MMP = re.compile(r"(?<!по рецепту )MM-PSYCHE")
-# indices of page_outputs (webapp.page_outputs): the blocks that hold the person's own words or the file itself
-I_TRANSCRIPT, I_FRAMES, I_CONTRIB, I_WORDS, I_DESC, I_MODEL, I_JSON, I_PATH, I_JOB, I_MBTI = 11, 14, 15, 16, 17, 18, 19, 20, 21, 24
+# indices of page_outputs (web.page.page_outputs): the blocks that hold the person's own words or the file itself
+I_TRANSCRIPT, I_FRAMES, I_CONTRIB, I_WORDS, I_DESC, I_MODEL, I_JSON, I_PATH, I_JOB, I_MBTI = (
+    page_index("transcript"), page_index("key_frames_html"), page_index("contrib"), page_index("words"),
+    page_index("behavior_description"), page_index("model_and_time"), page_index("result_json"),
+    page_index("saved_to"), page_index("job_state"), page_index("mbti_types"))
 SKIP_TEXT = {I_TRANSCRIPT, I_DESC, I_JSON, I_PATH, I_JOB}
 
 

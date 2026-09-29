@@ -11,7 +11,7 @@ the snapshot; exit code 1 on any difference, on a block present on one side only
 is gone from the work dir. A job without a baseline (a new analysis) is listed as NEW and does not fail the run.
 
 Blocks of a job:
-  page.<name>           the 27 values of webapp.page_outputs, in their order (PAGE_BLOCKS)
+  page.<name>           the 27 values of web.page.page_outputs, in their order (PAGE_BLOCKS)
   journal.result        the journal entry of a finished analysis (journal.result written into a temporary journal)
   characterization      characterization.build(view, mbti).plain()
   mbti                  mbti.get_mbti(rep, view): the saved section, or the one computed on display
@@ -69,7 +69,7 @@ APP = "_app"
 MANIFEST = "_manifest.json"
 JSON_TAG = "#json\n"          # first line of a snapshot whose value is not a string (serialised as sorted JSON)
 
-# the values of webapp.page_outputs by position (the output blocks of the page after the status line, without the
+# the values of web.page.page_outputs by position (the output blocks of the page after the status line, without the
 # PDF button); index 20 is «Сохранено в», 21 the hidden job folder the PDF button reads
 PAGE_BLOCKS = ("radar", "bars", "key_facts_html", "characterization_html", "traits_timeline", "emotions_timeline",
                "voice_timeline", "speech_timeline", "emotion_bars", "segments_table", "speech_cards", "transcript",
@@ -272,9 +272,9 @@ def render_job(env: Env, job: Path, want) -> dict:
     """{block: value} of one job, masked; only the blocks `want(block)` accepts (the page is rendered anyway when
     the journal is wanted: the app writes the journal entry after the page, from the same result)."""
     from bs3 import characterization, facts, frame_captions, journal, mbti
-    from bs3 import webapp
     from bs3.pdf import export_pdf
     from bs3.scores import clean_view
+    from bs3.web import page
 
     copy_dir = env.tmp / "jobs" / job.name
     _copy_job(job, copy_dir)
@@ -304,7 +304,7 @@ def render_job(env: Env, job: Path, want) -> dict:
             rep = load()
             recorded.clear()
             try:
-                outs = webapp.page_outputs(rep)
+                outs = page.page_outputs(rep)
                 if len(outs) != len(PAGE_BLOCKS):
                     raise RuntimeError(f"page_outputs gave {len(outs)} values, the baseline knows {len(PAGE_BLOCKS)}")
                 for name, v in zip(PAGE_BLOCKS, outs):
@@ -584,6 +584,10 @@ def main(argv: list[str] | None = None) -> int:
     failed, report = 0, []
     with tempfile.TemporaryDirectory(prefix="bs3_baseline_") as tmp:
         env = Env(Path(tmp))
+        from bs3.web.page import PAGE_BLOCKS as _WEB_PAGE_BLOCKS
+        if _WEB_PAGE_BLOCKS != PAGE_BLOCKS:                       # the snapshot contract kept here must match the page
+            raise SystemExit(f"compare_baseline: bs3.web.page.PAGE_BLOCKS drifted from the snapshot contract "
+                             f"({_WEB_PAGE_BLOCKS} vs {PAGE_BLOCKS})")
         targets = ([APP] if do_app else []) + names
         for name in targets:
             t0 = time.time()

@@ -19,10 +19,11 @@ from pathlib import Path
 
 from samples import rep
 
-from bs3 import caveats, jobfiles, ru_texts, webapp
+from bs3 import caveats, jobfiles, ru_texts
 from bs3.narrative import NO_EXPLAIN_RU
 from bs3.norms import TRAIT_KEYS
 from bs3.pdf import build as pdf_build
+from bs3.web import page
 
 JOB = "20000101_000000_0f3a9c1e"
 FRAMES = ("key_01_frame10.jpg", "key_02_frame25.jpg", "key_03_frame40.jpg")
@@ -33,7 +34,7 @@ EXPL = {"modalities": {"input_x_gradient": {k: {"face": {"share": 0.6}, "audio":
         "readable_words": {"transcript_words": {k: {"up": [{"word": "work", "ru": "работа", "signed": 0.01}],
                                                     "down": []} for k in TRAIT_KEYS}},
         "readable_words_by": "ollama"}
-# the page values by index (webapp.page_outputs)
+# the page values by index (web.page.page_outputs)
 I_BARS, I_FACTS, I_FRAMES, I_CONTRIB, I_WORDS, I_SAVED, I_JOB = 1, 2, 14, 15, 16, 20, 21
 
 
@@ -84,7 +85,7 @@ def test_moved_data_root():
         loaded, expl = jobfiles.load_job(job)
         assert loaded["job_dir"] == str(job) and expl == EXPL
         assert jobfiles.key_frame_paths(job, loaded) == [job / "explain" / f for f in FRAMES]
-        outs = webapp.page_outputs(loaded)
+        outs = page.page_outputs(loaded)
         # export_pdf reads the same folder: the key frames and the video handed to the PDF are the ones in it
         from bs3 import media
         from bs3.pdf import charts as pdf_charts
@@ -97,13 +98,13 @@ def test_moved_data_root():
         pdf_build.build_pdf, pdf_charts.save_pdf_charts = build, lambda *a, **k: {}
         media.probe_media = lambda p: {"probed": Path(p).name}
         try:
-            webapp.export_pdf(job)
+            pdf_build.export_pdf(job)
         finally:
             pdf_build.build_pdf, pdf_charts.save_pdf_charts, media.probe_media = saved
         assert (job / "result.json").read_bytes() == stored                 # nothing was written back
     frames, contrib, words = outs[I_FRAMES], outs[I_CONTRIB], outs[I_WORDS]
     assert frames.count("<img src='data:image/jpeg;base64,") == len(FRAMES), frames[:200]
-    assert webapp.NO_FRAMES_MM not in frames
+    assert page.NO_FRAMES_MM not in frames
     assert "Какая доля оценки модели AMLAI 1.0" in contrib and "<table" in contrib
     assert "«работа»" in words
     assert outs[I_SAVED] == JOB and outs[I_JOB] == str(job)
@@ -265,8 +266,8 @@ def test_page_and_pdf_on_null_fields():
                 r, _ = jobfiles.load_job(job)
             else:
                 assert "job_dir" not in r
-            outs = webapp.page_outputs(copy.deepcopy(r))
-            assert len(outs) == webapp.N_PAGE, case
+            outs = page.page_outputs(copy.deepcopy(r))
+            assert len(outs) == page.N_PAGE, case
             bars, facts = outs[I_BARS], outs[I_FACTS]
             assert bars.count("<b>Экстраверсия</b>") == 1, case
             if case.startswith("interview"):
@@ -278,9 +279,9 @@ def test_page_and_pdf_on_null_fields():
                 assert outs[I_SAVED] == "" and outs[I_JOB] == "", case
                 assert outs[I_WORDS] == "" and "<img" not in outs[I_FRAMES], case
                 if case.endswith("AMLAI 1.0"):
-                    assert outs[I_CONTRIB] == "" and webapp.NO_FRAMES_MM in outs[I_FRAMES], case
+                    assert outs[I_CONTRIB] == "" and page.NO_FRAMES_MM in outs[I_FRAMES], case
                 else:
-                    assert NO_EXPLAIN_RU in outs[I_CONTRIB] and webapp.NO_FRAMES_OCEANAI in outs[I_FRAMES], case
+                    assert NO_EXPLAIN_RU in outs[I_CONTRIB] and page.NO_FRAMES_OCEANAI in outs[I_FRAMES], case
             out = Path(d) / f"report_{i}.pdf"
             assert pdf_build.build_pdf(copy.deepcopy(r), out) == str(out), case
             assert out.stat().st_size > 10_000, case

@@ -16,12 +16,13 @@ import inspect
 import re
 from contextlib import contextmanager
 
-from bs3 import analyses_text, characterization, facts, scores, webapp
+from bs3 import analyses_text, characterization, facts, scores
 from bs3.analyses import speech_stats
 from bs3.facts import segment_cells
 from bs3.pdf import appendix
 from bs3.pdf.document import Report
 from bs3.scores import ABOVE, BELOW, NEUTRAL
+from bs3.web import page
 
 
 @contextmanager
@@ -67,7 +68,7 @@ def _report() -> dict:
 
 def _page_rows(rep: dict) -> list:
     """The rows of the page's table as the browser gets them: the text of every <td> of the table body."""
-    body = webapp._segments_table(rep).split("<tbody>", 1)[1]
+    body = page._segments_table(rep).split("<tbody>", 1)[1]
     trs = re.findall(r"<tr style='border:0'>(.*?)</tr>", body)
     return [re.findall(r"<td style='[^']*'>(.*?)</td>", tr) for tr in trs]
 
@@ -85,15 +86,15 @@ def _pdf_rows(rep: dict) -> tuple[list, list]:
 
 def test_the_segment_cells_of_the_page_equal_the_pdf():
     rep = _report()
-    page = _page_rows(rep)
+    page_rows = _page_rows(rep)
     header, pdf = _pdf_rows(rep)
     cols = len(header) - 7                   # the PDF puts the scores (and the MBTI type) between time and cells
     assert header[cols:] == ["по речи", "по лицу", "Возб.", "Увер.", "Позит.", "Темп", "Паузы"]
-    assert len(page) == len(pdf) == len(SEGMENTS)
-    for name, p, q in zip(SEGMENTS, page, pdf):
+    assert len(page_rows) == len(pdf) == len(SEGMENTS)
+    for name, p, q in zip(SEGMENTS, page_rows, pdf):
         assert p[0] == q[0], name                                      # the time of the segment
         assert p[1:] == q[cols:] == segment_cells(SEGMENTS[name]), name
-    rows = dict(zip(SEGMENTS, page))
+    rows = dict(zip(SEGMENTS, page_rows))
     # the three cases of the owner: the end of the last segment, a segment without a tempo, an empty transcript
     assert rows["last"][0] == "10:40–10:52"
     assert rows["no tempo"][6] == rows["tempo 0"][6] == "—" and rows["spoken"][6] == "122"
@@ -101,15 +102,15 @@ def test_the_segment_cells_of_the_page_equal_the_pdf():
     assert rows["no text"][6] == "88" and rows["spoken"][1] == "радость 60%" and rows["spoken"][2] == "нейтрально 70%"
     assert rows["no data"][1:] == ["—"] * 7 and rows["spoken"][3:6] == ["0.41", "0.52", "0.47"]
     assert rows["spoken"][7] == "18%" and rows["no speech"][7] == "100%"
-    assert "нейтрально 100%" not in webapp._segments_table(rep)
+    assert "нейтрально 100%" not in page._segments_table(rep)
 
 
 def test_both_tables_take_the_cells_from_facts():
-    assert "segment_cells(r)" in inspect.getsource(webapp._segments_table)
+    assert "segment_cells(r)" in inspect.getsource(page._segments_table)
     assert "segment_cells(r)" in inspect.getsource(appendix._segments_table)
-    assert webapp.segment_cells is appendix.segment_cells is facts.segment_cells
-    assert not hasattr(webapp, "_dominant") and not hasattr(appendix, "_dominant_text")
-    assert "truncate" not in inspect.getsource(webapp)
+    assert page.segment_cells is appendix.segment_cells is facts.segment_cells
+    assert not hasattr(page, "_dominant") and not hasattr(appendix, "_dominant_text")
+    assert "truncate" not in inspect.getsource(page)
     # a short video keeps m:ss, an hour and more writes h:mm:ss in the whole column, rounded
     short = {"analyses": {"per_segment": [_seg(1, 0.0, 19.6), _seg(2, 19.6, 39.5)]}}
     assert [r[0] for r in _page_rows(short)] == ["0:00–0:20", "0:20–0:40"]
@@ -135,9 +136,9 @@ def _tempo_texts(wpm, description=None) -> dict:
     behavior = characterization._p_behavior(view, {"behavior": T}, {})
     char_word = next(k for k, w in T["tempo_words"].items() if f"Темп речи {w} (" in behavior)
     word = next(w for w in analyses_text.TEMPO_RU.values() if f"Темп речи {w} (" in sp["description"])
-    page = webapp._speech_html(view)
+    page_html = page._speech_html(view)
     return {"card": card[3], "stored": word, "characterization": char_word,
-            "page": next(s for s, w in analyses_text.TEMPO_RU.items() if f"Темп речи {w} (" in page),
+            "page": next(s for s, w in analyses_text.TEMPO_RU.items() if f"Темп речи {w} (" in page_html),
             "pdf": next(s for s, w in analyses_text.TEMPO_RU.items()
                         if f"Темп речи {w} (" in analyses_text.analyses_parts(view)["speech"])}
 
@@ -172,7 +173,7 @@ def test_the_stored_sentence_of_an_old_job():
     sp = _speech(99.8, description=old)
     view = {"analyses": {"speech": sp}, "transcript": ""}
     assert analyses_text.speech_description(sp) == shown
-    assert f">{shown}</p>" in webapp._speech_html(view)
+    assert f">{shown}</p>" in page._speech_html(view)
     assert analyses_text.analyses_parts(view)["speech"] == shown
     assert facts.key_facts(view)[0][1:2] == ("100 слов в минуту",) and facts.key_facts(view)[0][3] == NEUTRAL
     assert sp["description"] == old                                     # result.json is not rewritten

@@ -2,10 +2,10 @@
 stage 9), and the copies are gone.
 
 The old outputs of the four clock copies (mbti_html._mmss, pdf_mbti._mmss, journal._mmss, charts._clock), of
-webapp._clock and of the two h:mm:ss copies in pdf_report._seg and the PDF chart axis were recorded over 0…12000 s in
+page._clock and of the two h:mm:ss copies in pdf_report._seg and the PDF chart axis were recorded over 0…12000 s in
 steps of 0.1 s before the copies were deleted; `clock` reproduced every one of them. The sample points below come from
 that table; OLD keeps the old bodies, and every run compares them with `clock` again from 0 to 12000 s. The one copy
-that cut the seconds off, webapp._clock of the page's segments table, rounds since stage 14a like the PDF and the
+that cut the seconds off, page._clock of the page's segments table, rounds since stage 14a like the PDF and the
 chart hover (owner, 2026-09-27), so `clock` has no truncating mode any more.
 """
 from __future__ import annotations
@@ -13,8 +13,8 @@ from __future__ import annotations
 import inspect
 
 from bs3 import (analyses_text, caveats, characterization, facts, journal, mbti, narrative, report,
-                 scores, segments, textfmt, webapp)
-from bs3.web import charts, mbti_html, parts as webparts
+                 scores, segments, textfmt)
+from bs3.web import charts, mbti_html, page, parts as webparts
 from bs3.pdf import appendix as pdf_appendix
 from bs3.pdf import build as pdf_build
 from bs3.pdf import charts as pdf_charts
@@ -138,11 +138,11 @@ def test_the_copies_are_gone():
               "pct_phrase": pct_phrase}
     for mod in (analyses_text, caveats, characterization, charts, facts, journal, mbti, mbti_html, narrative,
                 pdf_charts, pdf_document, pdf_fmt, pdf_frames, pdf_mbti, pdf_build, pdf_appendix, pdf_sections,
-                pdf_widgets, scores, segments, webapp, webparts):
+                pdf_widgets, scores, segments, page, webparts):
         for name, fn in shared.items():
             assert getattr(mod, name, fn) is fn, f"{mod.__name__}.{name} is a copy"
     old = {caveats: "_plural", characterization: "_plural", mbti_html: "_mmss", pdf_mbti: "_mmss", journal: "_mmss",
-           charts: "_clock", webapp: "_clock", webparts: "_ref_ru", pdf_build: "_ref_ru", pdf_appendix: "_ref_ru"}
+           charts: "_clock", page: "_clock", webparts: "_ref_ru", pdf_build: "_ref_ru", pdf_appendix: "_ref_ru"}
     for mod, name in old.items():
         assert not hasattr(mod, name), f"{mod.__name__}.{name}"
     assert not hasattr(webparts, "_pct_phrase") and not hasattr(webparts, "_is_fiv2")

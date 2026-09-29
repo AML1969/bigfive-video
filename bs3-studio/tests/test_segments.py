@@ -16,8 +16,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from bs3 import facts, frame_captions, labels, narrative, scores, segments, textfmt, webapp
-from bs3.web import charts
+from bs3 import facts, frame_captions, labels, narrative, scores, segments, textfmt
+from bs3.web import charts, page
 from bs3.norms import TRAIT_KEYS
 from bs3.pdf import charts as pdf_charts          # the print charts; `charts` is the web charts module
 from bs3.pdf import appendix, build, document, fmt, frames, layout, mbti_section, sections, widgets
@@ -54,13 +54,13 @@ def _old_pdf_report(report):          # pdf_report._rep_segment: at least two sc
     return next((t for t in segs if t.get("segment") == report.get("representative_segment")), None)
 
 
-def _old_whole(rep):                  # webapp._frames_html and frame_captions.moments: the whole timeline
+def _old_whole(rep):                  # page._frames_html and frame_captions.moments: the whole timeline
     tl_all = rep.get("timeline") or []
     return next((t for t in tl_all if t.get("segment") == rep.get("representative_segment")), None) if tl_all else None
 
 
 OLD_RULES = {"charts": (_old_charts, {}), "pdf_charts": (_old_pdf_charts, {"min_scored": 2}),
-             "pdf_report": (_old_pdf_report, {"min_scored": 2}), "webapp": (_old_whole, {"among": "all"}),
+             "pdf_report": (_old_pdf_report, {"min_scored": 2}), "page": (_old_whole, {"among": "all"}),
              "frame_captions": (_old_whole, {"among": "all"})}
 
 
@@ -141,7 +141,7 @@ def test_the_callers_pass_their_rules():
     # the four places of the PDF: the segments table and the notable segments (appendix), the caption of the
     # timeline (sections) and the intro of the explanations (frames)
     assert [inspect.getsource(m).count("representative(report, min_scored=2)") for m in PDF_PARTS] == [0, 2, 1, 1]
-    assert "representative(rep, among=\"all\")" in src(webapp._frames_html)
+    assert "representative(rep, among=\"all\")" in src(page._frames_html)
     assert "representative(report, among=\"all\")" in src(frame_captions.moments)
     # the same by behaviour: one scored segment is marked on the web chart, not in the PDF appendix
     one = {"duration_sec": 40.0, "representative_segment": 1,
@@ -311,7 +311,7 @@ def test_the_copies_are_gone():
     for mod, names in gone.items():
         for name in names:
             assert not hasattr(mod, name), f"{mod.__name__}.{name}"
-    for mod in (charts, pdf_charts, build, appendix, sections, frames, narrative, frame_captions, webapp, facts):
+    for mod in (charts, pdf_charts, build, appendix, sections, frames, narrative, frame_captions, page, facts):
         for name in ("scored", "representative", "empty_text", "seg_words", "emotion_shares", "dominant_emotion",
                      "segment_rows", "behavior_by_segment", "odd_segments", "as_float", "HEAT_ROWS"):
             obj = getattr(segments, name)

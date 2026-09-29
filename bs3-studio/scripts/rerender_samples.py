@@ -11,7 +11,7 @@ No job ids or names are kept in this file: they are given on the command line.
 For every job:
 1. sha256 of every file of the source job (except segments/ and seg*.mp4) is taken;
 2. import_job.py copies result.json and explain/ into ~/bs3_data/web_jobs/<id>/ (an existing copy is replaced);
-3. webapp.page_outputs runs on the copy and the page is checked: 27 values; the characterization starts with its
+3. web.page.page_outputs runs on the copy and the page is checked: 27 values; the characterization starts with its
    header and «Коротко»; the first key fact is the MBTI card, every card of «Ключевые факты» reads value, label,
    explanation, the measured values are coloured and one line says what the colours mean; the view and the `mbti` section hold one model (the
    recorded one: OCEAN-AI for an imported 2.0 job), the tab «Тип MBTI» shows one panel and one letter strip titled by
@@ -180,7 +180,7 @@ def check_job(src: Path, tag: str | None, html_dir: Path | None, pdf_dir: Path |
     from bs3.web.charts import fig_traits_timeline
     from bs3.narrative import NO_EXPLAIN_RU
     from bs3.scores import clean_view
-    from bs3.webapp import N_PAGE, page_outputs
+    from bs3.web.page import N_PAGE, page_outputs
 
     label = tag or src.name
     c = Checks(label)

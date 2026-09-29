@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import re
 
-from bs3 import facts, palette, scores, webapp
+from bs3 import facts, palette, scores
 from bs3.facts import card_item, key_facts
+from bs3.web import page
 from bs3.scores import ABOVE, BELOW, NEUTRAL, emotion_state, scale_state, tempo_state
 
 
@@ -112,17 +113,17 @@ def _divs(card_html: str) -> list:
 
 
 def test_page_card_reads_value_label_explanation():
-    html = webapp._cards([("Темп речи", "90 слов в минуту", "паузы — 21% времени", BELOW)], value_first=True)
+    html = page._cards([("Темп речи", "90 слов в минуту", "паузы — 21% времени", BELOW)], value_first=True)
     assert _divs(html) == ["90 слов в минуту", "Темп речи · ниже", "паузы — 21% времени"]
     assert "class='bs3-fact-below'" in html
     # a card without a note is two rows, and an uncoloured card gets no word
-    two = webapp._cards([("Длительность ролика", "11:00", "", None)], value_first=True)
+    two = page._cards([("Длительность ролика", "11:00", "", None)], value_first=True)
     assert _divs(two) == ["11:00", "Длительность ролика"] and "bs3-fact-" not in two
     # the other card grids of the page keep label, value, note
-    plain = webapp._cards([("Слов всего", "300", "без повторов")])
+    plain = page._cards([("Слов всего", "300", "без повторов")])
     assert _divs(plain) == ["Слов всего", "300", "без повторов"] and "bs3-fact" not in plain
     # a value longer than the card («возбуждение 0.30» in a 150 px card) wraps instead of painting over the border
-    assert "overflow-wrap:anywhere" in webapp.CARD_VALUE
+    assert "overflow-wrap:anywhere" in page.CARD_VALUE
 
 
 def test_the_state_is_said_in_a_word_as_well_as_in_colour():
@@ -134,7 +135,7 @@ def test_the_state_is_said_in_a_word_as_well_as_in_colour():
         assert word in facts.FACTS_LEGEND, word
     assert facts.fact_label("Тип MBTI · AMLAI 1.0", None) == "Тип MBTI · AMLAI 1.0"
     # the page prints the word of every state it shows, and the PDF prints the same label
-    html = webapp._facts_html(_rep(emotion="joy", arousal=0.20, wpm=130.0))
+    html = page._facts_html(_rep(emotion="joy", arousal=0.20, wpm=130.0))
     for word in facts.FACT_STATE_RU.values():
         assert f" · {word}</div>" in html, word
     drawn = [t for t, _ in _draw_cards([("Голос: возбуждение, шкала 0…1", "возбуждение 0.20", "", BELOW)], cols=1,
@@ -143,7 +144,7 @@ def test_the_state_is_said_in_a_word_as_well_as_in_colour():
 
 
 def test_facts_block_carries_the_colours_and_the_line_under_the_grid():
-    html = webapp._facts_html(_rep(emotion="joy", arousal=0.20, wpm=200.0))
+    html = page._facts_html(_rep(emotion="joy", arousal=0.20, wpm=200.0))
     for state in scores.FACT_STATES:
         assert f"div.bs3-facts .bs3-fact-{state}{{color:{palette.FACT_VALUE['light'][state]}}}" in html
         assert f".dark div.bs3-facts .bs3-fact-{state}{{color:{palette.FACT_VALUE['dark'][state]}}}" in html
@@ -154,7 +155,7 @@ def test_facts_block_carries_the_colours_and_the_line_under_the_grid():
     assert facts.FACTS_LEGEND in html and "зелёный — около нейтрального" in html
     # the line belongs under the grid, not above it
     assert html.index(facts.FACTS_LEGEND) > html.rindex("<div style='padding:10px")
-    assert webapp._facts_html({}) == ""
+    assert page._facts_html({}) == ""
 
 
 # Gradio 5.8 paints everything inside an HTML block with the body text colour by this rule (measured with headless
@@ -183,7 +184,7 @@ def test_the_light_colour_outranks_gradio_and_the_dark_colour_outranks_the_light
     has at least the specificity of the dark rule that always won (strictly more than Gradio's rule, so the order of
     the style sheets does not matter), and the dark rule still outranks the light one and comes after it."""
     assert _specificity(GRADIO_TEXT_RULE) == (0, 2, 0) == _specificity(OLD_DARK_RULE)
-    css = webapp.FACTS_CSS
+    css = page.FACTS_CSS
     assert css.startswith("<style>") and css.endswith("</style>")
     rules = re.findall(r"([^{}]+)\{color:([^{}]+)\}", css[len("<style>"):-len("</style>")])
     assert len(rules) == 2 * len(scores.FACT_STATES)
@@ -201,7 +202,7 @@ def test_the_light_colour_outranks_gradio_and_the_dark_colour_outranks_the_light
         assert _specificity(s_dark) > _specificity(s_light) and i_dark > i_light, (state, s_dark)
         # both are scoped to the grid of the key facts, which the block HTML carries itself, so the colours also
         # read right outside the app (scripts/rerender_samples.py --html-dir)
-        assert f".{webapp.FACTS_SCOPE} " in s_light and f".{webapp.FACTS_SCOPE} " in s_dark, state
+        assert f".{page.FACTS_SCOPE} " in s_light and f".{page.FACTS_SCOPE} " in s_dark, state
 
 
 # --------------------------------------------------------------------------------- the PDF

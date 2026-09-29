@@ -23,7 +23,7 @@ from samples import english, rep
 
 from bs3 import (analyses_text, bands, caveats, characterization, facts, frame_captions, mbti, scores,
                  webapp)
-from bs3.web import mbti_html
+from bs3.web import mbti_html, page
 from bs3.analyses import speech_stats
 from bs3.facts import FER_NOTE, card_item, fact_cards, head_motion_word, speech_cards
 from bs3.pdf import appendix as pdf_appendix
@@ -68,7 +68,7 @@ class _Page:
 # ------------------------------------------------------------------------ the copies as they were before stage 14
 
 def _old_page_facts(view, mb):
-    """webapp._facts_html: the items of the grid and whether the line under it is printed."""
+    """page._facts_html: the items of the grid and whether the line under it is printed."""
     card = mbti.fact_card(mb)
     items = ([card] if card else []) + facts.key_facts(view)
     return items, any(card_item(i)[3] for i in items)
@@ -90,7 +90,7 @@ def _whole(v):
 
 
 def _old_page_speech(sp):
-    """The items of webapp._speech_html."""
+    """The items of page._speech_html."""
     fillers = sp.get("fillers")
     return [("Слов всего", _whole(sp.get("words")), ""),
             ("Разных слов", _whole(sp.get("unique_words")), "без повторов"),
@@ -120,11 +120,11 @@ def _old_head(hm):                     # analyses_parts: «; голова …»
     return "почти неподвижна" if hm < 0.05 else ("двигается умеренно" if hm < 0.15 else "двигается активно")
 
 
-def _old_motion(hm):                   # webapp._face_html, pdf_report._emotions_section: «Движение головы …»
+def _old_motion(hm):                   # page._face_html, pdf_report._emotions_section: «Движение головы …»
     return "слабое" if hm < 0.05 else ("умеренное" if hm < 0.15 else "активное")
 
 
-def _old_what_page(timed, tenths, described):          # webapp._frames_html
+def _old_what_page(timed, tenths, described):          # page._frames_html
     return (("момент ролика (минуты:секунды" + (", после запятой — десятые доли секунды" if tenths else "") + ")")
             if timed else "его номер") + (" и коротко то, что на нём видно" if described else "")
 
@@ -201,11 +201,11 @@ def test_fact_cards_equal_what_the_page_and_the_pdf_built():
 def test_the_page_and_the_pdf_take_the_key_facts_from_fact_cards():
     r = _rep(emotion="joy", arousal=0.20, wpm=200.0)
     marker = ("Маркер", "42", "проверка", "above")
-    with _patched(webapp, fact_cards=lambda view, mb, **k: ([marker], True)):
-        html = webapp._facts_html(r, TYPE)
+    with _patched(page, fact_cards=lambda view, mb, **k: ([marker], True)):
+        html = page._facts_html(r, TYPE)
     assert ">42</div>" in html and "Маркер · выше" in html and facts.FACTS_LEGEND in html
-    with _patched(webapp, fact_cards=lambda view, mb, **k: ([marker], False)):
-        assert facts.FACTS_LEGEND not in webapp._facts_html(r, TYPE)
+    with _patched(page, fact_cards=lambda view, mb, **k: ([marker], False)):
+        assert facts.FACTS_LEGEND not in page._facts_html(r, TYPE)
     for mod in (pdf_build, pdf_appendix, pdf_sections):
         assert "только время, когда человек говорит" not in inspect.getsource(mod), mod.__name__
         for name in ("_pdf_facts", "_speech_cards", "HOW_TO_READ"):
@@ -236,7 +236,7 @@ def test_speech_cards_keep_both_wordings():
 
 def test_the_page_and_the_pdf_print_their_own_wording_of_the_speech_cards():
     r = {"analyses": {"speech": dict(_speech(0.4), description="Темп речи спокойный.")}, "transcript": ""}
-    html = webapp._speech_html(r)
+    html = page._speech_html(r)
     assert "0 на 100 слов" in html and "меньше 1" not in html
     pdf = _Page({"voice_speech": 4})
     pdf_sections._voice_speech_section(pdf, r, {})
@@ -263,7 +263,7 @@ def test_every_text_of_the_head_motion_takes_the_shared_word():
         pdf = _Page({"emotions": 3})
         pdf_sections._emotions_section(pdf, r, {"face_expr": "face.png"})
         caption = next(cap for path, cap in pdf.args("chart_block") if path == "face.png")
-        return analyses_text.analyses_parts(r)["face"], webapp._face_html(r), caption
+        return analyses_text.analyses_parts(r)["face"], page._face_html(r), caption
 
     sentence, card, caption = texts(0.1)
     assert "; голова двигается умеренно" in sentence and ">умеренное</div>" in card
@@ -276,13 +276,13 @@ def test_every_text_of_the_head_motion_takes_the_shared_word():
 
 def test_fer_note_with_the_page_pointer_and_without():
     assert FER_NOTE.format(where=" (вкладка «Таймлайн»)") == OLD_FER_PAGE and FER_NOTE.format(where="") == OLD_FER_PDF
-    assert webapp.FER_NOTE is FER_NOTE and pdf_sections.FER_NOTE is FER_NOTE
+    assert page.FER_NOTE is FER_NOTE and pdf_sections.FER_NOTE is FER_NOTE
     r = _rep(hm=0.1)
-    assert OLD_FER_PAGE in webapp._face_html(r)
+    assert OLD_FER_PAGE in page._face_html(r)
     pdf = _Page({"emotions": 3})
     pdf_sections._emotions_section(pdf, r, {"face_expr": "face.png"})
     assert pdf.args("chart_block")[-1][1].endswith(" " + OLD_FER_PDF)
-    for mod in (webapp, pdf_build, pdf_appendix, pdf_sections, pdf_frames):
+    for mod in (page, pdf_build, pdf_appendix, pdf_sections, pdf_frames):
         assert "FER-2013" not in inspect.getsource(mod), mod.__name__
 
 
@@ -301,10 +301,10 @@ def test_note_what_gives_the_two_wordings():
         pass
     else:
         raise AssertionError("an unknown medium is refused")
-    for mod in (webapp, pdf_build, pdf_appendix, pdf_sections, pdf_frames):
+    for mod in (page, pdf_build, pdf_appendix, pdf_sections, pdf_frames):
         assert "момент ролика" not in inspect.getsource(mod), mod.__name__
     # each takes its own wording (the notes of the real jobs are compared byte for byte by compare_baseline)
-    assert 'frame_captions.note_what(entries, tenths, "page")' in inspect.getsource(webapp._frames_html)
+    assert 'frame_captions.note_what(entries, tenths, "page")' in inspect.getsource(page._frames_html)
     assert 'frame_captions.note_what(entries.values(), tenths, "pdf")' in inspect.getsource(pdf_frames._explain_section)
 
 

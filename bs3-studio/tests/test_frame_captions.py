@@ -241,12 +241,12 @@ def _job_with_frames(d: Path, expl: dict, size: tuple = (200, 120)) -> tuple:
 
 
 def test_page_block_shows_the_caption_and_the_tooltip():
-    from bs3 import webapp
+    from bs3.web import page
     expl = _expl(signed={18: {"extraversion": 0.9, "agreeableness": 0.62}},
                  phrases={18: "улыбается, смотрит в камеру"}, expressions={18: HAPPY})
     with tempfile.TemporaryDirectory() as d:
         r, paths, expl = _job_with_frames(Path(d), expl)
-        html = webapp._frames_html(r, expl)
+        html = page._frames_html(r, expl)
     start = float(r["timeline"][2]["start"])
     label = f"{int(start + 14) // 60}:{int(start + 14) % 60:02d}"
     assert f"<b>{label}</b> · улыбается, смотрит в камеру" in html
@@ -256,12 +256,13 @@ def test_page_block_shows_the_caption_and_the_tooltip():
 
 
 def test_old_explanation_without_signs_and_phrases_still_renders():
-    from bs3 import characterization, mbti, scores, webapp
+    from bs3 import characterization, mbti, scores
     from bs3.pdf import build as pdf_build
+    from bs3.web import page
     expl = _expl(signed={18: {"extraversion": 0.9}}, legacy=True)
     with tempfile.TemporaryDirectory() as d:
         r, paths, expl = _job_with_frames(Path(d), expl)
-        html = webapp._frames_html(r, expl)
+        html = page._frames_html(r, expl)
         assert "сильнее всего повлиял на оценку экстраверсии" in html
         assert "улыб" not in html and "радость" not in html
         # the note promises only what such a job really has: no short description, no expression on hover

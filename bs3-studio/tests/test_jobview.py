@@ -19,7 +19,7 @@ from samples import english, rep
 
 import bs3
 from bs3 import characterization, jobfiles, jobview, journal, mbti, ru_texts, scores, webapp
-from bs3.web import charts, parts as webparts
+from bs3.web import charts, page, parts as webparts
 from bs3.norms import TRAIT_KEYS
 from bs3.pdf import appendix as pdf_appendix
 from bs3.pdf import build as pdf_build
@@ -176,10 +176,10 @@ def test_the_app_builds_the_page_and_the_journal_entry_from_one_jobview():
     with tempfile.TemporaryDirectory() as d:
         for name, job in _jobs(Path(d)).items():
             r = jobfiles.load_job(job)[0]
-            page, entry = webapp.page_outputs(copy.deepcopy(r)), _entry(copy.deepcopy(r))
+            page_outs, entry = page.page_outputs(copy.deepcopy(r)), _entry(copy.deepcopy(r))
             with _counted() as calls:
                 jv = jobview.for_page(r)
-                outs = webapp.page_values(jv)
+                outs = page.page_values(jv)
             assert calls == BUILT_ONCE, (name, calls)
             with _counted() as calls:
                 assert _entry(r, jv) == entry, name
@@ -187,7 +187,7 @@ def test_the_app_builds_the_page_and_the_journal_entry_from_one_jobview():
             with _counted() as calls:
                 assert _entry(r) == entry, name
             assert calls == BUILT_ONCE, (name, calls)
-            assert outs == page, name
+            assert outs == page_outs, name
             assert jv.rep is r and outs[20] == job.name and outs[21] == str(job)
             assert "Характеристика (коротко): " in entry and f"    Папка: {job}\n" in entry
 
@@ -229,7 +229,7 @@ def test_export_pdf_opens_the_job_once():
         job = _jobs(Path(d))["3.1 mm"]
         with _patched(pdf_build, build_pdf=build), _patched(pdf_charts, save_pdf_charts=draw), \
                 _patched(media, probe_media=lambda p: {"probed": Path(p).name}), _counted() as calls:
-            webapp.export_pdf(job)
+            pdf_build.export_pdf(job)
         view = scores.clean_view(jobfiles.load_job(job)[0])
     assert calls == BUILT_ONCE, calls
     assert got["chart_view"] is got["view"] and got["expl"] == EXPL == got["explanation"]
@@ -293,10 +293,10 @@ def test_the_preview_opens_the_job_once():
             demo = webapp.build_app(Studio(), Path(d), preview_job=str(job))
         assert reads.count(jobfiles.explanation_path(job)) == 1, reads
         assert calls == BUILT_ONCE, calls
-        page = webapp.page_outputs(jobfiles.load_job(job)[0])
+        page_outs = page.page_outputs(jobfiles.load_job(job)[0])
     comps = list(demo.blocks.values())
     char = [c for c in comps if isinstance(c, gr.HTML) and getattr(c, "label", None) == "Характеристика личности"]
-    assert len(char) == 1 and char[0].value == page[3]
+    assert len(char) == 1 and char[0].value == page_outs[3]
     assert [c.value for c in comps if isinstance(c, gr.Radio)] == ["mm"]
     assert str(job) in [c.value for c in comps if isinstance(c, gr.State)]
 
@@ -335,8 +335,8 @@ def _main(r: dict):
 
 # the six places that chose the model before (stage 13), as they were written; scores.shown_model replaces them
 OLD = {
-    "webapp._frames_html": lambda r: _main(r) or (r.get("model") or {}).get("selected"),
-    "webapp.page_outputs": lambda r: _main(r),
+    "page._frames_html": lambda r: _main(r) or (r.get("model") or {}).get("selected"),
+    "page.page_outputs": lambda r: _main(r),
     "charts.fig_radar": lambda r: _main(r) or (r.get("model") or {}).get("selected"),
     "pdf_charts._radar_chart": lambda r: _main(r) or (r.get("model") or {}).get("selected"),
     "pdf_report._main_model": lambda r: _main(r) or scores.recorded_model(r),
@@ -363,10 +363,10 @@ def test_shown_model_is_the_model_each_place_chose():
         assert scores.shown_model(raw) == scores.recorded_model(raw) == OLD["pdf_report._main_model"](raw) \
             == OLD["journal.result_lines"](raw), name
         selected = raw["model"].get("selected")
-        for place in ("webapp._frames_html", "charts.fig_radar", "pdf_charts._radar_chart"):
+        for place in ("page._frames_html", "charts.fig_radar", "pdf_charts._radar_chart"):
             assert OLD[place](raw) == selected, (name, place)
             assert selected in (None, scores.shown_model(raw)), (name, place)
-        assert OLD["webapp.page_outputs"](raw) is None
+        assert OLD["page.page_outputs"](raw) is None
         assert scores.has_explanations(view) is (shown[name][0] == "mm"), name
         assert scores.has_explanations(raw) is (shown[name][1] == "mm"), name
 
@@ -376,14 +376,14 @@ def test_the_places_ask_shown_model():
     module keeps an expression of its own, and pdf_report._main_model is gone."""
     assert charts.shown_model is pdf_charts.shown_model is pdf_appendix.shown_model is scores.shown_model
     assert pdf_sections.shown_model is scores.shown_model
-    assert webapp.has_explanations is pdf_build.has_explanations is pdf_sections.has_explanations \
+    assert page.has_explanations is pdf_build.has_explanations is pdf_sections.has_explanations \
         is scores.has_explanations
     assert not hasattr(pdf_build, "_main_model") and not hasattr(pdf_appendix, "_main_model")
     src = inspect.getsource
     assert "model_title(shown_model(rep))" in src(charts.fig_radar)
     assert "model_title(shown_model(rep))" in src(pdf_charts._radar_chart)
-    assert "if not has_explanations(rep):" in src(webapp._frames_html)
-    assert "own = has_explanations(view)" in src(webapp.page_values)
+    assert "if not has_explanations(rep):" in src(page._frames_html)
+    assert "own = has_explanations(view)" in src(page.page_values)
     assert "model_title(shown_model(view))" in src(journal)
     # has_explanations: _plan twice (pdf/build.py), _no_explain_note (pdf/sections.py); shown_model: _analysis_rows and
     # _segments_table (pdf/appendix.py), _passport (pdf/sections.py)

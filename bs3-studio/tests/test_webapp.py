@@ -23,6 +23,7 @@ import bs3
 from bs3 import webapp
 from bs3.narrative import NO_EXPLAIN_RU
 from bs3.norms import TRAIT_KEYS
+from bs3.web import page
 
 
 def _job(r: dict, base: Path, name: str) -> dict:
@@ -74,13 +75,26 @@ def test_result_json_without_server_paths():
             "key_frames": ["/home/u/j/explain/key_01_frame10.jpg", None],
             "timeline": [{"file": "/home/u/j/segments/seg01_0-20s.mp4", "segment": 1}, {"file": None}, {}, "odd"],
             "media": {"file_name": "clip.mp4"}, "model": {"asr_model": "openai/whisper-large-v3-turbo"}}
-    out = webapp._without_server_paths(data)
+    out = page._without_server_paths(data)
     assert out is data and out["job_dir"] == "20000101_000000_0f3a9c1e" and out["input"] == "input.mp4"
     assert out["key_frames"] == ["key_01_frame10.jpg", None]
     assert out["timeline"] == [{"file": "seg01_0-20s.mp4", "segment": 1}, {"file": None}, {}, "odd"]
     assert out["model"]["asr_model"] == "openai/whisper-large-v3-turbo" and out["media"] == {"file_name": "clip.mp4"}
     for odd in ({"key_frames": None, "timeline": None, "input": None}, {}):
-        assert webapp._without_server_paths(dict(odd)) == odd
+        assert page._without_server_paths(dict(odd)) == odd
+
+
+def test_page_blocks_is_the_contract():
+    """PAGE_BLOCKS names the result blocks in order; it is the snapshot contract of scripts/compare_baseline.py (which
+    asserts the two tuples equal at start-up). N_PAGE follows it and page_index round-trips."""
+    assert page.PAGE_BLOCKS == (
+        "radar", "bars", "key_facts_html", "characterization_html", "traits_timeline", "emotions_timeline",
+        "voice_timeline", "speech_timeline", "emotion_bars", "segments_table", "speech_cards", "transcript",
+        "face_cards", "face_chart", "key_frames_html", "contrib", "words", "behavior_description",
+        "model_and_time", "result_json", "saved_to", "job_state", "method", "emo_intro", "mbti_types",
+        "mbti_strip", "mbti_read")
+    assert page.N_PAGE == len(page.PAGE_BLOCKS) == 27
+    assert page.page_index("transcript") == 11 and page.page_index("mbti_read") == 26
 
 
 def test_page_builds_with_the_model_radio_and_no_checkbox():
@@ -106,10 +120,11 @@ def test_page_builds_with_the_model_radio_and_no_checkbox():
                 "Вклад модальностей в оценку своей модели", "Язык речи",
                 "Объяснения (ключевые кадры, вклад модальностей, слова)"):
         assert lab not in labels, lab
-    # the analyze handler takes (video, model) only
+    # the analyze handler takes (video, model) only, and writes the status line, the page blocks and the PDF button
     fns = [f for f in demo.fns.values() if getattr(f, "fn", None) is not None and f.fn.__name__ == "analyze"]
     assert len(fns) == 1 and len(fns[0].inputs) == 2
     assert [c.label for c in fns[0].inputs] == ["Видео", "Модель"]
+    assert len(fns[0].outputs) == page.N_PAGE + 2
     # the compact window: the block class, the flex rules and the scrolling container in the page CSS
     char = [c for c in comps if isinstance(c, gr.HTML) and getattr(c, "label", None) == "Характеристика личности"]
     assert len(char) == 1 and "bs3-char" in char[0].elem_classes
@@ -140,11 +155,11 @@ def test_page_outputs_oceanai_job():
         job = Path(d) / "20000101_000000"
         _server_paths(r, job, Path(d) / "source" / "input.mp4")
         r = _job(r, Path(d), job.name)
-        outs = webapp.page_outputs(r)
+        outs = page.page_outputs(r)
         saved = json.loads((job / "result.json").read_text(encoding="utf-8"))
     assert saved["input"] == str(Path(d) / "source" / "input.mp4") and saved["job_dir"] == str(job)   # file unchanged
     _no_server_paths(outs, d, job)
-    assert len(outs) == webapp.N_PAGE == 27
+    assert len(outs) == page.N_PAGE == 27
     bars, facts, contrib, words, desc, members = outs[1], outs[2], outs[15], outs[16], outs[17], outs[18]
     assert _strip(contrib) == NO_EXPLAIN_RU and words == "" and desc == ""     # the one note of the tab «Объяснения»
     # the bars of one model: five traits once, no framed block («второе мнение» of 3.0) after the scale row, and no
@@ -156,13 +171,13 @@ def test_page_outputs_oceanai_job():
     lines = members.split("\n")
     assert lines[0].startswith("Модель OCEAN-AI, веса MuPTA: открытость опыту 0.71")
     assert lines[1].startswith("Обработка заняла ")
-    assert webapp.DATA_TRIMMED in lines                                          # an older job: percentiles left out
+    assert page.DATA_TRIMMED in lines                                          # an older job: percentiles left out
     assert "Ключевых кадров нет: модель OCEAN-AI не строит объяснений" in outs[14]
-    page = " ".join(_strip(o) for o in outs if isinstance(o, str))
+    page_text = " ".join(_strip(o) for o in outs if isinstance(o, str))
     for bad in ("второе мнение", "Второе мнение", "своя модель", "Своя модель", "своей модели", "MM-PSYCHE",
                 "Участники ансамбля", "основная оценка", "Основная система", "среднее двух систем", "английской речи",
                 "для русской речи", "язык речи"):
-        assert bad not in page, bad
+        assert bad not in page_text, bad
     assert "OCEAN-AI, веса MuPTA" in _strip(outs[24]) and "OCEAN-AI: ENFJ во всех 26 отрезках" in _strip(outs[25])
 
 
@@ -175,13 +190,13 @@ def test_page_outputs_own_model_job():
         job = Path(d) / "20000102_000000_0f3a9c1e"                     # a job of 3.1: time stamp and random suffix
         _server_paths(r, job, job / "input.mp4")
         r = _job(r, Path(d), job.name)
-        outs = webapp.page_outputs(r)
+        outs = page.page_outputs(r)
     _no_server_paths(outs, d, job)
     contrib, members, frames = outs[15], outs[18], outs[14]
     assert contrib == ""                                                        # no explanation on disk: empty, no note
     # the label of AMLAI 1.0 with its bar and C2 under the bars; a fresh job leaves nothing out of the tab «Данные»
     assert "Впечатление «пригласить на собеседование»" in outs[1] and caveats.text("C2") in outs[1]
-    assert "Впечатление «собеседование»" in outs[2] and webapp.DATA_TRIMMED not in members
+    assert "Впечатление «собеседование»" in outs[2] and page.DATA_TRIMMED not in members
     assert outs[17] == "[0:00–0:20] Человек говорит спокойно."                    # the description of AMLAI 1.0 stays
     assert members.startswith("Модель AMLAI 1.0: открытость опыту 0.") and "MuPTA" not in members
     assert "Ключевые кадры не построены: лицо в кадре не найдено" in frames
