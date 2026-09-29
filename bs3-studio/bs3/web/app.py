@@ -184,6 +184,17 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
     # where gradio is not imported: hand it the class itself, before the handler is registered
     analyze.__annotations__["request"] = gr.Request
 
+    def queued_notice():
+        """A second listener on «Анализировать», outside the queue (FP7 / owner item 4): if another analysis is already
+        running when this user clicks, tell them at once that they are in the queue and the run starts by itself.
+        `analyze`'s first yield replaces this line once the run begins. When the server is free the lock is not held and
+        this is a no-op update, so the notice is only ever shown while the server is busy — never over real progress of
+        this tab's own analysis (that progress starts only after the run acquires the lock, long after this fired)."""
+        if studio.run_lock.locked():
+            return _status_html(0, "сервер занят обработкой другого ролика — анализ начнётся автоматически",
+                                label="В очереди")
+        return gr.update()
+
     def stop(request: gr.Request):
         """«Остановить обработку»: stop only this session's own run. Setting its flag makes the run cut its current
         segment, then raise AnalysisCancelled and write the ОСТАНОВЛЕНО line from its own thread; cancels=[run_ev]
@@ -306,6 +317,9 @@ def build_app(studio: Studio, work_dir: Path, preview_job: str | None = None):
                    raw, path, job_state, method, emo_intro, mbti_types, mbti_strip, mbti_read, pdf_btn]
         assert len(outputs) == N_REST + 1
         run_ev = btn.click(analyze, inputs=[video, model], outputs=outputs, show_progress="hidden", api_name=False)
+        # a second listener on the same button, outside the queue: queue=False answers before the queued analyze, so a
+        # user who clicks while the server is busy sees «В очереди» at once; analyze's first yield then takes over
+        btn.click(queued_notice, inputs=None, outputs=[status], queue=False, show_progress="hidden", api_name=False)
         stop_btn.click(stop, inputs=None, outputs=[status], cancels=[run_ev], show_progress="hidden", api_name=False)
         pdf_btn.click(make_pdf, inputs=[job_state], outputs=[pdf_btn], api_name=False)
 

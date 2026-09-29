@@ -349,3 +349,25 @@ def test_cancelled_event_still_journals_and_never_overlaps():
     assert err2 is None, getattr(err2, "message", err2)
     assert _kinds(text) == ["СТАРТ", "ОСТАНОВЛЕНО", "СТАРТ", "РЕЗУЛЬТАТ"]
     assert "one.mp4" in text and "two.mp4" in text
+
+
+def test_queued_notice():
+    """The second «Анализировать» listener (queue=False, stage 21a / FP7): while another analysis holds studio.run_lock
+    it returns the «В очереди» status line; with the lock free it returns a no-op update, so it can never overwrite a
+    running analysis' progress."""
+    import gradio as gr
+    from bs3.pipeline import Studio
+    with tempfile.TemporaryDirectory() as d:
+        studio = Studio()
+        demo = app.build_app(studio, Path(d) / "jobs")
+        queued_notice = _handlers(demo)["queued_notice"]
+        assert queued_notice() == gr.update()               # server free: no change
+        studio.run_lock.acquire()
+        try:
+            busy = queued_notice()                          # server busy: the queue notice
+        finally:
+            studio.run_lock.release()
+        assert queued_notice() == gr.update()               # released again: back to a no-op update
+    assert isinstance(busy, str) and "В очереди" in busy
+    assert busy == app._status_html(                        # the real helper and its real signature, exact wording
+        0, "сервер занят обработкой другого ролика — анализ начнётся автоматически", label="В очереди")
