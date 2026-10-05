@@ -13,64 +13,64 @@
 
 ## Папки данных
 
-| Настройка | Значение по умолчанию | Переменная окружения / флаг | Где используется | На что влияет |
-|---|---|---|---|---|
-| `DATA_DIR` | `~/bs3_data` | `BS3_DATA_DIR` | все папки данных | переносит все папки данных разом |
-| `JOBS_DIR` | `<DATA_DIR>/web_jobs` | флаг `--work-dir` | `web.app`, `pipeline`, скрипты | где создаются папки заданий (значение `--work-dir` по умолчанию) |
-| `LOGS_DIR` | `<DATA_DIR>/logs` | — | `journal`, `run_web3.sh` | журнал и лог веб-сервера |
-| `JOURNAL_PATH` | `<LOGS_DIR>/journal.txt` | `BS3_JOURNAL` | `journal` | путь к файлу журнала (переносится отдельно от папок) |
-| `GRADIO_TMP` | `<DATA_DIR>/gradio_tmp` | `GRADIO_TEMP_DIR` (через `apply_process_env`) | `apply_process_env` | временная папка Gradio — единственное, что отдаёт сервер |
+| Настройка | По умолчанию | Описание |
+|---|---|---|
+| `DATA_DIR` | `~/bs3_data` | переносит все папки данных разом. Переменная или флаг: `BS3_DATA_DIR`. Где: все папки данных. |
+| `JOBS_DIR` | `<DATA_DIR>/web_jobs` | где создаются папки заданий (значение `--work-dir` по умолчанию). Переменная или флаг: флаг `--work-dir`. Где: `web.app`, `pipeline`, скрипты. |
+| `LOGS_DIR` | `<DATA_DIR>/logs` | журнал и лог веб-сервера. Где: `journal`, `run_web3.sh`. |
+| `JOURNAL_PATH` | `<LOGS_DIR>/journal.txt` | путь к файлу журнала (переносится отдельно от папок). Переменная или флаг: `BS3_JOURNAL`. Где: `journal`. |
+| `GRADIO_TMP` | `<DATA_DIR>/gradio_tmp` | временная папка Gradio — единственное, что отдаёт сервер. Переменная или флаг: `GRADIO_TEMP_DIR` (через `apply_process_env`). Где: `apply_process_env`. |
 
 ## Модели
 
-| Настройка | Значение по умолчанию | Переменная окружения / флаг | Где используется | На что влияет |
-|---|---|---|---|---|
-| `MM_CHECKPOINTS` | `~/bs/mm_runs_seeds/seed*/best.pt` | — | `backend_mm` (`MMConfig.checkpoint`) | веса AMLAI 1.0 (путь, список или маска; несколько сидов усредняются) |
-| `OCEANAI_MODELS_DIR` | `~/bs/models` | — | `backend_oceanai` (`BackendConfig.models_dir`) | кэш весов OCEAN-AI (скачиваются при первом анализе) |
-| `ASR_MODEL` | `openai/whisper-large-v3-turbo` | флаг `--asr-model` | `longvideo`, бэкенды | модель распознавания речи (Whisper, идентификатор Hugging Face) |
+| Настройка | По умолчанию | Описание |
+|---|---|---|
+| `MM_CHECKPOINTS` | `~/bs/mm_runs_seeds/`<br>`seed*/best.pt` | веса AMLAI 1.0 (путь, список или маска; несколько сидов усредняются). Где: `backend_mm` (`MMConfig.checkpoint`). |
+| `OCEANAI_MODELS_DIR` | `~/bs/models` | кэш весов OCEAN-AI (скачиваются при первом анализе). Где: `backend_oceanai` (`BackendConfig.models_dir`). |
+| `ASR_MODEL` | `openai/whisper-`<br>`large-v3-turbo` | модель распознавания речи (Whisper, идентификатор Hugging Face). Переменная или флаг: флаг `--asr-model`. Где: `longvideo`, бэкенды. |
 
 ## Ollama (`bs3.ollama`)
 
-| Настройка | Значение по умолчанию | Переменная окружения / флаг | Где используется | На что влияет |
-|---|---|---|---|---|
-| `OLLAMA_MODEL` | `qwen2.5vl:7b` | флаг `--ollama-model` | `ollama`, `backend_mm`, `translate` | зрительная модель описаний поведения и подписей кадров, а также переводчик описаний (на весь процесс) |
-| `OLLAMA_URL` | `""` (автопоиск) | `BS3_OLLAMA_URL` | `ollama.url` | явный адрес Ollama; пусто — искать автоматически (localhost, затем шлюз WSL) |
-| `OLLAMA_PORT` | `11434` | — | `ollama.url` | порт, на котором ищется Ollama при автопоиске |
-| `OLLAMA_KEEP_ALIVE` | `30m` | — | `backend_mm._ollama` | сколько Ollama держит модель загруженной после запроса |
-| `OLLAMA_DESCRIBE_TIMEOUT` | `900` | — | `backend_mm` | таймаут одного запроса описания поведения (секунды) |
-| `OLLAMA_DESCRIBE_ATTEMPTS` | `3` | — | `backend_mm` | число попыток, пока Ollama (пере)загружает модель |
-| `OLLAMA_TRANSLATE_TIMEOUT` | `300` | — | `translate._ollama_json` | таймаут одного перевода описания (секунды) |
-| `OLLAMA_DICTIONARY_TIMEOUT` | `180` | — | `translate` | таймаут запроса словаря слов (секунды) |
-| `OLLAMA_PROBE_TTL` | `60` | — | `ollama.available` | сколько секунд помнится ответ «Ollama на месте» |
-| `OLLAMA_PROBE_TIMEOUT` | `3` | — | `ollama.available` | таймаут пробы `/api/tags` (секунды) |
-| `PHRASE_TIMEOUT` | `45` | — | `backend_mm.describe_frame` | таймаут одной подписи к кадру: подпись не держит задание минутами |
-| `PHRASE_BUDGET` | `30` | — | `mm/explain.key_frame_info` | общий бюджет времени на подписи всех пяти ключевых кадров |
-| `LLM_PARALLEL` | `2` | — | `translate` | сколько переводов идёт к Ollama одновременно |
+| Настройка | По умолчанию | Описание |
+|---|---|---|
+| `OLLAMA_MODEL` | `qwen2.5vl:7b` | зрительная модель описаний поведения и подписей кадров, а также переводчик описаний (на весь процесс). Переменная или флаг: флаг `--ollama-model`. Где: `ollama`, `backend_mm`, `translate`. |
+| `OLLAMA_URL` | `""` (автопоиск) | явный адрес Ollama; пусто — искать автоматически (localhost, затем шлюз WSL). Переменная или флаг: `BS3_OLLAMA_URL`. Где: `ollama.url`. |
+| `OLLAMA_PORT` | `11434` | порт, на котором ищется Ollama при автопоиске. Где: `ollama.url`. |
+| `OLLAMA_KEEP_ALIVE` | `30m` | сколько Ollama держит модель загруженной после запроса. Где: `backend_mm._ollama`. |
+| `OLLAMA_DESCRIBE_TIMEOUT` | `900` | таймаут одного запроса описания поведения (секунды). Где: `backend_mm`. |
+| `OLLAMA_DESCRIBE_ATTEMPTS` | `3` | число попыток, пока Ollama (пере)загружает модель. Где: `backend_mm`. |
+| `OLLAMA_TRANSLATE_TIMEOUT` | `300` | таймаут одного перевода описания (секунды). Где: `translate._ollama_json`. |
+| `OLLAMA_DICTIONARY_TIMEOUT` | `180` | таймаут запроса словаря слов (секунды). Где: `translate`. |
+| `OLLAMA_PROBE_TTL` | `60` | сколько секунд помнится ответ «Ollama на месте». Где: `ollama.available`. |
+| `OLLAMA_PROBE_TIMEOUT` | `3` | таймаут пробы `/api/tags` (секунды). Где: `ollama.available`. |
+| `PHRASE_TIMEOUT` | `45` | таймаут одной подписи к кадру: подпись не держит задание минутами. Где: `backend_mm.describe_frame`. |
+| `PHRASE_BUDGET` | `30` | общий бюджет времени на подписи всех пяти ключевых кадров. Где: `mm/explain.key_frame_info`. |
+| `LLM_PARALLEL` | `2` | сколько переводов идёт к Ollama одновременно. Где: `translate`. |
 
 ## Веб-сервер
 
-| Настройка | Значение по умолчанию | Переменная окружения / флаг | Где используется | На что влияет |
-|---|---|---|---|---|
-| `PORT` | `7880` | флаг `--port` | `cli`, `web.app` | порт веб-страницы |
-| `PREVIEW_PORT` | `7882` | — | `scripts/ui_preview.py` | порт предпросмотра готового задания |
-| `HOST` | `0.0.0.0` | флаг `--host` | `web.app` | адрес, на котором слушает сервер (доступен из Windows через localhost) |
-| `QUEUE_CONCURRENCY` | `1` | — | `web.app` | один анализ за раз (одна видеокарта); второй пользователь сразу видит «В очереди», его ролик обработается автоматически |
-| `NO_PROXY` | `localhost,127.0.0.1,0.0.0.0` | `no_proxy` / `NO_PROXY` (через `apply_process_env`) | `apply_process_env` | локальные адреса в обход прокси |
+| Настройка | По умолчанию | Описание |
+|---|---|---|
+| `PORT` | `7880` | порт веб-страницы. Переменная или флаг: флаг `--port`. Где: `cli`, `web.app`. |
+| `PREVIEW_PORT` | `7882` | порт предпросмотра готового задания. Где: `scripts/ui_preview.py`. |
+| `HOST` | `0.0.0.0` | адрес, на котором слушает сервер (доступен из Windows через localhost). Переменная или флаг: флаг `--host`. Где: `web.app`. |
+| `QUEUE_CONCURRENCY` | `1` | один анализ за раз (одна видеокарта); второй пользователь сразу видит «В очереди», его ролик обработается автоматически. Где: `web.app`. |
+| `NO_PROXY` | `localhost,127.0.0.1,0.0.0.0` | локальные адреса в обход прокси. Переменная или флаг: `no_proxy` / `NO_PROXY` (через `apply_process_env`). Где: `apply_process_env`. |
 
 ## Нарезка длинных роликов (`longvideo`)
 
-| Настройка | Значение по умолчанию | Переменная окружения / флаг | Где используется | На что влияет |
-|---|---|---|---|---|
-| `SEGMENT_SEC` | `20.0` | флаг `--segment` | `longvideo` | длина отрезка (модели обучены на 15-секундных клипах). **Менять только вместе с текстами** (см. ниже) |
-| `SINGLE_CLIP_MAX_SEC` | `30.0` | — | `longvideo` | ролик не длиннее — анализируется целиком, одним отрезком. **Менять только вместе с текстами** |
-| `MIN_TAIL_SEC` | `6.0` | — | `longvideo.plan_segments` | более короткий последний отрезок присоединяется к предыдущему |
+| Настройка | По умолчанию | Описание |
+|---|---|---|
+| `SEGMENT_SEC` | `20.0` | длина отрезка (модели обучены на 15-секундных клипах). **Менять только вместе с текстами** (см. ниже). Переменная или флаг: флаг `--segment`. Где: `longvideo`. |
+| `SINGLE_CLIP_MAX_SEC` | `30.0` | ролик не длиннее — анализируется целиком, одним отрезком. **Менять только вместе с текстами**. Где: `longvideo`. |
+| `MIN_TAIL_SEC` | `6.0` | более короткий последний отрезок присоединяется к предыдущему. Где: `longvideo.plan_segments`. |
 
 ## Папки заданий (`pipeline.run_analysis`)
 
-| Настройка | Значение по умолчанию | Переменная окружения / флаг | Где используется | На что влияет |
-|---|---|---|---|---|
-| `KEEP_FAILED_JOBS` | `False` | `BS3_KEEP_FAILED_JOBS=1` | `pipeline.run_analysis` | оставлять папку анализа, который завершился с ошибкой (обычно она удаляется) |
-| `KEEP_SEGMENTS` | `False` | `BS3_KEEP_SEGMENTS=1` | `pipeline.run_analysis`, `scripts/clean_jobs.py` | оставлять отрезки (`segments/`) готового задания (обычно они удаляются после записи `result.json`) |
+| Настройка | По умолчанию | Описание |
+|---|---|---|
+| `KEEP_FAILED_JOBS` | `False` | оставлять папку анализа, который завершился с ошибкой (обычно она удаляется). Переменная или флаг: `BS3_KEEP_FAILED_JOBS=1`. Где: `pipeline.run_analysis`. |
+| `KEEP_SEGMENTS` | `False` | оставлять отрезки (`segments/`) готового задания (обычно они удаляются после записи `result.json`). Переменная или флаг: `BS3_KEEP_SEGMENTS=1`. Где: `pipeline.run_analysis`, `scripts/clean_jobs.py`. |
 
 ## Переменные окружения
 

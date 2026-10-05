@@ -15,13 +15,18 @@ BS Profiler 3.1 строит характеристику личности по 
 На уже настроенной машине (venv установлен, веса на месте, Ollama запущена в Windows):
 
 ```bash
-bash bs3-studio/scripts/run_web3.sh                 # веб: http://localhost:7880 (лог ~/bs3_data/logs/web.log)
-pkill -f "bin/bs3 we[b]"                             # остановить веб
+# веб: http://localhost:7880 (лог ~/bs3_data/logs/web.log)
+bash bs3-studio/scripts/run_web3.sh
+# остановить веб
+pkill -f "bin/bs3 we[b]"
 
-bash bs3-studio/scripts/run_preview.sh ~/bs3_data/web_jobs/<задание>   # предпросмотр готового задания на :7882
-pkill -f "ui_previe[w].py"                           # остановить предпросмотр
+# предпросмотр готового задания на :7882
+bash bs3-studio/scripts/run_preview.sh ~/bs3_data/web_jobs/<задание>
+# остановить предпросмотр
+pkill -f "ui_previe[w].py"
 
-~/bs/venv/bin/python bs3-studio/tests/run.py        # тесты (только стандартная библиотека)
+# тесты (только стандартная библиотека)
+~/bs/venv/bin/python bs3-studio/tests/run.py
 ```
 
 Без установки пакета: `PYTHONPATH=bs3-studio ~/bs/venv/bin/python -m bs3.cli web --port 7880`.
@@ -122,96 +127,82 @@ mediapipe и других) могут появляться их собствен
 
 Ядро и запуск:
 
-```
-bs3/__init__.py    версия и название (PRODUCT, PRODUCT_SLUG, __version__), модели (MODEL_TITLES, DEFAULT_MODEL), язык (LANG)
-bs3/cli.py         командная строка: web, infer, explain
-bs3/pipeline.py    Studio (одна модель на анализ, один анализ за раз — run_lock) и run_analysis: Big Five по отрезкам, анализы, тексты; отрезки удаляются после записи result.json
-bs3/settings.py    все настройки в одном месте (только стандартная библиотека)
-bs3/ollama.py      единый клиент Ollama: поиск адреса, доступность, запросы, статус модели
-bs3/jobfiles.py    чтение и запись файлов задания в одном месте (атомарная запись, чтение без падений на пустых полях)
-bs3/media.py       метаданные файла через ffprobe и проверка загрузки (check_upload) до создания папки и загрузки модели
-bs3/errors.py      одна таблица спокойных русских сообщений об ошибках (user_message, is_fatal)
-```
+- `bs3/__init__.py` — версия и название (PRODUCT, PRODUCT_SLUG, __version__), модели (MODEL_TITLES, DEFAULT_MODEL), язык (LANG)
+- `bs3/cli.py` — командная строка: web, infer, explain
+- `bs3/pipeline.py` — Studio (одна модель на анализ, один анализ за раз — run_lock) и run_analysis: Big Five по отрезкам, анализы, тексты; отрезки удаляются после записи result.json
+- `bs3/settings.py` — все настройки в одном месте (только стандартная библиотека)
+- `bs3/ollama.py` — единый клиент Ollama: поиск адреса, доступность, запросы, статус модели
+- `bs3/jobfiles.py` — чтение и запись файлов задания в одном месте (атомарная запись, чтение без падений на пустых полях)
+- `bs3/media.py` — метаданные файла через ffprobe и проверка загрузки (check_upload) до создания папки и загрузки модели
+- `bs3/errors.py` — одна таблица спокойных русских сообщений об ошибках (user_message, is_fatal)
 
 Анализ и модели:
 
-```
-bs3/backend_mm.py        бэкенд AMLAI 1.0 (собственная модель по рецепту MM-PSYCHE)
-bs3/backend_oceanai.py   бэкенд OCEAN-AI (веса MuPTA)
-bs3/backend_ensemble.py  ансамбль из одного участника (одна модель на анализ)
-bs3/longvideo.py         нарезка длинного ролика на отрезки и анализ по отрезкам
-bs3/mm/                  модель AMLAI 1.0: model.py, извлечение признаков (extractors.py, extractors_audio.py), лица (faces.py), объяснения (explain.py)
-bs3/analyses/            emotions_text.py, emotions_voice.py, face_expr.py, speech_stats.py
-```
+- `bs3/backend_mm.py` — бэкенд AMLAI 1.0 (собственная модель по рецепту MM-PSYCHE)
+- `bs3/backend_oceanai.py` — бэкенд OCEAN-AI (веса MuPTA)
+- `bs3/backend_ensemble.py` — ансамбль из одного участника (одна модель на анализ)
+- `bs3/longvideo.py` — нарезка длинного ролика на отрезки и анализ по отрезкам
+- `bs3/mm/` — модель AMLAI 1.0: model.py, извлечение признаков (extractors.py, extractors_audio.py), лица (faces.py), объяснения (explain.py)
+- `bs3/analyses/` — emotions_text.py, emotions_voice.py, face_expr.py, speech_stats.py
 
 Оценки и тексты:
 
-```
-bs3/scores.py          чистые оценки одной модели (clean_view), полосы уровней на шкале 0…1, полоса темпа (TEMPO_BAND 100…160, tempo_state)
-bs3/mbti.py            перевод Big Five в нотацию MBTI, тип по отрезкам, раздел mbti (schema 3)
-bs3/jobview.py         одна загрузка задания для страницы, PDF и журнала (JobView: оценки, тип, характеристика)
-bs3/facts.py           общее содержимое страницы и PDF: ключевые факты, карточки, ячейки отрезков
-bs3/characterization.py связный текст характеристики
-bs3/narrative.py       «Как получены оценки», сводка по словам, тексты источника и шкалы
-bs3/analyses_text.py   тексты анализов (эмоции текста/голоса/лица, речь), формулировка темпа
-bs3/caveats.py         оговорки страницы и PDF
-bs3/labels.py          названия эмоций, черт и моделей в одном месте
-bs3/bands.py           именованные пороги слов (пауз, слов-паразитов, движения головы)
-bs3/norms.py           ключи черт и их русские названия
-bs3/words.py           разбор речи на слова и словарь
-bs3/ru_texts.py        русские тексты для старых заданий, показ транскрипта и словаря, условия перевода
-bs3/translate.py       перевод описаний через Ollama или Marian (torch грузится лениво)
-bs3/textfmt.py         общие форматтеры (время, склонения, проценты)
-bs3/segments.py        данные по отрезкам (выбор представительного отрезка, доли эмоций, строки таблицы)
-bs3/report.py          сборка result.json (build_report) и тексты оговорок
-bs3/frame_captions.py  подписи под ключевыми кадрами
-bs3/frame_phrase.py    подсказка и разбор фразы кадра (лист, только стандартная библиотека)
-bs3/palette.py         цвета (загружается check_palette.py отдельным файлом, поэтому без импортов)
-bs3/config/            mbti.json (пороги, названия типов), lexicon_ru.json (словарь характеристики)
-```
+- `bs3/scores.py` — чистые оценки одной модели (clean_view), полосы уровней на шкале 0…1, полоса темпа (TEMPO_BAND 100…160, tempo_state)
+- `bs3/mbti.py` — перевод Big Five в нотацию MBTI, тип по отрезкам, раздел mbti (schema 3)
+- `bs3/jobview.py` — одна загрузка задания для страницы, PDF и журнала (JobView: оценки, тип, характеристика)
+- `bs3/facts.py` — общее содержимое страницы и PDF: ключевые факты, карточки, ячейки отрезков
+- `bs3/characterization.py` — связный текст характеристики
+- `bs3/narrative.py` — «Как получены оценки», сводка по словам, тексты источника и шкалы
+- `bs3/analyses_text.py` — тексты анализов (эмоции текста/голоса/лица, речь), формулировка темпа
+- `bs3/caveats.py` — оговорки страницы и PDF
+- `bs3/labels.py` — названия эмоций, черт и моделей в одном месте
+- `bs3/bands.py` — именованные пороги слов (пауз, слов-паразитов, движения головы)
+- `bs3/norms.py` — ключи черт и их русские названия
+- `bs3/words.py` — разбор речи на слова и словарь
+- `bs3/ru_texts.py` — русские тексты для старых заданий, показ транскрипта и словаря, условия перевода
+- `bs3/translate.py` — перевод описаний через Ollama или Marian (torch грузится лениво)
+- `bs3/textfmt.py` — общие форматтеры (время, склонения, проценты)
+- `bs3/segments.py` — данные по отрезкам (выбор представительного отрезка, доли эмоций, строки таблицы)
+- `bs3/report.py` — сборка result.json (build_report) и тексты оговорок
+- `bs3/frame_captions.py` — подписи под ключевыми кадрами
+- `bs3/frame_phrase.py` — подсказка и разбор фразы кадра (лист, только стандартная библиотека)
+- `bs3/palette.py` — цвета (загружается check_palette.py отдельным файлом, поэтому без импортов)
+- `bs3/config/` — mbti.json (пороги, названия типов), lexicon_ru.json (словарь характеристики)
 
 Веб-страница — `bs3/web/`:
 
-```
-bs3/web/app.py        приложение Gradio: build_app, main, отдача PDF, тексты ошибок, «В очереди»
-bs3/web/page.py       блоки результата на странице
-bs3/web/style.py      стили, тема, русская локаль
-bs3/web/charts.py     графики plotly
-bs3/web/parts.py      HTML-блоки страницы
-bs3/web/plotframe.py  встраивание графика (srcdoc)
-bs3/web/mbti_html.py  HTML вкладки «Тип MBTI»
-```
+- `bs3/web/app.py` — приложение Gradio: build_app, main, отдача PDF, тексты ошибок, «В очереди»
+- `bs3/web/page.py` — блоки результата на странице
+- `bs3/web/style.py` — стили, тема, русская локаль
+- `bs3/web/charts.py` — графики plotly
+- `bs3/web/parts.py` — HTML-блоки страницы
+- `bs3/web/plotframe.py` — встраивание графика (srcdoc)
+- `bs3/web/mbti_html.py` — HTML вкладки «Тип MBTI»
 
 PDF-отчёт — `bs3/pdf/`:
 
-```
-bs3/pdf/document.py     класс Report (страница, заголовки, таблицы)
-bs3/pdf/layout.py       константы вёрстки
-bs3/pdf/widgets.py      карточки и полосы оценок
-bs3/pdf/fmt.py          форматирование значений отчёта
-bs3/pdf/charts.py       графики PNG (matplotlib)
-bs3/pdf/mbti_section.py раздел «Тип MBTI»
-bs3/pdf/sections.py     разделы отчёта
-bs3/pdf/frames.py       ключевые кадры в отчёте
-bs3/pdf/appendix.py     приложения (файлы, отрезки, транскрипт)
-bs3/pdf/build.py        сборка PDF: build_pdf и export_pdf
-```
+- `bs3/pdf/document.py` — класс Report (страница, заголовки, таблицы)
+- `bs3/pdf/layout.py` — константы вёрстки
+- `bs3/pdf/widgets.py` — карточки и полосы оценок
+- `bs3/pdf/fmt.py` — форматирование значений отчёта
+- `bs3/pdf/charts.py` — графики PNG (matplotlib)
+- `bs3/pdf/mbti_section.py` — раздел «Тип MBTI»
+- `bs3/pdf/sections.py` — разделы отчёта
+- `bs3/pdf/frames.py` — ключевые кадры в отчёте
+- `bs3/pdf/appendix.py` — приложения (файлы, отрезки, транскрипт)
+- `bs3/pdf/build.py` — сборка PDF: build_pdf и export_pdf
 
 Журнал:
 
-```
-bs3/journal.py     текстовый журнал веб-сервиса: кто открыл страницу, какой файл анализировали и с каким итогом
-```
+- `bs3/journal.py` — текстовый журнал веб-сервиса: кто открыл страницу, какой файл анализировали и с каким итогом
 
 Прочее:
 
-```
-training/          обучение и оценка на First Impressions V2 вне пакета: mm_data, mm_extract, mm_train, evaluate, eval_fiv2 (запуск python -m training.eval_fiv2)
-scripts/           run_web3.sh, run_preview.sh, ui_preview.py, import_job.py, rerender_samples.py, check_job.py, add_mbti.py, clean_jobs.py, compare_baseline.py, check_palette.py, check_behavior_translation.py, selftest.py
-tests/             run.py и тесты (изоляция, оценки, MBTI, страница и PDF, ошибки, …)
-deploy/            bs3-web.service — шаблон службы systemd (не установлен)
-docs/              result_json.md (устройство задания) и config.md (настройки)
-```
+- `training/` — обучение и оценка на First Impressions V2 вне пакета: mm_data, mm_extract, mm_train, evaluate, eval_fiv2 (запуск python -m training.eval_fiv2)
+- `scripts/` — run_web3.sh, run_preview.sh, ui_preview.py, import_job.py, rerender_samples.py, check_job.py, add_mbti.py, clean_jobs.py, compare_baseline.py, check_palette.py, check_behavior_translation.py, selftest.py
+- `tests/` — run.py и тесты (изоляция, оценки, MBTI, страница и PDF, ошибки, …)
+- `deploy/` — bs3-web.service — шаблон службы systemd (не установлен)
+- `docs/` — result_json.md (устройство задания) и config.md (настройки)
 
 ## Старые задания
 

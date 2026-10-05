@@ -20,9 +20,11 @@ so run it from `bs3-studio` with the project venv:
 ## Typical runs
 
     python -m training.mm_extract --split train --modalities audio,text,behavior
-    python -m training.mm_extract --split train --modalities face --shard 0/6    # one of 6 parallel shards
+    # one of 6 parallel shards:
+    python -m training.mm_extract --split train --modalities face --shard 0/6
     python -m training.mm_extract --split train --modalities face --merge
-    python -m training.mm_train --modalities face,audio,text,behavior --out ~/bs/mm_runs/all
+    python -m training.mm_train --modalities face,audio,text,behavior \
+      --out ~/bs/mm_runs/all
     python -m training.eval_fiv2 --dir DIR --out eval.json --backend mm --lang en
 
 The app loads its checkpoints from `~/bs/mm_runs_seeds/seed*/best.pt` (5 seeds, averaged). A training run writes to

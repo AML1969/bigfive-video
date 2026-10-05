@@ -34,8 +34,11 @@ Do not edit them by hand. When a change to the lexicon (`bs3/config/lexicon_ru.j
 characterization templates deliberately changes the wording, regenerate them:
 
 ```
-~/bs/venv/bin/python tests/regen_golden.py            # print the diff of every change, then rewrite the files
-~/bs/venv/bin/python tests/regen_golden.py --check    # print the diff and fail without writing (nothing changed -> exit 0)
+# print the diff of every change, then rewrite the files
+~/bs/venv/bin/python tests/regen_golden.py
+
+# print the diff and fail without writing (nothing changed -> exit 0)
+~/bs/venv/bin/python tests/regen_golden.py --check
 ```
 
 Review the printed unified diff, and regenerate only in the same commit that makes the lexicon or

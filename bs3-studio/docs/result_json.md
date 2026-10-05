@@ -49,31 +49,31 @@
 
 ### Верхний уровень
 
-| Поле | Тип | Пишет | Читают | Есть в | Нужно для показа |
-|---|---|---|---|---|---|
-| `input` | str | `report.build_report` | — (папку открывают по ней самой) | все | нет (путь на сервере не показывается) |
-| `created_at` | str (ISO) | `report.build_report` | PDF, `check_job` | все | нет |
-| `traits` | object | `build_report` / `scores.clean_view` | страница, PDF, `mbti` | все | да |
-| `interview` | object | `build_report` | страница, PDF, `mbti` | ~ (только AMLAI 1.0) | нет |
-| `behavior_description` | str | `build_report` (из результата) | страница, PDF | ~ (AMLAI 1.0) | нет |
-| `transcript` | str | `longvideo` → `build_report` | страница, PDF, анализы речи | все | нет |
-| `modalities_used` | list[str] | `build_report` (`bs3.MODALITIES`) | страница, PDF (фильтр имён моделей) | все | да |
-| `model` | object | `build_report` | `scores.recorded_model`, страница, PDF, журнал | все | да |
-| `variant_scores` | object | `run_analysis` / `longvideo` | `scores.clean_view`, `mbti` | 3.0 (2 модели), 3.1/кор. (1) | да |
-| `duration_sec` | float | `longvideo` | страница, PDF | 3.x | нет |
-| `segments` | int | `longvideo` | страница, PDF, `mbti` | 3.x (кор. = 1) | нет |
-| `timeline` | list | `longvideo` | страница, PDF, `scores`, `mbti` | 3.x (кор. = []) | для таблицы отрезков |
-| `representative_segment` | int (с 1) | `longvideo` | объяснения, страница | 3.x (длинные) | нет |
-| `chunks` | list[[start,end,text]] | `longvideo` | анализы речи (`analyses`) | 3.x (длинные) | нет |
-| `scores_std_across_segments` | object | `run_analysis` (`res.scores_std`) | страница, PDF | 3.x | нет |
-| `analyses` | object | `pipeline.run_extra_analyses` | страница, PDF | 3.x | нет |
-| `media` | object | `media.probe_media` | страница, PDF (приложение) | 3.x | нет |
-| `original_file_name` | str | `run_analysis` | журнал, PDF | 3.x | нет |
-| `key_frames` | list[str] | `run_analysis` | `jobfiles.key_frame_paths`, страница, PDF | ~ (AMLAI 1.0) | для кадров |
-| `timings_sec` | object | `build_report` / `run_analysis` | PDF, `check_job` | все | нет |
-| `mbti` | object (schema 3) | `mbti.build_section` (`run_analysis`) | `mbti.get_mbti`, страница, PDF, журнал | 3.1/кор. (старые пересчитываются) | да |
-| `job_dir` | str | `run_analysis`; переустанавливается `jobfiles.load_job` | — (папку открывают по ней самой) | 3.x | нет |
-| `disclaimer`, `disclaimer_ru` | str | `build_report` | — (write-only) | все | нет |
+| Поле | Тип | Подробности |
+|---|---|---|
+| `input` | str | **Пишет:** `report.build_report`. **Читают:** — (папку открывают по ней самой). **Есть в:** все. **Нужно для показа:** нет (путь на сервере не показывается). |
+| `created_at` | str (ISO) | **Пишет:** `report.build_report`. **Читают:** PDF, `check_job`. **Есть в:** все. **Нужно для показа:** нет. |
+| `traits` | object | **Пишет:** `build_report` / `scores.clean_view`. **Читают:** страница, PDF, `mbti`. **Есть в:** все. **Нужно для показа:** да. |
+| `interview` | object | **Пишет:** `build_report`. **Читают:** страница, PDF, `mbti`. **Есть в:** ~ (только AMLAI 1.0). **Нужно для показа:** нет. |
+| `behavior_description` | str | **Пишет:** `build_report` (из результата). **Читают:** страница, PDF. **Есть в:** ~ (AMLAI 1.0). **Нужно для показа:** нет. |
+| `transcript` | str | **Пишет:** `longvideo` → `build_report`. **Читают:** страница, PDF, анализы речи. **Есть в:** все. **Нужно для показа:** нет. |
+| `modalities_used` | list[str] | **Пишет:** `build_report` (`bs3.MODALITIES`). **Читают:** страница, PDF (фильтр имён моделей). **Есть в:** все. **Нужно для показа:** да. |
+| `model` | object | **Пишет:** `build_report`. **Читают:** `scores.recorded_model`, страница, PDF, журнал. **Есть в:** все. **Нужно для показа:** да. |
+| `variant_scores` | object | **Пишет:** `run_analysis` / `longvideo`. **Читают:** `scores.clean_view`, `mbti`. **Есть в:** 3.0 (2 модели), 3.1/кор. (1). **Нужно для показа:** да. |
+| `duration_sec` | float | **Пишет:** `longvideo`. **Читают:** страница, PDF. **Есть в:** 3.x. **Нужно для показа:** нет. |
+| `segments` | int | **Пишет:** `longvideo`. **Читают:** страница, PDF, `mbti`. **Есть в:** 3.x (кор. = 1). **Нужно для показа:** нет. |
+| `timeline` | list | **Пишет:** `longvideo`. **Читают:** страница, PDF, `scores`, `mbti`. **Есть в:** 3.x (кор. = []). **Нужно для показа:** для таблицы отрезков. |
+| `representative_segment` | int (с 1) | **Пишет:** `longvideo`. **Читают:** объяснения, страница. **Есть в:** 3.x (длинные). **Нужно для показа:** нет. |
+| `chunks` | list[[start,end,text]] | **Пишет:** `longvideo`. **Читают:** анализы речи (`analyses`). **Есть в:** 3.x (длинные). **Нужно для показа:** нет. |
+| `scores_std_across_segments` | object | **Пишет:** `run_analysis` (`res.scores_std`). **Читают:** страница, PDF. **Есть в:** 3.x. **Нужно для показа:** нет. |
+| `analyses` | object | **Пишет:** `pipeline.run_extra_analyses`. **Читают:** страница, PDF. **Есть в:** 3.x. **Нужно для показа:** нет. |
+| `media` | object | **Пишет:** `media.probe_media`. **Читают:** страница, PDF (приложение). **Есть в:** 3.x. **Нужно для показа:** нет. |
+| `original_file_name` | str | **Пишет:** `run_analysis`. **Читают:** журнал, PDF. **Есть в:** 3.x. **Нужно для показа:** нет. |
+| `key_frames` | list[str] | **Пишет:** `run_analysis`. **Читают:** `jobfiles.key_frame_paths`, страница, PDF. **Есть в:** ~ (AMLAI 1.0). **Нужно для показа:** для кадров. |
+| `timings_sec` | object | **Пишет:** `build_report` / `run_analysis`. **Читают:** PDF, `check_job`. **Есть в:** все. **Нужно для показа:** нет. |
+| `mbti` | object (schema 3) | **Пишет:** `mbti.build_section` (`run_analysis`). **Читают:** `mbti.get_mbti`, страница, PDF, журнал. **Есть в:** 3.1/кор. (старые пересчитываются). **Нужно для показа:** да. |
+| `job_dir` | str | **Пишет:** `run_analysis`; переустанавливается `jobfiles.load_job`. **Читают:** — (папку открывают по ней самой). **Есть в:** 3.x. **Нужно для показа:** нет. |
+| `disclaimer`, `disclaimer_ru` | str | **Пишет:** `build_report`. **Читают:** — (write-only). **Есть в:** все. **Нужно для показа:** нет. |
 
 `view_meta` в файле не хранится: его добавляет `scores.clean_view` при показе (какая модель показана и какие отрезки
 выпали).
