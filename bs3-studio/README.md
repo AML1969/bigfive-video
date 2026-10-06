@@ -198,11 +198,26 @@ PDF-отчёт — `bs3/pdf/`:
 
 Прочее:
 
-- `training/` — обучение и оценка на First Impressions V2 вне пакета: mm_data, mm_extract, mm_train, evaluate, eval_fiv2 (запуск python -m training.eval_fiv2)
+- `training/` — исследовательский код вне пакета: обучение и оценка AMLAI 1.0 на First Impressions V2 (mm_data, mm_extract, mm_train, evaluate, eval_fiv2) и четыре скрипта для своего русского набора и AMLAI 2.0 (ru_labels, ru_extract, ru_train, ru_eval — см. раздел «Свой набор роликов и AMLAI 2.0»)
 - `scripts/` — run_web3.sh, run_preview.sh, ui_preview.py, import_job.py, rerender_samples.py, check_job.py, add_mbti.py, clean_jobs.py, compare_baseline.py, check_palette.py, check_behavior_translation.py, selftest.py
 - `tests/` — run.py и тесты (изоляция, оценки, MBTI, страница и PDF, ошибки, …)
 - `deploy/` — bs3-web.service — шаблон службы systemd (не установлен)
 - `docs/` — result_json.md (устройство задания), config.md (настройки); `docs/dataset/` — инструкции для сбора своего размеченного набора роликов (документы 0–3), его разметки (5) и обучения на нём AMLAI 2.0 (4)
+
+## Свой набор роликов и AMLAI 2.0
+
+AMLAI 1.0 обучена на англоязычном First Impressions V2, поэтому на русской речи её точность не измерена и, скорее всего,
+ниже, чем у OCEAN-AI. Путь к модели, обученной на своих русскоязычных роликах (AMLAI 2.0), описан в `docs/dataset/`:
+
+- документы 0–3 — как собрать размеченный набор силами студентов: памятка организатору, как снять ролик, самооценка,
+  оценка ролика наблюдателем;
+- документ 5 — как превратить собранное в `labels.csv` и папку набора;
+- документ 4 — как обучить AMLAI 2.0 и как проверить, что она лучше нынешних моделей.
+
+Код для этого — `training/ru_labels.py` (разметка), `ru_extract.py` (признаки отрезков тем же путём, что в продукте),
+`ru_train.py` (обучение по частям) и `ru_eval.py` (оценка и сравнение с соперниками); запуск описан в
+[training/README.md](training/README.md). Скрипты проверены только на искусственных данных (`tests/test_ru_labels.py`,
+`tests/test_ru_training.py`): на настоящих роликах они ещё не запускались, набор ещё не собран.
 
 ## Старые задания
 
