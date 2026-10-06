@@ -41,11 +41,13 @@ The four `ru_*` modules follow docs/dataset/4_Как_обучить_AMLAI_2.0.md
     python -m training.ru_labels --set /mnt/d/ru_set_v1
     python -m training.ru_extract --videos /mnt/d/ru_set_v1/work \
       --labels /mnt/d/ru_set_v1/labels.csv --out ~/data/ru_v1
-    python -m training.ru_train --data ~/data/ru_v1 --labels /mnt/d/ru_set_v1/labels.csv \
-      --fold 1 --seed 1 --lr 1e-5 --init ~/bs/mm_runs_seeds/seed1/best.pt \
+    python -m training.ru_train --data ~/data/ru_v1 \
+      --labels /mnt/d/ru_set_v1/labels.csv --fold 1 --seed 1 --lr 1e-5 \
+      --init ~/bs/mm_runs_seeds/seed1/best.pt \
       --out ~/bs/amlai2_runs/A_lr1e-5/fold1
     python -m training.ru_eval --mode test --data ~/data/ru_v1 \
-      --labels /mnt/d/ru_set_v1/labels.csv --ckpt "~/bs/amlai2/v1/fold*/best.pt" \
+      --labels /mnt/d/ru_set_v1/labels.csv \
+      --ckpt "~/bs/amlai2/v1/fold*/best.pt" \
       --out ~/data/ru_v1/eval_test.json
 
 Feature store of `ru_extract`: `features/<video>.pt` with `x` = {modality: FloatTensor[segments, D]}, the segment
