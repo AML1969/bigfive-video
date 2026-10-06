@@ -69,6 +69,10 @@ def cmd_infer(a):
     be = _backend(a)
     reports = []
     analyzer = None
+    # the segment folder of a run with --out: <out without suffix>/segments for one video; several videos get a folder
+    # each (<out>/<video stem>/segments), because the analyzer reuses segment files and behaviour descriptions it finds
+    # in its work dir, and one shared dir would score the second video on the first one's segments
+    out_root = Path(a.out).with_suffix("") if a.out else None
     for v in a.video:
         transcript = Path(a.transcript).read_text(encoding="utf-8") if a.transcript else None
         if a.segment > 0 and transcript is None and not a.no_asr:
@@ -76,7 +80,10 @@ def cmd_infer(a):
             from .longvideo import LongVideoAnalyzer, video_duration
             if analyzer is None:
                 analyzer = LongVideoAnalyzer(be, lang=LANG, seg_len=a.segment, asr_model=a.asr_model)
-            work = Path(a.out).with_suffix("") if a.out else Path(tempfile.mkdtemp(prefix="bs_seg_"))
+            if out_root is None:
+                work = Path(tempfile.mkdtemp(prefix="bs_seg_"))
+            else:
+                work = out_root if len(a.video) == 1 else out_root / Path(v).stem
             res = analyzer.analyze(v, work / "segments") if video_duration(v) > analyzer.single_max else be.predict_video(v, asr=True)
         else:
             res = be.predict_video(v, asr=not a.no_asr, transcript=transcript)
