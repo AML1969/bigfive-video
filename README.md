@@ -39,12 +39,15 @@ PDF export, long-video segmentation, Russian and English speech. Documentation i
 моделью `qwen2.5vl:7b`. Установка и запуск описаны в [bs/README.md](bs/README.md); кратко:
 
 ```bash
-bash bs/scripts/setup_wsl.sh                       # окружение ~/bs/venv (torch cu130, oceanai, transformers 4.45.1 ...)
+# окружение ~/bs/venv (torch cu130, oceanai, transformers 4.45.1 ...)
+bash bs/scripts/setup_wsl.sh
 ~/bs/venv/bin/pip install -e ./bs
-~/bs/venv/bin/bs setup-weights --lang all          # веса OCEAN-AI
+# веса OCEAN-AI
+~/bs/venv/bin/bs setup-weights --lang all
 # веса своей модели: из релиза v1.0 распаковать в ~/bs/mm_runs_seeds/seed*/best.pt
 ~/bs/venv/bin/bs infer video.mp4 --lang ru --out result.json
-bash bs/scripts/run_web.sh 7860                    # веб: http://localhost:7860
+# веб: http://localhost:7860
+bash bs/scripts/run_web.sh 7860
 ```
 
 В скриптах `bs/scripts/*.sh` пути к проекту заданы для машины разработки (`/mnt/c/Users/nrsmh/...`) — при переносе
