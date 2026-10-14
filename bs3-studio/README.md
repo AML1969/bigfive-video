@@ -53,8 +53,10 @@ pkill -f "ui_previe[w].py"
    Проверенные версии перечислены в `requirements-wsl.txt`.
 5. **Установить пакет** в режиме разработки, без зависимостей (чтобы общий venv не тянул обновления):
    `~/bs/venv/bin/pip install --no-deps -e ./bs3-studio`. Повторять после смены версии; проверка — `~/bs/venv/bin/bs3 --version`.
-6. **Веса AMLAI 1.0** из релиза v1.0 разложить в `~/bs/mm_runs_seeds/seed{1,2,3,4,42}/best.pt` (пять сидов, усредняются;
-   путь задаёт `settings.MM_CHECKPOINTS`).
+6. **Веса AMLAI 1.0** — архив `bs_bigfive_weights_v1.0.tar.gz` из релиза
+   <https://github.com/AML1969/bigfive-video/releases/tag/v1.0.0> (там же `SHA256SUMS`, описание и совместимость)
+   разложить в `~/bs/mm_runs_seeds/seed{1,2,3,4,42}/best.pt` (пять сидов, усредняются; путь задаёт
+   `settings.MM_CHECKPOINTS`). Те же пять файлов лежат и в репозитории стажировки, папка «Веса AMLAI 1.0».
 7. **Веса OCEAN-AI** скачиваются автоматически при первом анализе этой моделью в `~/bs/models`
    (`settings.OCEANAI_MODELS_DIR`; каталог создаёт `backend_oceanai.py`).
 8. **Модели Hugging Face** скачиваются при первом запуске (суммарно около 5,5 ГБ) в кэш HF (`~/.cache/huggingface`):
