@@ -6,6 +6,7 @@ OCEAN-AI (aimclub/OCEANAI, BSD-3) ships weights for two corpora:
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -26,6 +27,8 @@ log = logging.getLogger("bs.oceanai")
 
 CORPUS_BY_LANG = {"en": "fi", "ru": "mupta"}
 MEDIA_EXTS = [".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".mpg", ".mpeg"]
+# {weight link of OCEAN-AI: file name it saves}, recorded once online by refactor-3.1/capture_oceanai_names.py
+WEIGHT_NAMES = Path(__file__).resolve().parent / "config" / "oceanai_weights.json"
 
 
 @dataclass
@@ -90,6 +93,35 @@ def _guard_translation_generate(b5, max_positions: int = 512):
     log.info("translation generate() capped at %d new tokens", limit)
 
 
+def _patch_local_first(b5, names_file: Path = WEIGHT_NAMES) -> None:
+    """OCEAN-AI asks the network for the name of every weight file, even when the file is already on disk: it sends
+    a GET to the link and reads the name from Content-Disposition. Without internet it guesses the name from the link
+    (url.split("=")[-1]), which works for its sberdisk links but not for the Google Drive links of this version, so
+    loading fails offline (a Docker container without internet). The names were read once and are kept in
+    config/oceanai_weights.json; a known link whose file is in path_to_save_ is answered from disk, anything else
+    (an unknown link, a missing file, force_reload) goes to the original method."""
+    if getattr(b5._download_file_from_url, "_bs_local_first", False):
+        return
+    try:
+        names = json.loads(names_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        log.warning("OCEAN-AI weight names not read (%s): every weight is looked up online", e)
+        names = {}
+    orig = b5._download_file_from_url
+
+    def _download(url, force_reload=True, out=True, runtime=True, run=True):
+        name = names.get(url)
+        if name and force_reload is False and run:
+            local = os.path.join(b5.path_to_save_, name)
+            if os.path.isfile(local):
+                b5._url_last_filename = local
+                return 200
+        return orig(url=url, force_reload=force_reload, out=out, runtime=runtime, run=run)
+
+    _download._bs_local_first = True
+    b5._download_file_from_url = _download
+
+
 def _patch_torchaudio_load():
     """torchaudio >= 2.9 delegates load() to torchcodec, which is not installed; OCEAN-AI calls
     torchaudio.load(wav) in its ASR path. Replace it with a soundfile-based loader with the same contract."""
@@ -136,6 +168,7 @@ class OceanAIBackend:
         b5 = Run(lang="en", metadata=False)
         b5.path_to_save_ = cfg.models_dir
         b5.chunk_size_ = 2_000_000
+        _patch_local_first(b5)
         Path(cfg.models_dir).mkdir(parents=True, exist_ok=True)
         W = b5.weights_for_big5_
         corpus, disk, fr = cfg.corpus, cfg.disk, cfg.force_reload
