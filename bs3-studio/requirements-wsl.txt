@@ -41,6 +41,9 @@ scikit-learn==1.9.1
 audioread==3.1.0
 liwc==0.5.0
 requests==2.34.2
+# OCEAN-AI imports IPython and jupyterlab at start (oceanai/modules/core/core.py), although the product never uses them
+ipython==9.17.1
+jupyterlab==4.6.3
 
 # --- OCEAN-AI: ставить ОТДЕЛЬНО и без зависимостей, иначе тянет конфликтующие версии перечисленных выше пакетов ---
 # pip install --no-deps oceanai==1.0.0a48
