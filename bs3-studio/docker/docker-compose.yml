@@ -1,0 +1,48 @@
+# BS Profiler 3.1 for a local machine: the page at http://localhost:7880, opened only on this computer.
+#   docker compose up -d        start (the first start takes about a minute)
+#   docker compose down         stop (jobs and the journal stay in the volume bs3_data)
+# Needs an NVIDIA GPU with 24 GB, driver 580 or newer, and GPU support in Docker (README.md).
+name: bs-profiler
+
+services:
+  ollama:
+    image: bs-profiler-ollama:3.1
+    restart: unless-stopped
+    networks: [backend]                 # not published, not reachable from outside
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  bs3:
+    image: bs-profiler:3.1
+    restart: unless-stopped
+    init: true
+    shm_size: 2gb
+    depends_on:
+      ollama:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:7880:7880"           # this computer only; there is no login on the page
+    environment:
+      BS3_OLLAMA_URL: http://ollama:11434
+    volumes:
+      - bs3_data:/home/bs/bs3_data
+    networks: [default, backend]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+networks:
+  backend:
+    internal: true                      # the two containers talk to each other, nothing else
+
+volumes:
+  bs3_data:

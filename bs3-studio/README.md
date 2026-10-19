@@ -84,6 +84,13 @@ pkill -f "ui_previe[w].py"
 Веб-сервер 3.1 запускается только вручную. Автозапуск не включён; служба 2.0 (`bigfive.service`) остаётся остановленной
 и отключённой.
 
+## Docker
+
+Комплект для другого компьютера с видеокартой NVIDIA: два образа, продукт и Ollama с моделью `qwen2.5vl:7b`. Все модели
+внутри, интернет не нужен, страница открывается только на том же компьютере (`127.0.0.1:7880`). Установка и запуск —
+[docker/README.md](docker/README.md). Сборка: `docker/stage.sh` готовит контексты из `git archive HEAD` и локальных
+кэшей моделей, затем `docker build` для `docker/Dockerfile` и `docker/ollama/Dockerfile`; код должен быть закоммичен.
+
 ## Где что лежит
 
 - `~/bs3_data/web_jobs` — по одной папке на анализ со страницы (значение по умолчанию `settings.JOBS_DIR`, устройство
@@ -204,6 +211,7 @@ PDF-отчёт — `bs3/pdf/`:
 - `scripts/` — run_web3.sh, run_preview.sh, ui_preview.py, import_job.py, rerender_samples.py, check_job.py, add_mbti.py, clean_jobs.py, compare_baseline.py, check_palette.py, check_behavior_translation.py, selftest.py
 - `tests/` — run.py и тесты (изоляция, оценки, MBTI, страница и PDF, ошибки, …)
 - `deploy/` — bs3-web.service — шаблон службы systemd (не установлен)
+- `docker/` — комплект в Docker: stage.sh, Dockerfile, ollama/Dockerfile, docker-compose.yml, README.md (см. раздел «Docker»)
 - `docs/` — result_json.md (устройство задания), config.md (настройки); `docs/dataset/` — инструкции для сбора своего размеченного набора роликов (документы 0–3), его разметки (5) и обучения на нём AMLAI 2.0 (4)
 
 ## Свой набор роликов и AMLAI 2.0

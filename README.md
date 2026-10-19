@@ -89,7 +89,8 @@ bash bs/scripts/run_web.sh 7860
 
 Отдельный проект: пакет `bs3`, порт 7880, одна модель на анализ — своя AMLAI 1.0 (по умолчанию) или OCEAN-AI, только
 русская речь, тип MBTI из Big Five, характеристика личности простыми словами. Описание и запуск — в
-[bs3-studio/README.md](bs3-studio/README.md).
+[bs3-studio/README.md](bs3-studio/README.md). Комплект в Docker для другого компьютера, со всеми моделями внутри и без
+интернета, — [bs3-studio/docker/README.md](bs3-studio/docker/README.md).
 
 Там же — путь к следующей модели, AMLAI 2.0, обученной на своих русскоязычных роликах:
 
